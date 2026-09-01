@@ -1,0 +1,488 @@
+import React, { useState, useEffect } from 'react';
+import { Settings, Building2, Palette, MessageSquare, Check, Sparkles, Save, Headset, Mail, PhoneCall, Code2, Lock, Unlock, ShieldCheck, Database, Download, RefreshCw, Server, Activity } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { formatCNPJ, formatPhone, formatCEP } from '../../utils/cpf';
+import { ImageUploadInput } from '../common/ImageUploadInput';
+import { DbConnectionTestModal } from '../database/DbConnectionTestModal';
+
+interface SettingsViewProps {
+  onUpdate?: () => void;
+  onNavigateToBackup?: () => void;
+}
+
+export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigateToBackup }) => {
+  const { user, tenant, updateTenantConfig } = useAuth();
+
+  const [tradeName, setTradeName] = useState('');
+  const [corporateName, setCorporateName] = useState('');
+  const [docType, setDocType] = useState<'CPF' | 'CNPJ'>('CNPJ');
+  const [documentNumber, setDocumentNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [cep, setCep] = useState('');
+  const [address, setAddress] = useState('');
+  const [number, setNumber] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [primaryColor, setPrimaryColor] = useState('#0d9488');
+  const [secondaryColor, setSecondaryColor] = useState('#0f766e');
+  const [customHeader, setCustomHeader] = useState('');
+  const [whatsappToken, setWhatsappToken] = useState('');
+  const [whatsappPhoneId, setWhatsappPhoneId] = useState('');
+  const [whatsappStatus, setWhatsappStatus] = useState<'CONFIGURED' | 'NOT_CONFIGURED'>('NOT_CONFIGURED');
+  const [supportEmail, setSupportEmail] = useState('');
+  const [supportPhone, setSupportPhone] = useState('');
+
+  // Super User / Developer Edit Lock Mode
+  const [isSuperUserMode, setIsSuperUserMode] = useState(false);
+  const [isDbTestModalOpen, setIsDbTestModalOpen] = useState(false);
+
+  const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    if (tenant) {
+      setTradeName(tenant.tradeName || '');
+      setCorporateName(tenant.corporateName || '');
+      setDocType(tenant.docType || 'CNPJ');
+      setDocumentNumber(tenant.documentNumber || '');
+      setEmail(tenant.email || '');
+      setPhone(tenant.phone || '');
+      setCep(tenant.cep || '');
+      setAddress(tenant.address || '');
+      setNumber(tenant.number || '');
+      setNeighborhood(tenant.neighborhood || '');
+      setCity(tenant.city || '');
+      setState(tenant.state || '');
+      setLogoUrl(tenant.logoUrl || '');
+      setPrimaryColor(tenant.primaryColor || '#0d9488');
+      setSecondaryColor(tenant.secondaryColor || '#0f766e');
+      setCustomHeader(tenant.customHeader || '');
+      setWhatsappToken(tenant.whatsappConfig?.token || '');
+      setWhatsappPhoneId(tenant.whatsappConfig?.phoneNumberId || '');
+      setWhatsappStatus(tenant.whatsappConfig?.status || 'NOT_CONFIGURED');
+      setSupportEmail(tenant.supportEmail || 'suporte@fisiomassoterapia.com.br');
+      setSupportPhone(tenant.supportPhone || '(11) 98765-4321');
+    }
+  }, [tenant]);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenant) return;
+
+    await updateTenantConfig({
+      tradeName,
+      corporateName,
+      docType,
+      documentNumber,
+      email,
+      phone,
+      cep,
+      address,
+      number,
+      neighborhood,
+      city,
+      state,
+      logoUrl,
+      primaryColor,
+      secondaryColor,
+      customHeader,
+      supportEmail,
+      supportPhone,
+      creatorName: 'Osaias Brito',
+      whatsappConfig: {
+        token: whatsappToken,
+        phoneNumberId: whatsappPhoneId,
+        status: whatsappToken ? 'CONFIGURED' : 'NOT_CONFIGURED',
+      },
+    });
+
+    setIsSaved(true);
+    if (onUpdate) onUpdate();
+    setTimeout(() => setIsSaved(false), 3000);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Settings className="w-5 h-5 text-teal-600" />
+            Configurações do Tenant & White Label
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Personalize a identidade visual, logo, cores, endereço e WhatsApp Business API da empresa.
+          </p>
+        </div>
+
+        {isSaved && (
+          <div className="px-3.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
+            <Check className="w-4 h-4" /> Configurações Salvas!
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-6">
+        {/* Section 1: Dados da Empresa */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <Building2 className="w-4 h-4 text-teal-600" /> 1. Cadastro Geral da Empresa
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">Nome Fantasia</label>
+              <input
+                type="text"
+                value={tradeName}
+                onChange={e => setTradeName(e.target.value)}
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">Razão Social</label>
+              <input
+                type="text"
+                value={corporateName}
+                onChange={e => setCorporateName(e.target.value)}
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">CNPJ / CPF</label>
+              <input
+                type="text"
+                value={documentNumber}
+                onChange={e => setDocumentNumber(e.target.value)}
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">E-mail Comercial</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">Telefone</label>
+              <input
+                type="text"
+                value={phone}
+                onChange={e => setPhone(formatPhone(e.target.value))}
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">CEP</label>
+              <input
+                type="text"
+                value={cep}
+                onChange={e => setCep(formatCEP(e.target.value))}
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: White Label & Identidade Visual */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <Palette className="w-4 h-4 text-teal-600" /> 2. Personalização White Label & Cores
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div className="md:col-span-2">
+              <ImageUploadInput
+                label="Logomarca Oficial da Empresa (Logotipo)"
+                value={logoUrl}
+                onChange={setLogoUrl}
+                shape="square"
+                fallbackInitials={tradeName || 'E'}
+                helperText="Upload direto por arrastar/soltar ou arquivo. A logomarca é aplicada em todo o sistema, menus e relatórios."
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">Cor Principal (Tema)</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="color"
+                  value={primaryColor}
+                  onChange={e => setPrimaryColor(e.target.value)}
+                  className="w-10 h-9 rounded cursor-pointer border-0"
+                />
+                <input
+                  type="text"
+                  value={primaryColor}
+                  onChange={e => setPrimaryColor(e.target.value)}
+                  className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="md:col-span-3">
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                Cabeçalho de Documentos e Prontuários Imprime
+              </label>
+              <input
+                type="text"
+                value={customHeader}
+                onChange={e => setCustomHeader(e.target.value)}
+                placeholder="Texto para ser exibido nos relatórios e prontuários..."
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: WhatsApp Business API Config */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <MessageSquare className="w-4 h-4 text-teal-600" /> 3. Integração WhatsApp Business API
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                API Token de Acesso Meta / WhatsApp
+              </label>
+              <input
+                type="password"
+                value={whatsappToken}
+                onChange={e => setWhatsappToken(e.target.value)}
+                placeholder="EAAG..."
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                Phone Number ID (Meta Cloud API)
+              </label>
+              <input
+                type="text"
+                value={whatsappPhoneId}
+                onChange={e => setWhatsappPhoneId(e.target.value)}
+                placeholder="10928374..."
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 4: Suporte Técnico & Atendimento ao Usuário (Exclusivo Super Usuário / Desenvolvedor) */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Headset className="w-4 h-4 text-teal-600" /> 4. Canais de Contato para Suporte Técnico
+            </h3>
+
+            {/* Toggle Super User / Developer Edit Permission */}
+            <button
+              type="button"
+              onClick={() => setIsSuperUserMode(!isSuperUserMode)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition ${
+                isSuperUserMode
+                  ? 'bg-amber-500 text-white shadow-xs hover:bg-amber-600'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {isSuperUserMode ? <Unlock className="w-3.5 h-3.5 text-white" /> : <Lock className="w-3.5 h-3.5 text-amber-600" />}
+              {isSuperUserMode ? 'Modo Desenvolvedor (Liberado)' : 'Alternar para Modo Super Usuário'}
+            </button>
+          </div>
+
+          {/* Super User Access Status Banner */}
+          {!isSuperUserMode ? (
+            <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-2.5 text-amber-900 dark:text-amber-200 text-xs">
+              <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-extrabold text-amber-900 dark:text-amber-100">
+                  Apenas Leitura • Cadastro de Suporte Restrito ao Desenvolvedor / Super Usuário
+                </p>
+                <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+                  O cadastro e edição do e-mail e telefone do suporte técnico da plataforma são exclusivos do <strong>Desenvolvedor (Osaias Brito / Super Usuário)</strong>. Todos os usuários da clínica podem utilizar os botões de ação rápida abaixo para falar diretamente com o suporte.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-start gap-2.5 text-emerald-900 dark:text-emerald-200 text-xs">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-extrabold text-emerald-900 dark:text-emerald-100">
+                  Modo Super Usuário Ativo (Desenvolvedor Osaias Brito)
+                </p>
+                <p className="mt-0.5 text-emerald-800 dark:text-emerald-300">
+                  Permissão de alteração concedida. Atualize os dados de e-mail e WhatsApp do suporte oficial que serão disponibilizados para todos os clientes da plataforma.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-teal-600" /> E-mail de Suporte Técnico
+                </span>
+                {!isSuperUserMode && (
+                  <span className="text-[10px] font-extrabold text-amber-600 flex items-center gap-1 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-full">
+                    <Lock className="w-3 h-3" /> Exclusivo Super Usuário
+                  </span>
+                )}
+              </label>
+              <input
+                type="email"
+                value={supportEmail}
+                onChange={e => setSupportEmail(e.target.value)}
+                disabled={!isSuperUserMode}
+                placeholder="suporte@fisiomassoterapia.com.br"
+                className={`w-full p-2.5 rounded-lg border transition ${
+                  isSuperUserMode
+                    ? 'border-teal-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                }`}
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between mb-1">
+                <span className="flex items-center gap-1.5">
+                  <PhoneCall className="w-3.5 h-3.5 text-teal-600" /> Telefone / WhatsApp de Suporte
+                </span>
+                {!isSuperUserMode && (
+                  <span className="text-[10px] font-extrabold text-amber-600 flex items-center gap-1 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-full">
+                    <Lock className="w-3 h-3" /> Exclusivo Super Usuário
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                value={supportPhone}
+                onChange={e => setSupportPhone(formatPhone(e.target.value))}
+                disabled={!isSuperUserMode}
+                placeholder="(11) 98765-4321"
+                className={`w-full p-2.5 rounded-lg border transition ${
+                  isSuperUserMode
+                    ? 'border-teal-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                }`}
+              />
+            </div>
+          </div>
+
+          {/* Direct Support Quick Actions */}
+          <div className="pt-2 flex flex-wrap items-center gap-3">
+            {supportPhone && (
+              <a
+                href={`https://wa.me/55${supportPhone.replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-xs transition"
+              >
+                <PhoneCall className="w-3.5 h-3.5" /> Abrir WhatsApp do Suporte
+              </a>
+            )}
+
+            {supportEmail && (
+              <a
+                href={`mailto:${supportEmail}`}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center gap-2 transition"
+              >
+                <Mail className="w-3.5 h-3.5 text-teal-600" /> Enviar E-mail para {supportEmail}
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Section 5: Backup & Segurança de Dados do Banco */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Database className="w-4 h-4 text-teal-600" /> 5. Banco de Dados & Segurança
+            </h3>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+              Gravação Atômica Ativa
+            </span>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Proteção Permanente & Conectividade
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Diagnóstico em tempo real da conexão com PostgreSQL/Supabase e verificação de snapshots atômicos.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setIsDbTestModalOpen(true)}
+                className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-teal-300 border border-teal-500/30 font-bold text-xs flex items-center justify-center gap-2 shrink-0 shadow-sm transition cursor-pointer"
+              >
+                <Server className="w-4 h-4 text-teal-400" /> Testar Conexão com Banco
+              </button>
+
+              {onNavigateToBackup && (
+                <button
+                  type="button"
+                  onClick={onNavigateToBackup}
+                  className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-2 shrink-0 shadow-sm transition cursor-pointer"
+                >
+                  <Download className="w-4 h-4" /> Central de Backup
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Section 6: Criador do Aplicativo */}
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-300 font-bold shrink-0">
+              <Code2 className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase font-extrabold text-teal-300 tracking-wider">
+                Desenvolvimento & Autoria do Sistema
+              </p>
+              <h4 className="text-base font-black text-white">Criado por Osaias Brito</h4>
+              <p className="text-xs text-slate-300">
+                Gerenciamento Especializado para Clínicas de Fisioterapia e Massoterapia
+              </p>
+            </div>
+          </div>
+
+          <div className="px-3.5 py-1.5 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-200 text-xs font-bold whitespace-nowrap">
+            Versão 2.5 • Premium
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-2 shadow-md transition"
+          >
+            <Save className="w-4 h-4" /> Salvar Configurações
+          </button>
+        </div>
+      </form>
+
+      <DbConnectionTestModal
+        isOpen={isDbTestModalOpen}
+        onClose={() => setIsDbTestModalOpen(false)}
+      />
+    </div>
+  );
+};

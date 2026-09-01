@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .metallic-bevel-gold {
+    background: linear-gradient(145deg, #26384f 0%, #152436 50%, #0c1724 100%);
+    box-shadow: 
+      0 12px 28px -4px rgba(0, 0, 0, 0.8),
+      0 0 0 1px rgba(217, 161, 62, 0.4),
+      inset 0 1px 2px rgba(254, 240, 138, 0.7),
+      inset 0 -2px 4px rgba(0, 0, 0, 0.9),
+      inset 1px 0 2px rgba(234, 179, 8, 0.3),
+      inset -1px 0 2px rgba(0, 0, 0, 0.7);
+  }
+
+  .metallic-bevel-blue {
+    background: linear-gradient(145deg, #1f344d 0%, #132336 50%, #0b1522 100%);
+    box-shadow: 
+      0 12px 28px -4px rgba(0, 0, 0, 0.8),
+      0 0 0 1px rgba(100, 149, 195, 0.35),
+      inset 0 1px 2px rgba(203, 231, 255, 0.6),
+      inset 0 -2px 4px rgba(0, 0, 0, 0.9),
+      inset 1px 0 2px rgba(148, 197, 245, 0.2),
+      inset -1px 0 2px rgba(0, 0, 0, 0.7);
+  }
+
+  .chrome-text-silver {
+    background: linear-gradient(180deg, #ffffff 0%, #d8e5f2 45%, #9cb1c9 80%, #687f99 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.9));
+  }
+
+  .chrome-text-gold {
+    background: linear-gradient(180deg, #fffbeb 0%, #fed7aa 40%, #f59e0b 75%, #b45309 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
+  }
+
+  .metal-subplate {
+    background: linear-gradient(180deg, #2b3d52 0%, #152230 50%, #0c1520 100%);
+    box-shadow: 
+      0 2px 5px rgba(0, 0, 0, 0.7),
+      inset 0 1px 1px rgba(255, 255, 255, 0.35),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.8);
+  }
+
+  .metal-subplate-gold {
+    background: linear-gradient(180deg, #3d2f1d 0%, #241b10 50%, #140e08 100%);
+    box-shadow: 
+      0 2px 5px rgba(0, 0, 0, 0.7),
+      inset 0 1px 1px rgba(253, 224, 71, 0.4),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.8);
+  }
+}
+
+@layer base {
+  @media print {
+    body {
+      background: #ffffff !important;
+      color: #000000 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      font-size: 11pt !important;
+    }
+
+    aside,
+    nav,
+    header,
+    .print\:hidden,
+    button:not(.print\:show) {
+      display: none !important;
+    }
+
+    main {
+      padding: 0 !important;
+      margin: 0 !important;
+      overflow: visible !important;
+    }
+
+    #printable-client-sheet {
+      border: none !important;
+      box-shadow: none !important;
+      padding: 10mm 12mm !important;
+      margin: 0 auto !important;
+      max-width: 100% !important;
+      width: 100% !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    .break-inside-avoid {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+  }
+}
