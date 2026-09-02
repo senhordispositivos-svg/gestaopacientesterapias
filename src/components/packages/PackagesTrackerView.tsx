@@ -38,6 +38,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrencyAccounting } from '../../utils/currency';
 import { formatDateTime } from '../../utils/crypto';
 import { createSessionValidationUrl, createPackageValidationUrl } from '../../utils/validationPayload';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface PackagesTrackerViewProps {
   packages: SessionPackage[];
@@ -355,7 +356,7 @@ export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
       const url = `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${encodeURIComponent(message)}`;
       window.open(url, '_blank');
     } else {
-      navigator.clipboard.writeText(message);
+      await copyToClipboard(message);
       alert('Paciente sem telefone cadastrado. O texto e o link foram copiados para a sua área de transferência!');
     }
   };
@@ -394,7 +395,7 @@ export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
       sessions,
       clinicName
     );
-    navigator.clipboard.writeText(validationUrl);
+    await copyToClipboard(validationUrl);
     setCopiedSessionId(session.id);
     setTimeout(() => setCopiedSessionId(null), 3000);
   };

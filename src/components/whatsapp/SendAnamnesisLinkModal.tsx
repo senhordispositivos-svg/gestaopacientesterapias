@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface SendAnamnesisLinkModalProps {
   isOpen: boolean;
@@ -103,18 +104,22 @@ export const SendAnamnesisLinkModal: React.FC<SendAnamnesisLinkModalProps> = ({
     });
   }, [isOpen, mode, selectedPatientId, customName, customPhone, selectedProfId, tenant, user, effectivePatientsList, effectiveProfessionalsList]);
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     if (!generatedUrl) return;
-    navigator.clipboard.writeText(generatedUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+    const ok = await copyToClipboard(generatedUrl);
+    if (ok) {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    }
   };
 
-  const handleCopyMessage = () => {
+  const handleCopyMessage = async () => {
     if (!messageText) return;
-    navigator.clipboard.writeText(messageText);
-    setCopiedMsg(true);
-    setTimeout(() => setCopiedMsg(false), 2000);
+    const ok = await copyToClipboard(messageText);
+    if (ok) {
+      setCopiedMsg(true);
+      setTimeout(() => setCopiedMsg(false), 2000);
+    }
   };
 
   const handleOpenWhatsApp = () => {
@@ -245,10 +250,19 @@ export const SendAnamnesisLinkModal: React.FC<SendAnamnesisLinkModalProps> = ({
             <button
               type="button"
               onClick={handleCopyLink}
-              className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shrink-0 shadow-sm"
+              className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shrink-0 shadow-sm notranslate"
             >
-              {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              {copiedLink ? 'Copiado' : 'Copiar Link'}
+              {copiedLink ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 shrink-0" />
+                  <span>Copiar Link</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -297,10 +311,19 @@ export const SendAnamnesisLinkModal: React.FC<SendAnamnesisLinkModalProps> = ({
           <button
             type="button"
             onClick={handleCopyMessage}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-center gap-2 transition"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-center gap-2 transition notranslate"
           >
-            {copiedMsg ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-            {copiedMsg ? 'Mensagem Copiada!' : 'Copiar Mensagem'}
+            {copiedMsg ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Mensagem Copiada!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4 shrink-0" />
+                <span>Copiar Mensagem</span>
+              </>
+            )}
           </button>
 
           <button

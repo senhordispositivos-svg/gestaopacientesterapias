@@ -3,6 +3,7 @@ import { SessionPackage, Session, PackageStatus } from '../../types';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { CanvasSignature } from '../common/CanvasSignature';
+import { copyToClipboard } from '../../utils/clipboard';
 import {
   Package,
   CheckCircle2,
@@ -266,7 +267,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
   const handleCopySessionLink = async (sess: Session) => {
     const url = await getOrCreateSessionLink(sess);
     if (url) {
-      navigator.clipboard.writeText(url);
+      await copyToClipboard(url);
       setCopiedSessionId(sess.id);
       setTimeout(() => setCopiedSessionId(null), 3000);
     }
@@ -315,9 +316,11 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
         url = res.validationUrl;
         setPackageLink(url);
       }
-      navigator.clipboard.writeText(url);
-      setCopiedPackageLink(true);
-      setTimeout(() => setCopiedPackageLink(false), 3000);
+      if (url) {
+        await copyToClipboard(url);
+        setCopiedPackageLink(true);
+        setTimeout(() => setCopiedPackageLink(false), 3000);
+      }
     } catch (err) {
       alert('Erro ao gerar link do pacote');
     }

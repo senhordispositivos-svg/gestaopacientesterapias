@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Patient } from '../../types';
 import { calculateAge, formatDate } from '../../utils/crypto';
+import { copyToClipboard } from '../../utils/clipboard';
 import {
   Cake,
   Gift,
@@ -169,8 +170,8 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({
     window.open(`https://wa.me/55${cleanPhone}?text=${encoded}`, '_blank');
   };
 
-  const handleCopyMessage = () => {
-    navigator.clipboard.writeText(customMessage);
+  const handleCopyMessage = async () => {
+    await copyToClipboard(customMessage);
     setCopiedText(true);
     setTimeout(() => setCopiedText(false), 3000);
   };
@@ -522,10 +523,19 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({
               <button
                 type="button"
                 onClick={handleCopyMessage}
-                className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-1.5"
+                className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-1.5 notranslate"
               >
-                {copiedText ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                {copiedText ? 'Copiado!' : 'Copiar Texto'}
+                {copiedText ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 shrink-0" />
+                    <span>Copiar Texto</span>
+                  </>
+                )}
               </button>
 
               <div className="flex items-center gap-2">

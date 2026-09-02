@@ -225,15 +225,14 @@ export function formatAnamnesisWhatsAppMessage(
   clinicName: string,
   patientName?: string,
   url: string = '',
-  professionalName?: string
+  _professionalName?: string
 ): string {
   const greetingName = patientName && patientName.trim() ? patientName.trim().split(' ')[0] : 'tudo bem';
-  const effectiveClinic = clinicName || 'nossa clínica';
-  const profNotice = professionalName ? ` com ${professionalName}` : '';
+  const effectiveClinic = clinicName || 'Clínica';
 
   return `Olá ${greetingName}! 👋
 
-Para personalizarmos seu atendimento e garantirmos máxima segurança e eficiência no seu tratamento${profNotice} na *${effectiveClinic}*, solicitamos que preencha sua *Ficha de Cadastro e Avaliação de Saúde (Anamnese)*.
+Para personalizarmos seu atendimento e garantirmos máxima segurança e eficiência no seu tratamento na *${effectiveClinic}*, solicitamos que preencha sua *Ficha de Cadastro e Avaliação de Saúde (Anamnese)*.
 
 É rápido, 100% seguro e você pode assinar digitalmente com o dedo diretamente no seu celular através do link exclusivo abaixo:
 
