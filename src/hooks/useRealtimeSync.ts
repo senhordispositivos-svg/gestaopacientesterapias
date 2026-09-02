@@ -48,9 +48,15 @@ export function useRealtimeSync({ tenantId, onSync }: UseRealtimeSyncProps) {
     window.addEventListener('online', handleOnline);
     window.addEventListener('focus', handleFocus);
 
+    // Periodic sync check every 4 seconds for multi-device instant consistency
+    const pollInterval = setInterval(() => {
+      onSync();
+    }, 4000);
+
     return () => {
       unsubStatus();
       unsubEvents();
+      clearInterval(pollInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('focus', handleFocus);

@@ -306,36 +306,6 @@ async function initDatabase() {
         updatedAt: '2026-09-01T10:00:00.000Z',
       });
     }
-    if (!db.patients.some(p => p.cpf === '005.835.893-59' || p.name.toUpperCase().includes('FABIO SANTOS'))) {
-      db.patients.push({
-        id: 'pat-fabio-santos',
-        tenantId: 'tenant-demo-1',
-        name: 'FABIO SANTOS DE OLIVEIRA',
-        email: '',
-        cpf: '005.835.893-59',
-        rg: '',
-        gender: 'Masculino',
-        phone: '(98) 9829-8271',
-        whatsapp: '(98) 9829-8271',
-        profession: 'PEDAGOGO',
-        birthDate: '1981-11-19',
-        cep: '65075-000',
-        street: '',
-        number: '',
-        complement: '',
-        neighborhood: '',
-        city: 'São Luis',
-        state: 'MA',
-        referencePoint: '',
-        notes: 'Paciente cadastrado no sistema.',
-        photoUrl: '',
-        avatarUrl: '',
-        assignedProfessionalId: '',
-        assignedProfessionalName: 'Geral',
-        createdAt: '2026-08-30T10:00:00.000Z',
-        updatedAt: '2026-08-30T10:00:00.000Z',
-      });
-    }
     if (!db.patients.some(p => p.id === 'pat-sidney-leitao' || p.name.toUpperCase().includes('SIDNEY'))) {
       db.patients.push({
         id: 'pat-sidney-leitao',

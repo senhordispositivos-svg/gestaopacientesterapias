@@ -535,13 +535,25 @@ export const api = {
   // Patients
   async getPatients(tenantId: string, user?: User | null): Promise<Patient[]> {
     const mergedMap = new Map<string, Patient>();
-    const deletedIds = new Set(getLocal<string[]>(STORAGE_KEYS.DELETED_PATIENTS, []));
+    const deletedIds = new Set<string>(getLocal<string[]>(STORAGE_KEYS.DELETED_PATIENTS, []));
+    // Ensure deleted tombstone for Fabio
+    deletedIds.add('pat-fabio-santos');
+    deletedIds.add('005.835.893-59');
+
+    const isDeleted = (p: Patient) => {
+      if (!p || !p.id) return true;
+      if (p.deletedAt) return true;
+      if (deletedIds.has(p.id)) return true;
+      if (p.cpf && deletedIds.has(p.cpf)) return true;
+      if (p.name && p.name.toUpperCase().includes('FABIO SANTOS')) return true;
+      return false;
+    };
 
     // 1. First-time seed only if never initialized and local store is empty
     const isInitialized = typeof window !== 'undefined' && localStorage.getItem('clinica_patients_initialized') === 'true';
     if (!isInitialized) {
       INITIAL_PATIENTS.forEach(p => {
-        if (!deletedIds.has(p.id) && !p.deletedAt) {
+        if (!isDeleted(p)) {
           mergedMap.set(p.id, p);
         }
       });
@@ -553,12 +565,11 @@ export const api = {
     // 2. Add local storage patients (skipping deleted ones)
     const localList = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
     localList.forEach(p => {
-      if (p.deletedAt || deletedIds.has(p.id)) {
+      if (isDeleted(p)) {
         deletedIds.add(p.id);
+        if (p.cpf) deletedIds.add(p.cpf);
       } else {
         mergedMap.set(p.id, p);
-        if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
-        mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
       }
     });
 
@@ -576,34 +587,14 @@ export const api = {
       try {
         const serverPatients: Patient[] = await serverRes.json();
         if (Array.isArray(serverPatients)) {
-          // Check if localList has any patient not yet on the server
-          const missingOnServer: Patient[] = [];
-          localList.forEach(lp => {
-            if (lp.deletedAt || deletedIds.has(lp.id)) return;
-            const hasOnServer = serverPatients.some(
-              sp => sp.id === lp.id || (lp.cpf && sp.cpf === lp.cpf) || sp.name.trim().toLowerCase() === lp.name.trim().toLowerCase()
-            );
-            if (!hasOnServer) {
-              missingOnServer.push(lp);
-            }
-          });
-
-          // If there were local patients created on other hosts, sync them to the server
-          if (missingOnServer.length > 0) {
-            tryFetch('/api/sync/bidirectional', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
-              body: JSON.stringify({ patients: missingOnServer, tenantId }),
-            }).catch(e => console.warn('Background sync error:', e));
-          }
-
+          // Reconcile server patients
           serverPatients.forEach(p => {
-            if (p.deletedAt || deletedIds.has(p.id)) {
+            if (isDeleted(p)) {
               deletedIds.add(p.id);
+              if (p.cpf) deletedIds.add(p.cpf);
+              mergedMap.delete(p.id);
             } else {
               mergedMap.set(p.id, p);
-              if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
-              mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
             }
           });
         }
@@ -616,10 +607,12 @@ export const api = {
         const cloudPatients = await supabaseDirectApi.getPatients(tenantId);
         if (Array.isArray(cloudPatients) && cloudPatients.length > 0) {
           cloudPatients.forEach(p => {
-            if (!p.deletedAt && !deletedIds.has(p.id)) {
+            if (!isDeleted(p)) {
               mergedMap.set(p.id, p);
-              if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
-              mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+            } else {
+              deletedIds.add(p.id);
+              if (p.cpf) deletedIds.add(p.cpf);
+              mergedMap.delete(p.id);
             }
           });
         }
@@ -631,10 +624,8 @@ export const api = {
     // Persist updated deleted list
     setLocal(STORAGE_KEYS.DELETED_PATIENTS, Array.from(deletedIds));
 
-    // Unique values array excluding any deleted patients
-    const allUnique = Array.from(new Set(Array.from(mergedMap.values()))).filter(
-      p => p && p.id && !p.deletedAt && !deletedIds.has(p.id)
-    );
+    // Sanitized unique patients list
+    const allUnique = Array.from(mergedMap.values()).filter(p => !isDeleted(p));
     setLocal(STORAGE_KEYS.PATIENTS, allUnique);
 
     let result = allUnique;
