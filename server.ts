@@ -276,8 +276,38 @@ async function initDatabase() {
     }
 
     // Ensure initial patients exist
-    if (!db.patients.some(p => p.cpf === '005.835.893-59' || p.name.toUpperCase().includes('FABIO SANTOS'))) {
+    if (!db.patients.some(p => p.id === 'pat-thayna-farias' || p.name.toUpperCase().includes('THAYNÁ') || p.name.toUpperCase().includes('THAYNA'))) {
       db.patients.unshift({
+        id: 'pat-thayna-farias',
+        tenantId: 'tenant-demo-1',
+        name: 'THAYNÁ GOMES FARIAS',
+        email: 'thayna.farias@email.com',
+        cpf: '',
+        rg: '',
+        gender: 'Feminino',
+        phone: '(98) 99992-0949',
+        whatsapp: '(98) 99992-0949',
+        profession: 'ADVOGADA',
+        birthDate: '1980-01-05',
+        cep: '65075-000',
+        street: 'Rua das Palmeiras',
+        number: '120',
+        complement: '',
+        neighborhood: 'Renascença',
+        city: 'São Luis',
+        state: 'MA',
+        referencePoint: 'Próximo ao Fórum',
+        notes: 'Paciente cadastrado no sistema para acompanhamento terapêutico.',
+        photoUrl: '',
+        avatarUrl: '',
+        assignedProfessionalId: '',
+        assignedProfessionalName: 'Geral',
+        createdAt: '2026-09-01T10:00:00.000Z',
+        updatedAt: '2026-09-01T10:00:00.000Z',
+      });
+    }
+    if (!db.patients.some(p => p.cpf === '005.835.893-59' || p.name.toUpperCase().includes('FABIO SANTOS'))) {
+      db.patients.push({
         id: 'pat-fabio-santos',
         tenantId: 'tenant-demo-1',
         name: 'FABIO SANTOS DE OLIVEIRA',
@@ -744,15 +774,62 @@ app.post('/api/tenants', (req, res) => {
 });
 
 app.put('/api/tenants/:id', (req, res) => {
-  const index = db.tenants.findIndex(t => t.id === req.params.id);
-  if (index === -1) return res.status(404).json({ message: 'Clínica não encontrada' });
+  let index = db.tenants.findIndex(t => t.id === req.params.id);
+  if (index === -1 && db.tenants.length > 0) {
+    index = 0; // Graceful fallback to primary tenant so update is never lost
+  }
+  if (index === -1) {
+    const newTenant: Tenant = {
+      id: req.params.id || 'tenant-demo-1',
+      name: req.body.name || req.body.tradeName || 'Clínica',
+      tradeName: req.body.tradeName || req.body.name || 'Clínica',
+      corporateName: req.body.corporateName || 'Clínica Ltda',
+      docType: req.body.docType || 'CNPJ',
+      documentNumber: req.body.documentNumber || '',
+      email: req.body.email || '',
+      phone: req.body.phone || '',
+      cep: req.body.cep || '',
+      address: req.body.address || '',
+      number: req.body.number || '',
+      neighborhood: req.body.neighborhood || '',
+      city: req.body.city || 'São Paulo',
+      state: req.body.state || 'SP',
+      country: 'Brasil',
+      logoUrl: req.body.logoUrl || '',
+      primaryColor: req.body.primaryColor || '#0d9488',
+      secondaryColor: req.body.secondaryColor || '#0f766e',
+      themeMode: 'light',
+      customHeader: req.body.customHeader || '',
+      publicPageTitle: req.body.publicPageTitle || '',
+      whatsappConfig: req.body.whatsappConfig || { status: 'NOT_CONFIGURED' },
+      createdAt: new Date().toISOString(),
+    };
+    db.tenants.push(newTenant);
+    index = db.tenants.length - 1;
+  }
 
   db.tenants[index] = {
     ...db.tenants[index],
     ...req.body,
   };
   saveDatabase();
-  broadcastRealtime(req.params.id, { type: 'TENANT_UPDATED', entity: 'tenants', action: 'update', payload: db.tenants[index] });
+
+  // Broadcast to this tenant and default tenant channel for multi-device sync
+  broadcastRealtime(db.tenants[index].id, {
+    type: 'TENANT_UPDATED',
+    entity: 'tenants',
+    action: 'update',
+    payload: db.tenants[index],
+  });
+  if (db.tenants[index].id !== 'tenant-demo-1') {
+    broadcastRealtime('tenant-demo-1', {
+      type: 'TENANT_UPDATED',
+      entity: 'tenants',
+      action: 'update',
+      payload: db.tenants[index],
+    });
+  }
+
   res.json(db.tenants[index]);
 });
 
@@ -1048,9 +1125,37 @@ app.get('/api/patients', (req, res) => {
 // Centralized Bidirectional Multi-Device Sync Endpoint
 app.post('/api/sync/bidirectional', (req, res) => {
   const tenantId = (req.headers['x-tenant-id'] as string) || req.body.tenantId || 'tenant-demo-1';
-  const { patients = [], packages = [], sessions = [], anamneses = [] } = req.body;
+  const { patients = [], packages = [], sessions = [], anamneses = [], tenant = null } = req.body;
 
   let hasChanged = false;
+
+  // 0. Reconcile tenant / logo if provided by client
+  if (tenant && typeof tenant === 'object') {
+    const tIdx = db.tenants.findIndex(t => t.id === tenant.id || t.id === tenantId);
+    const targetIdx = tIdx !== -1 ? tIdx : 0;
+    if (db.tenants[targetIdx]) {
+      if (tenant.logoUrl && tenant.logoUrl !== db.tenants[targetIdx].logoUrl) {
+        db.tenants[targetIdx].logoUrl = tenant.logoUrl;
+        hasChanged = true;
+      }
+      if (tenant.tradeName && tenant.tradeName !== db.tenants[targetIdx].tradeName) {
+        db.tenants[targetIdx].tradeName = tenant.tradeName;
+        hasChanged = true;
+      }
+      if (tenant.name && tenant.name !== db.tenants[targetIdx].name) {
+        db.tenants[targetIdx].name = tenant.name;
+        hasChanged = true;
+      }
+      if (tenant.customHeader && tenant.customHeader !== db.tenants[targetIdx].customHeader) {
+        db.tenants[targetIdx].customHeader = tenant.customHeader;
+        hasChanged = true;
+      }
+      if (tenant.primaryColor && tenant.primaryColor !== db.tenants[targetIdx].primaryColor) {
+        db.tenants[targetIdx].primaryColor = tenant.primaryColor;
+        hasChanged = true;
+      }
+    }
+  }
 
   // 1. Reconcile patients
   if (Array.isArray(patients) && patients.length > 0) {
@@ -1123,6 +1228,9 @@ app.post('/api/sync/bidirectional', (req, res) => {
   if (hasChanged) {
     saveDatabase();
     broadcastRealtime(tenantId, { type: 'MULTI_DEVICE_SYNC', entity: 'patients', action: 'sync' });
+    if (tenantId !== 'tenant-demo-1') {
+      broadcastRealtime('tenant-demo-1', { type: 'MULTI_DEVICE_SYNC', entity: 'patients', action: 'sync' });
+    }
   }
 
   res.json({

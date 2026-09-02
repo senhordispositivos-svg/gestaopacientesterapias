@@ -56,22 +56,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load latest tenants list and synchronize active tenant with server data
-  useEffect(() => {
-    async function loadTenants() {
-      try {
-        const fetchedTenants = await api.getTenants();
-        if (fetchedTenants && fetchedTenants.length > 0) {
-          setAllTenants(fetchedTenants);
-          const activeId = tenant?.id || fetchedTenants[0].id;
-          const updated = fetchedTenants.find(t => t.id === activeId) || fetchedTenants[0];
-          setTenant(updated);
+  // Refresh active tenant from server
+  const refreshTenantData = async (targetId?: string) => {
+    try {
+      const fetchedTenants = await api.getTenants();
+      if (fetchedTenants && fetchedTenants.length > 0) {
+        setAllTenants(fetchedTenants);
+        const activeId = targetId || tenant?.id || fetchedTenants[0].id;
+        const updated = fetchedTenants.find(t => t.id === activeId) || fetchedTenants[0];
+        if (updated) {
+          setTenant(prev => {
+            if (!prev || prev.logoUrl !== updated.logoUrl || prev.tradeName !== updated.tradeName || prev.customHeader !== updated.customHeader || prev.primaryColor !== updated.primaryColor) {
+              return updated;
+            }
+            return prev;
+          });
         }
-      } catch (err) {
-        console.warn('Error loading tenants:', err);
       }
+    } catch (err) {
+      console.warn('Error refreshing tenant data:', err);
     }
-    loadTenants();
+  };
+
+  // Load latest tenants list and synchronize active tenant with server data on mount
+  useEffect(() => {
+    refreshTenantData();
+
+    // Listen for storage events (e.g. logo changed in another tab/window or background sync)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'clinica_tenants' || e.key === AUTH_STORAGE_KEY) {
+        refreshTenantData();
+      }
+    };
+
+    const handleFocus = () => {
+      refreshTenantData();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshTenantData();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // Periodic check every 8 seconds to ensure instant sync between smartphone and computer
+    const interval = setInterval(() => {
+      refreshTenantData();
+    }, 8000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(interval);
+    };
   }, []);
 
   // Update root dark class when theme changes
@@ -184,13 +226,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
-  };
-
-  const refreshTenantData = async () => {
-    if (tenant) {
-      const updated = await api.getTenantById(tenant.id);
-      setTenant(updated);
-    }
   };
 
   return (

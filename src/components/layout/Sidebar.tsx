@@ -141,16 +141,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               title="Clique para alterar a logomarca e perfil da clínica"
               className="flex items-center gap-2.5 min-w-0 text-left group cursor-pointer"
             >
-              <div className="w-9 h-9 bg-emerald-500 rounded-lg flex items-center justify-center text-white font-bold text-base shrink-0 shadow-sm shadow-emerald-500/20 overflow-hidden group-hover:ring-2 group-hover:ring-emerald-400 transition">
+              <div className="w-9 h-9 bg-emerald-500 rounded-lg flex items-center justify-center text-white font-bold text-base shrink-0 shadow-sm shadow-emerald-500/20 overflow-hidden group-hover:ring-2 group-hover:ring-emerald-400 transition bg-slate-800">
                 {tenant?.logoUrl ? (
                   <img
                     src={tenant.logoUrl}
-                    alt="Logo"
+                    alt="Logo da Clínica"
                     className="w-full h-full object-cover rounded-lg"
                     referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      // Fallback if image fails to render
+                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    }}
                   />
                 ) : (
-                  'F'
+                  (tenant?.tradeName || tenant?.name || 'F').charAt(0).toUpperCase()
                 )}
               </div>
               <div className="flex-1 min-w-0">

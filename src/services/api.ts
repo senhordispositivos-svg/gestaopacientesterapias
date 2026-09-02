@@ -19,7 +19,8 @@ import {
   DecodedSessionPayload,
   DecodedPackagePayload,
 } from '../utils/validationPayload';
-import { INITIAL_TENANTS, INITIAL_USERS, INITIAL_PATIENTS } from './mockSeed';
+import { INITIAL_TENANTS, INITIAL_USERS, INITIAL_PATIENTS, INITIAL_PACKAGES } from './mockSeed';
+import { supabaseDirectApi } from './supabaseDirectApi';
 
 const STORAGE_KEYS = {
   TENANTS: 'clinica_tenants',
@@ -210,15 +211,52 @@ export const api = {
 
   // Tenants
   async getTenants(): Promise<Tenant[]> {
+    const mergedMap = new Map<string, Tenant>();
+    INITIAL_TENANTS.forEach(t => mergedMap.set(t.id, t));
+    const localList = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    localList.forEach(t => mergedMap.set(t.id, t));
+
     const serverRes = await tryFetch('/api/tenants');
-    if (serverRes) return serverRes.json();
-    return getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    if (serverRes) {
+      try {
+        const data = await serverRes.json();
+        if (Array.isArray(data) && data.length > 0) {
+          data.forEach(t => mergedMap.set(t.id, t));
+        }
+      } catch (e) {
+        console.warn('Error parsing tenants:', e);
+      }
+    } else if (supabaseDirectApi.isEnabled()) {
+      try {
+        const cloudTenants = await supabaseDirectApi.getTenants();
+        if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
+          cloudTenants.forEach(t => mergedMap.set(t.id, t));
+        }
+      } catch (sbErr) {
+        console.warn('Supabase tenants fetch notice:', sbErr);
+      }
+    }
+
+    const allTenants = Array.from(mergedMap.values());
+    setLocal(STORAGE_KEYS.TENANTS, allTenants);
+    return allTenants;
   },
 
   async getTenantById(id: string): Promise<Tenant> {
     const serverRes = await tryFetch(`/api/tenants/${id}`);
-    if (serverRes) return serverRes.json();
-    const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    if (serverRes) {
+      const tenant = await serverRes.json();
+      const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+      const idx = list.findIndex(t => t.id === id || t.id === tenant.id);
+      if (idx !== -1) {
+        list[idx] = tenant;
+      } else {
+        list.push(tenant);
+      }
+      setLocal(STORAGE_KEYS.TENANTS, list);
+      return tenant;
+    }
+    const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, INITIAL_TENANTS);
     return list.find(t => t.id === id) || list[0];
   },
 
@@ -228,7 +266,13 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tenantData),
     });
-    if (serverRes) return serverRes.json();
+    if (serverRes) {
+      const created = await serverRes.json();
+      const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+      list.push(created);
+      setLocal(STORAGE_KEYS.TENANTS, list);
+      return created;
+    }
 
     const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
     const newTenant = {
@@ -267,16 +311,46 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     });
-    if (serverRes) return serverRes.json();
 
-    const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
-    const idx = list.findIndex(t => t.id === id);
-    if (idx !== -1) {
-      list[idx] = { ...list[idx], ...updates };
-      setLocal(STORAGE_KEYS.TENANTS, list);
-      return list[idx];
+    let updatedTenant: Tenant;
+    if (serverRes) {
+      updatedTenant = await serverRes.json();
+    } else {
+      const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+      const idx = list.findIndex(t => t.id === id);
+      if (idx !== -1) {
+        list[idx] = { ...list[idx], ...updates };
+        updatedTenant = list[idx];
+      } else {
+        updatedTenant = { id, ...updates } as Tenant;
+      }
     }
-    return updates as Tenant;
+
+    // Save locally
+    const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    const idx = list.findIndex(t => t.id === id || t.id === updatedTenant.id);
+    if (idx !== -1) {
+      list[idx] = updatedTenant;
+    } else {
+      list.push(updatedTenant);
+    }
+    setLocal(STORAGE_KEYS.TENANTS, list);
+
+    // Also update current active session in localStorage if active
+    try {
+      const sessionStr = localStorage.getItem('clinica_session_auth');
+      if (sessionStr) {
+        const sessionObj = JSON.parse(sessionStr);
+        if (sessionObj.tenant) {
+          sessionObj.tenant = { ...sessionObj.tenant, ...updatedTenant };
+          localStorage.setItem('clinica_session_auth', JSON.stringify(sessionObj));
+        }
+      }
+    } catch (e) {
+      console.warn('Error updating session storage:', e);
+    }
+
+    return updatedTenant;
   },
 
   // Users & Professionals
@@ -456,6 +530,24 @@ export const api = {
 
   // Patients
   async getPatients(tenantId: string, user?: User | null): Promise<Patient[]> {
+    const mergedMap = new Map<string, Patient>();
+
+    // 1. Add all initial default patients so baseline data is never empty or desynchronized across environments
+    INITIAL_PATIENTS.forEach(p => {
+      mergedMap.set(p.id, p);
+      if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
+      mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+    });
+
+    // 2. Add local storage patients
+    const localList = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+    localList.forEach(p => {
+      mergedMap.set(p.id, p);
+      if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
+      mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+    });
+
+    // 3. Query Express backend if available (e.g. on AI Studio / Cloud Run)
     const serverRes = await tryFetch('/api/patients', {
       headers: {
         'x-tenant-id': tenantId,
@@ -465,73 +557,81 @@ export const api = {
       },
     });
 
-    let localList = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, INITIAL_PATIENTS);
-
     if (serverRes) {
-      const serverPatients: Patient[] = await serverRes.json();
-      
-      // Merge: create a unified map indexed by ID and CPF
-      const mergedMap = new Map<string, Patient>();
+      try {
+        const serverPatients: Patient[] = await serverRes.json();
+        if (Array.isArray(serverPatients)) {
+          // Check if localList has any patient not yet on the server
+          const missingOnServer: Patient[] = [];
+          localList.forEach(lp => {
+            const hasOnServer = serverPatients.some(
+              sp => sp.id === lp.id || (lp.cpf && sp.cpf === lp.cpf) || sp.name.trim().toLowerCase() === lp.name.trim().toLowerCase()
+            );
+            if (!hasOnServer && !lp.deletedAt) {
+              missingOnServer.push(lp);
+            }
+          });
 
-      // 1. Add server patients
-      serverPatients.forEach(p => {
-        mergedMap.set(p.id, p);
-        if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
-      });
+          // If there were local patients created on other hosts, sync them to the server
+          if (missingOnServer.length > 0) {
+            tryFetch('/api/sync/bidirectional', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
+              body: JSON.stringify({ patients: missingOnServer, tenantId }),
+            }).catch(e => console.warn('Background sync error:', e));
+          }
 
-      // 2. Check if localList has any patient not yet on the server
-      const missingOnServer: Patient[] = [];
-      localList.forEach(lp => {
-        const hasById = mergedMap.has(lp.id);
-        const hasByCpf = lp.cpf ? mergedMap.has(`cpf_${lp.cpf}`) : false;
-        if (!hasById && !hasByCpf) {
-          mergedMap.set(lp.id, lp);
-          missingOnServer.push(lp);
+          serverPatients.forEach(p => {
+            mergedMap.set(p.id, p);
+            if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
+            mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+          });
         }
-      });
-
-      // If there were local patients created offline, sync them to the server in background
-      if (missingOnServer.length > 0) {
-        tryFetch('/api/sync/bidirectional', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
-          body: JSON.stringify({ patients: missingOnServer, tenantId }),
-        }).catch(e => console.warn('Background sync error:', e));
+      } catch (err) {
+        console.warn('Error parsing server patients:', err);
       }
-
-      // Unique values array
-      const allUnique = Array.from(new Set(Array.from(mergedMap.values())));
-      setLocal(STORAGE_KEYS.PATIENTS, allUnique);
-
-      let result = allUnique.filter(p => !p.deletedAt);
-      if (user && user.role === 'PROFESSIONAL' && user.accessMode === 'INDIVIDUAL') {
-        result = result.filter(
-          p => p.assignedProfessionalId === user.id || !p.assignedProfessionalId || p.assignedProfessionalName === 'Geral'
-        );
+    } else if (supabaseDirectApi.isEnabled()) {
+      // 4. When deployed on Vercel/Netlify or offline without server.ts, query Supabase Cloud directly!
+      try {
+        const cloudPatients = await supabaseDirectApi.getPatients(tenantId);
+        if (Array.isArray(cloudPatients) && cloudPatients.length > 0) {
+          cloudPatients.forEach(p => {
+            mergedMap.set(p.id, p);
+            if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
+            mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+          });
+        }
+      } catch (sbErr) {
+        console.warn('Supabase cloud fetch notice (using resilient store):', sbErr);
       }
-      return result;
     }
 
-    let list = localList.filter(p => !p.deletedAt);
+    // Unique values array
+    const allUnique = Array.from(new Set(Array.from(mergedMap.values())));
+    setLocal(STORAGE_KEYS.PATIENTS, allUnique);
+
+    let result = allUnique.filter(p => !p.deletedAt);
     if (user && user.role === 'PROFESSIONAL' && user.accessMode === 'INDIVIDUAL') {
-      list = list.filter(
+      result = result.filter(
         p => p.assignedProfessionalId === user.id || !p.assignedProfessionalId || p.assignedProfessionalName === 'Geral'
       );
     }
-    return list;
+    return result;
   },
 
-  async syncBidirectional(tenantId: string): Promise<void> {
+  async syncBidirectional(tenantId: string, currentTenant?: Tenant | null): Promise<void> {
     try {
       const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
       const packages = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
       const sessions = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
       const anamneses = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
+      const tenantsList = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+      const activeTenant = currentTenant || tenantsList.find(t => t.id === tenantId) || tenantsList[0];
 
       const serverRes = await tryFetch('/api/sync/bidirectional', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
-        body: JSON.stringify({ tenantId, patients, packages, sessions, anamneses }),
+        body: JSON.stringify({ tenantId, tenant: activeTenant, patients, packages, sessions, anamneses }),
       });
 
       if (serverRes) {
@@ -540,6 +640,9 @@ export const api = {
         if (synced.packages) setLocal(STORAGE_KEYS.PACKAGES, synced.packages);
         if (synced.sessions) setLocal(STORAGE_KEYS.SESSIONS, synced.sessions);
         if (synced.anamneses) setLocal(STORAGE_KEYS.ANAMNESIS, synced.anamneses);
+        if (synced.tenants && Array.isArray(synced.tenants) && synced.tenants.length > 0) {
+          setLocal(STORAGE_KEYS.TENANTS, synced.tenants);
+        }
       }
     } catch (err) {
       console.warn('Bidirectional sync error:', err);
@@ -557,27 +660,9 @@ export const api = {
   },
 
   async createPatient(tenantId: string, data: Partial<Patient>): Promise<Patient> {
-    const serverRes = await tryFetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
-      body: JSON.stringify({ ...data, tenantId }),
-    });
-    if (serverRes) {
-      const created = await serverRes.json();
-      const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
-      const existingIdx = list.findIndex(p => p.id === created.id);
-      if (existingIdx >= 0) {
-        list[existingIdx] = created;
-      } else {
-        list.unshift(created);
-      }
-      setLocal(STORAGE_KEYS.PATIENTS, list);
-      return created;
-    }
-
-    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, INITIAL_PATIENTS);
     const newPatient: Patient = {
-      id: `pat-${Date.now()}`,
+      id: data.id || `pat-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       tenantId,
       name: data.name || '',
       cpf: data.cpf || '',
@@ -604,50 +689,88 @@ export const api = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    list.unshift(newPatient);
+
+    const existingIdx = list.findIndex(p => p.id === newPatient.id || (newPatient.cpf && p.cpf === newPatient.cpf));
+    if (existingIdx >= 0) {
+      list[existingIdx] = { ...list[existingIdx], ...newPatient };
+    } else {
+      list.unshift(newPatient);
+    }
     setLocal(STORAGE_KEYS.PATIENTS, list);
+
+    const serverRes = await tryFetch('/api/patients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
+      body: JSON.stringify(newPatient),
+    });
+    if (serverRes) {
+      try {
+        const created = await serverRes.json();
+        return created;
+      } catch (_) {}
+    }
+
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        await supabaseDirectApi.createPatient(newPatient);
+      } catch (sbErr) {
+        console.warn('Supabase cloud patient insert notice:', sbErr);
+      }
+    }
+
     return newPatient;
   },
 
   async updatePatient(id: string, tenantId: string, data: Partial<Patient>): Promise<Patient> {
+    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, INITIAL_PATIENTS);
+    const idx = list.findIndex(p => p.id === id);
+    let updatedPatient: Patient;
+    if (idx !== -1) {
+      list[idx] = { ...list[idx], ...data, updatedAt: new Date().toISOString() };
+      updatedPatient = list[idx];
+    } else {
+      updatedPatient = { id, tenantId, ...data, updatedAt: new Date().toISOString() } as Patient;
+      list.unshift(updatedPatient);
+    }
+    setLocal(STORAGE_KEYS.PATIENTS, list);
+
     const serverRes = await tryFetch(`/api/patients/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
       body: JSON.stringify({ ...data, tenantId }),
     });
     if (serverRes) {
-      const updated = await serverRes.json();
-      const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
-      const idx = list.findIndex(p => p.id === id);
-      if (idx !== -1) {
-        list[idx] = updated;
-      } else {
-        list.unshift(updated);
-      }
-      setLocal(STORAGE_KEYS.PATIENTS, list);
-      return updated;
+      try {
+        const updated = await serverRes.json();
+        return updated;
+      } catch (_) {}
     }
 
-    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
-    const idx = list.findIndex(p => p.id === id);
-    if (idx !== -1) {
-      list[idx] = { ...list[idx], ...data, updatedAt: new Date().toISOString() };
-      setLocal(STORAGE_KEYS.PATIENTS, list);
-      return list[idx];
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        await supabaseDirectApi.updatePatient(id, data);
+      } catch (sbErr) {
+        console.warn('Supabase cloud patient update notice:', sbErr);
+      }
     }
-    return data as Patient;
+
+    return updatedPatient;
   },
 
   async deletePatient(id: string, tenantId: string): Promise<boolean> {
-    const serverRes = await tryFetch(`/api/patients/${id}`, {
-      method: 'DELETE',
-      headers: { 'x-tenant-id': tenantId },
-    });
-    if (serverRes) return true;
-
-    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, INITIAL_PATIENTS);
     const filtered = list.filter(p => p.id !== id);
     setLocal(STORAGE_KEYS.PATIENTS, filtered);
+
+    tryFetch(`/api/patients/${id}`, {
+      method: 'DELETE',
+      headers: { 'x-tenant-id': tenantId },
+    }).catch(() => {});
+
+    if (supabaseDirectApi.isEnabled()) {
+      supabaseDirectApi.deletePatient(id).catch(err => console.warn('Supabase delete notice:', err));
+    }
+
     return true;
   },
 
@@ -705,18 +828,41 @@ export const api = {
 
   // Packages
   async getPackages(tenantId: string): Promise<SessionPackage[]> {
+    const mergedMap = new Map<string, SessionPackage>();
+    INITIAL_PACKAGES.forEach(p => {
+      if (!tenantId || p.tenantId === tenantId) mergedMap.set(p.id, p);
+    });
+    const localList = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
+    localList.forEach(p => {
+      if (!tenantId || p.tenantId === tenantId) mergedMap.set(p.id, p);
+    });
+
     const serverRes = await tryFetch('/api/packages', {
       headers: { 'x-tenant-id': tenantId },
     });
     if (serverRes) {
       try {
-        return await serverRes.json();
+        const serverPkgs = await serverRes.json();
+        if (Array.isArray(serverPkgs)) {
+          serverPkgs.forEach((p: SessionPackage) => mergedMap.set(p.id, p));
+        }
       } catch (e) {
-        console.warn('Failed to parse packages response, using local storage.');
+        console.warn('Failed to parse packages response:', e);
+      }
+    } else if (supabaseDirectApi.isEnabled()) {
+      try {
+        const cloudPkgs = await supabaseDirectApi.getPackages(tenantId);
+        if (Array.isArray(cloudPkgs)) {
+          cloudPkgs.forEach((p: SessionPackage) => mergedMap.set(p.id, p));
+        }
+      } catch (sbErr) {
+        console.warn('Supabase packages fetch notice:', sbErr);
       }
     }
-    const list = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
-    return list.filter(p => p.tenantId === tenantId);
+
+    const allPkgs = Array.from(mergedMap.values());
+    setLocal(STORAGE_KEYS.PACKAGES, allPkgs);
+    return allPkgs;
   },
 
   async createPackage(tenantId: string, data: Partial<SessionPackage>): Promise<SessionPackage> {

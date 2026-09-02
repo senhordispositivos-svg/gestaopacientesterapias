@@ -100,9 +100,12 @@ export const Header: React.FC<HeaderProps> = ({
             {tenant?.logoUrl ? (
               <img
                 src={tenant.logoUrl}
-                alt="Logo"
+                alt="Logo da Clínica"
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
               />
             ) : (
               <Building2 className="w-3.5 h-3.5" />

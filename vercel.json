@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/((?!assets/|public/|favicon.ico|manifest.json|.*\\..*).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

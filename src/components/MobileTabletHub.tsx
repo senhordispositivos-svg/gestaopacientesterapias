@@ -153,9 +153,18 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
       {/* Top Header matching reference image: Medical Cross + "Clínica de" / "Terapias Integradas" */}
       <div className="relative z-10 flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-700/50 mb-3 sm:mb-6">
         <div className="flex items-center gap-3">
-          {/* Medical Cross Icon in 3D Silver Emboss */}
-          <div className="relative flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-slate-600 via-slate-700 to-slate-900 border border-slate-500/60 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_8px_rgba(0,0,0,0.6)]">
-            <HeartPulse className="w-6 h-6 text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
+          {/* Medical Cross Icon / Custom Company Logo in 3D Silver Emboss */}
+          <div className="relative flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-slate-600 via-slate-700 to-slate-900 border border-slate-500/60 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_8px_rgba(0,0,0,0.6)] overflow-hidden">
+            {tenant?.logoUrl ? (
+              <img
+                src={tenant.logoUrl}
+                alt="Logomarca da Empresa"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <HeartPulse className="w-6 h-6 text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
+            )}
           </div>
 
           <div>

@@ -38,7 +38,7 @@ import { INITIAL_PATIENTS, INITIAL_USERS, INITIAL_SESSIONS, INITIAL_PACKAGES } f
 import { useRealtimeSync } from './hooks/useRealtimeSync';
 
 export function App() {
-  const { tenant, user, switchTenant, isLoading: isAuthLoading } = useAuth();
+  const { tenant, user, switchTenant, isLoading: isAuthLoading, refreshTenantData } = useAuth();
 
   // Reactive URL token detection for public mobile & desktop validation
   const getPublicTokens = () => {
@@ -171,12 +171,14 @@ export function App() {
     tenantId: tenant?.id,
     onSync: () => {
       loadData();
+      refreshTenantData();
     },
   });
 
   useEffect(() => {
     if (tenant && user) {
       loadData();
+      refreshTenantData();
 
       // Listen for instant local updates across tabs / storage events
       const handleStorageChange = (e: StorageEvent) => {
@@ -188,11 +190,13 @@ export function App() {
           e.key?.startsWith('clinica_')
         ) {
           loadData();
+          refreshTenantData();
         }
       };
 
       const handleCustomSync = () => {
         loadData();
+        refreshTenantData();
       };
 
       window.addEventListener('storage', handleStorageChange);
