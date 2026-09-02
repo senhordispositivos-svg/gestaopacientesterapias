@@ -21,11 +21,12 @@ export function formatCurrencyAccounting(value: number | string | null | undefin
  * Formats raw typed digits into live Brazilian Real currency string:
  * e.g. "5" -> "R$ 0,05", "500" -> "R$ 5,00", "50000" -> "R$ 500,00"
  */
-export function formatCurrencyInput(value: string | number): string {
+export function formatCurrencyInput(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return 'R$ 0,00';
   if (typeof value === 'number') {
     return formatCurrencyAccounting(value);
   }
-  const cleanDigits = value.replace(/\D/g, '');
+  const cleanDigits = String(value).replace(/\D/g, '');
   if (!cleanDigits) return 'R$ 0,00';
   const cents = parseInt(cleanDigits, 10);
   const realValue = cents / 100;
@@ -40,9 +41,10 @@ export function formatCurrencyInput(value: string | number): string {
 /**
  * Parses a currency string like "R$ 500,00" or raw string into a numeric float value (e.g. 500)
  */
-export function parseCurrencyInput(value: string | number): number {
+export function parseCurrencyInput(value: string | number | null | undefined): number {
+  if (value === null || value === undefined || value === '') return 0;
   if (typeof value === 'number') return value;
-  const cleanDigits = value.replace(/\D/g, '');
+  const cleanDigits = String(value).replace(/\D/g, '');
   if (!cleanDigits) return 0;
   return parseInt(cleanDigits, 10) / 100;
 }

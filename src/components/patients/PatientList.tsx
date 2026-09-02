@@ -203,11 +203,15 @@ export const PatientList: React.FC<PatientListProps> = ({
                           </h3>
                           <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
                             <span>CPF: {formatCPF(pat.cpf)}</span>
-                            {isCpfValid ? (
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                            ) : (
-                              <AlertCircle className="w-3 h-3 text-rose-500" />
-                            )}
+                            {pat.cpf && pat.cpf.replace(/\D/g, '').length > 0 ? (
+                              isCpfValid ? (
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                              ) : (
+                                <span title="CPF não validado">
+                                  <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
+                                </span>
+                              )
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -332,15 +336,17 @@ export const PatientList: React.FC<PatientListProps> = ({
                         <td className="px-4 py-3.5 font-medium text-slate-700 dark:text-slate-300">
                           <div className="flex items-center gap-1.5">
                             <span>{formatCPF(pat.cpf)}</span>
-                            {isCpfValid ? (
-                              <span title="CPF Válido">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                              </span>
-                            ) : (
-                              <span title="CPF Inválido">
-                                <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
-                              </span>
-                            )}
+                            {pat.cpf && pat.cpf.replace(/\D/g, '').length > 0 ? (
+                              isCpfValid ? (
+                                <span title="CPF Válido">
+                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                               </span>
+                              ) : (
+                                <span title="CPF Não Validado">
+                                 <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                               </span>
+                              )
+                            ) : null}
                           </div>
                         </td>
 
