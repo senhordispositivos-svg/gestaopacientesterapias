@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
+  Trash2,
 } from 'lucide-react';
 import {
   Patient,
@@ -53,6 +54,8 @@ interface PatientProfileProps {
   onViewPackageDetail?: (pkg: SessionPackage) => void;
   onEditPatient?: (patient: Patient) => void;
   onRefreshPatient?: () => Promise<void>;
+  onOpenSendAnamnesisLink?: (patient?: Patient) => void;
+  onDeletePatient?: (patientId: string) => void;
 }
 
 export const PatientProfile: React.FC<PatientProfileProps> = ({
@@ -69,6 +72,8 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
   onViewPackageDetail,
   onEditPatient,
   onRefreshPatient,
+  onOpenSendAnamnesisLink,
+  onDeletePatient,
 }) => {
   const handleOpenAnamnesis = onOpenAnamnesis || onOpenAnamnesisModal || (() => {});
   const handleOpenPackage = onOpenPackageModal || (() => {});
@@ -90,6 +95,22 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
   // Modal States
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [selectedPackageDetail, setSelectedPackageDetail] = useState<SessionPackage | null>(null);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!onDeletePatient) return;
+    setIsDeleting(true);
+    try {
+      await onDeletePatient(patient.id);
+      setIsConfirmDeleteOpen(false);
+      onBack();
+    } catch (err) {
+      console.error('Erro ao excluir paciente:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     async function loadPatientData() {
@@ -179,7 +200,18 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenSendAnamnesisLink && (
+            <button
+              type="button"
+              onClick={() => onOpenSendAnamnesisLink(patient)}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
+              title="Enviar Link da Ficha de Cadastro e Anamnese para o Paciente preencher no WhatsApp"
+            >
+              <Send className="w-4 h-4" /> Enviar Ficha no WhatsApp
+            </button>
+          )}
+
           {!anamnesis && (
             <button
               type="button"
@@ -197,6 +229,17 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
           >
             <Plus className="w-4 h-4" /> Criar Pacote
           </button>
+
+          {onDeletePatient && (
+            <button
+              type="button"
+              onClick={() => setIsConfirmDeleteOpen(true)}
+              className="px-3 py-2 rounded-xl border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold flex items-center gap-1.5 transition"
+              title="Excluir cadastro deste paciente"
+            >
+              <Trash2 className="w-4 h-4" /> Excluir
+            </button>
+          )}
         </div>
       </div>
 
@@ -656,6 +699,76 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
           }
         }}
       />
+
+      {/* Delete Patient Confirmation Modal */}
+      {isConfirmDeleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-900">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Excluir Cadastro do Paciente
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Esta ação removerá o paciente e sincronizará imediatamente.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-1.5 text-xs">
+              <div className="font-bold text-slate-800 dark:text-slate-200">
+                {patient.name}
+              </div>
+              {patient.cpf && (
+                <div className="text-slate-500 dark:text-slate-400">
+                  CPF: {formatCPF(patient.cpf)}
+                </div>
+              )}
+              {patient.phone && (
+                <div className="text-slate-500 dark:text-slate-400">
+                  Telefone: {formatPhone(patient.phone)}
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+              Aviso: Os registros e pacotes vinculados a este paciente serão arquivados do sistema.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setIsConfirmDeleteOpen(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Excluindo e sincronizando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Sim, Excluir Paciente
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

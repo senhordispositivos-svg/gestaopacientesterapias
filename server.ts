@@ -1165,21 +1165,30 @@ app.post('/api/sync/bidirectional', (req, res) => {
         p => p.id === clientPatient.id || (clientPatient.cpf && p.cpf && p.cpf === clientPatient.cpf)
       );
       if (idx === -1) {
-        // Patient from client does not exist on server -> add it!
-        db.patients.unshift({
-          ...clientPatient,
-          tenantId: clientPatient.tenantId || tenantId,
-          createdAt: clientPatient.createdAt || new Date().toISOString(),
-          updatedAt: clientPatient.updatedAt || new Date().toISOString(),
-        });
-        hasChanged = true;
-      } else {
-        // Check if client version is newer
-        const serverUpdated = new Date(db.patients[idx].updatedAt || 0).getTime();
-        const clientUpdated = new Date(clientPatient.updatedAt || 0).getTime();
-        if (clientUpdated > serverUpdated) {
-          db.patients[idx] = { ...db.patients[idx], ...clientPatient };
+        // Patient from client does not exist on server -> add it only if not deleted
+        if (!clientPatient.deletedAt) {
+          db.patients.unshift({
+            ...clientPatient,
+            tenantId: clientPatient.tenantId || tenantId,
+            createdAt: clientPatient.createdAt || new Date().toISOString(),
+            updatedAt: clientPatient.updatedAt || new Date().toISOString(),
+          });
           hasChanged = true;
+        }
+      } else {
+        if (clientPatient.deletedAt) {
+          if (!db.patients[idx].deletedAt) {
+            db.patients[idx].deletedAt = clientPatient.deletedAt;
+            hasChanged = true;
+          }
+        } else if (!db.patients[idx].deletedAt) {
+          // Check if client version is newer
+          const serverUpdated = new Date(db.patients[idx].updatedAt || 0).getTime();
+          const clientUpdated = new Date(clientPatient.updatedAt || 0).getTime();
+          if (clientUpdated > serverUpdated) {
+            db.patients[idx] = { ...db.patients[idx], ...clientPatient };
+            hasChanged = true;
+          }
         }
       }
     });
@@ -1376,12 +1385,41 @@ app.put('/api/patients/:id', (req, res) => {
 app.delete('/api/patients/:id', (req, res) => {
   const index = db.patients.findIndex(p => p.id === req.params.id);
   const tenantId = (req.headers['x-tenant-id'] as string) || (index !== -1 ? db.patients[index].tenantId : 'tenant-demo-1');
+  const userId = (req.headers['x-user-id'] as string) || 'sys';
+  const userName = (req.headers['x-user-name'] as string) || 'Admin';
+
+  let deletedName = 'Paciente';
   if (index !== -1) {
+    deletedName = db.patients[index].name;
     db.patients[index].deletedAt = new Date().toISOString();
+    db.patients[index].updatedAt = new Date().toISOString();
+
+    // Clean up associated packages and sessions
+    db.packages = db.packages.filter(pkg => pkg.patientId !== req.params.id);
+    db.sessions = db.sessions.filter(sess => sess.patientId !== req.params.id);
+
     saveDatabase();
     broadcastRealtime(tenantId, { type: 'PATIENT_DELETED', entity: 'patients', action: 'delete', id: req.params.id });
+    if (tenantId !== 'tenant-demo-1') {
+      broadcastRealtime('tenant-demo-1', { type: 'PATIENT_DELETED', entity: 'patients', action: 'delete', id: req.params.id });
+    }
+
+    logAudit(
+      tenantId,
+      userId,
+      userName,
+      'ADMIN',
+      'EXCLUIR_PACIENTE',
+      'PATIENT',
+      req.params.id,
+      req.ip || '127.0.0.1',
+      'SUCCESS',
+      `Paciente ${deletedName} excluído com sucesso.`
+    );
+  } else {
+    broadcastRealtime(tenantId, { type: 'PATIENT_DELETED', entity: 'patients', action: 'delete', id: req.params.id });
   }
-  res.json({ message: 'Paciente removido com sucesso.' });
+  res.json({ success: true, message: `Paciente ${deletedName} removido com sucesso.` });
 });
 
 // -------------------------------------------------------------
@@ -2045,6 +2083,257 @@ app.post('/api/public/confirm-package/:token', (req, res) => {
   broadcastRealtime(current.tenantId, { type: 'PACKAGE_UPDATED', entity: 'packages', action: 'update', payload: db.packages[pkgIndex], id: db.packages[pkgIndex].id });
   res.json({ success: true, package: db.packages[pkgIndex] });
 });
+
+// -------------------------------------------------------------
+// PUBLIC ANAMNESIS & INTAKE FORM API (NO LOGIN REQUIRED)
+// -------------------------------------------------------------
+app.get('/api/public/anamnesis/:token', (req, res) => {
+  const token = req.params.token;
+  const payloadData = (req.query.d || req.query.data) as string;
+  const decoded = decodePayloadServer(payloadData || '') || (token.startsWith('eyJ') ? decodePayloadServer(token) : null);
+
+  let patientId = decoded?.patId || (token.startsWith('pat-') ? token : null);
+  let tenantId = decoded?.tid || (req.headers['x-tenant-id'] as string) || (db.tenants[0]?.id || 'tenant-demo-1');
+
+  let patient = patientId ? db.patients.find(p => p.id === patientId) : null;
+  if (!patient && decoded?.cpf) {
+    const cleanCpf = decoded.cpf.replace(/\D/g, '');
+    if (cleanCpf) {
+      patient = db.patients.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf);
+    }
+  }
+
+  if (patient) {
+    tenantId = patient.tenantId || tenantId;
+  }
+
+  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
+  const existingAnamnesis = patient ? db.anamneses.find(a => a.patientId === patient.id) : null;
+
+  res.json({
+    tenant: tenant ? {
+      id: tenant.id,
+      name: tenant.name,
+      tradeName: tenant.tradeName || tenant.name,
+      logoUrl: tenant.logoUrl,
+      phone: tenant.phone,
+      whatsappConfig: tenant.whatsappConfig,
+      city: tenant.city,
+      state: tenant.state,
+      address: tenant.address,
+    } : null,
+    patient: patient ? {
+      id: patient.id,
+      name: patient.name,
+      cpf: patient.cpf,
+      phone: patient.phone,
+      whatsapp: patient.whatsapp,
+      email: patient.email,
+      birthDate: patient.birthDate,
+      gender: patient.gender,
+      profession: patient.profession,
+      cep: patient.cep,
+      street: patient.street,
+      number: patient.number,
+      complement: patient.complement,
+      neighborhood: patient.neighborhood,
+      city: patient.city,
+      state: patient.state,
+      notes: patient.notes,
+      assignedProfessionalName: patient.assignedProfessionalName,
+    } : (decoded?.pname ? {
+      name: decoded.pname,
+      cpf: decoded.cpf || '',
+      phone: decoded.phone || '',
+      whatsapp: decoded.phone || '',
+      birthDate: decoded.birthDate || '',
+      assignedProfessionalName: decoded.profName || '',
+    } : null),
+    existingAnamnesis: existingAnamnesis || null,
+    professionalName: decoded?.profName || patient?.assignedProfessionalName || 'Equipe Terapêutica',
+  });
+});
+
+app.post('/api/public/anamnesis-submit', (req, res) => {
+  const { token, payloadData, patientData, anamnesisData, signatureUrl } = req.body;
+  const decoded = decodePayloadServer(payloadData || '') || (token && token.startsWith('eyJ') ? decodePayloadServer(token) : null);
+
+  const tenantId = patientData?.tenantId || decoded?.tid || (req.headers['x-tenant-id'] as string) || (db.tenants[0]?.id || 'tenant-demo-1');
+  const nowIso = new Date().toISOString();
+  const confirmedIp = req.ip || req.socket.remoteAddress || '127.0.0.1';
+
+  // 1. Locate or Create Patient
+  let patientIdx = -1;
+  const targetId = patientData?.id || decoded?.patId || (token && token.startsWith('pat-') ? token : null);
+
+  if (targetId) {
+    patientIdx = db.patients.findIndex(p => p.id === targetId);
+  }
+
+  // If not found by ID, search by CPF
+  if (patientIdx === -1 && patientData?.cpf) {
+    const cleanCpf = patientData.cpf.replace(/\D/g, '');
+    if (cleanCpf) {
+      patientIdx = db.patients.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf);
+    }
+  }
+
+  let finalPatient: Patient;
+
+  if (patientIdx !== -1) {
+    // Update existing patient with new intake information
+    db.patients[patientIdx] = {
+      ...db.patients[patientIdx],
+      ...patientData,
+      updatedAt: nowIso,
+    };
+    finalPatient = db.patients[patientIdx];
+  } else {
+    // Create new patient
+    finalPatient = {
+      id: targetId || `pat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      tenantId,
+      name: patientData?.name || decoded?.pname || 'Novo Paciente',
+      cpf: patientData?.cpf || decoded?.cpf || '',
+      rg: patientData?.rg || '',
+      gender: patientData?.gender || 'Outro',
+      phone: patientData?.phone || decoded?.phone || '',
+      whatsapp: patientData?.whatsapp || patientData?.phone || decoded?.phone || '',
+      profession: patientData?.profession || '',
+      birthDate: patientData?.birthDate || decoded?.birthDate || '',
+      cep: patientData?.cep || '',
+      street: patientData?.street || '',
+      number: patientData?.number || '',
+      complement: patientData?.complement || '',
+      neighborhood: patientData?.neighborhood || '',
+      city: patientData?.city || decoded?.city || '',
+      state: patientData?.state || decoded?.state || '',
+      email: patientData?.email || '',
+      notes: patientData?.notes || 'Ficha preenchida e assinada pelo paciente via link WhatsApp.',
+      assignedProfessionalName: patientData?.assignedProfessionalName || decoded?.profName || 'Geral',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    db.patients.unshift(finalPatient);
+  }
+
+  // 2. Locate or Create Anamnesis
+  const anamIdx = db.anamneses.findIndex(a => a.patientId === finalPatient.id);
+  const finalAnamnesis: Anamnesis = {
+    id: anamIdx !== -1 ? db.anamneses[anamIdx].id : `anam-${Date.now()}`,
+    tenantId,
+    patientId: finalPatient.id,
+    healthHistory: anamnesisData?.healthHistory || {
+      fumante: false,
+      diabetes: false,
+      epilepsia: false,
+      varizes: false,
+      trombose: false,
+      cancerEmTratamento: false,
+      historicoCancer: false,
+      cardiopatia: false,
+      artrite: false,
+      fibromialgia: false,
+      protese: false,
+      osteoporose: false,
+      hipertensao: false,
+      hipotensao: false,
+      doencaPeleContagiosa: false,
+      menstruacaoNormal: true,
+      alergias: false,
+      ansiedade: false,
+      depressao: false,
+    },
+    treatments: anamnesisData?.treatments || {
+      tratamentoMedico: false,
+      medicamentos: false,
+      fisioterapia: false,
+      outroTratamento: false,
+    },
+    habits: anamnesisData?.habits || {
+      bebidaAlcoolica: false,
+      dormeBem: true,
+      atividadeFisica: false,
+      jaRealizouMassoterapia: false,
+    },
+    evaluation: anamnesisData?.evaluation || {},
+    responsibilityTermAccepted: true,
+    patientSignatureUrl: signatureUrl || anamnesisData?.patientSignatureUrl || '',
+    city: patientData?.city || finalPatient.city || decoded?.city || '',
+    state: patientData?.state || finalPatient.state || decoded?.state || '',
+    signedAt: nowIso,
+    signedByIp: confirmedIp,
+    createdAt: anamIdx !== -1 ? db.anamneses[anamIdx].createdAt : nowIso,
+  };
+
+  if (anamIdx !== -1) {
+    db.anamneses[anamIdx] = finalAnamnesis;
+  } else {
+    db.anamneses.unshift(finalAnamnesis);
+  }
+
+  // 3. Register Signature in Document Signatures Table
+  if (signatureUrl) {
+    db.signatures.unshift({
+      id: `sig-anam-${Date.now()}`,
+      tenantId,
+      patientId: finalPatient.id,
+      patientName: finalPatient.name,
+      documentType: 'ANAMNESIS',
+      referenceId: finalAnamnesis.id,
+      signatureUrl,
+      signedByName: finalPatient.name,
+      signedAt: nowIso,
+      ipAddress: confirmedIp,
+      hash: `SIG-ANAM-${Date.now().toString(16).toUpperCase()}`,
+    });
+  }
+
+  // 4. Log Audit Trail
+  logAudit(
+    tenantId,
+    'public-patient',
+    finalPatient.name,
+    'PROFESSIONAL',
+    'ASSINAR_ANAMNESE_PUBLICO',
+    'ANAMNESIS',
+    finalAnamnesis.id,
+    confirmedIp,
+    'SUCCESS',
+    `Ficha de cadastro e anamnese preenchida e assinada digitalmente pelo paciente ${finalPatient.name} via link público.`
+  );
+
+  saveDatabase();
+
+  // 5. Real-Time Broadcast to Connected Professional Browsers/Tablets
+  broadcastRealtime(tenantId, {
+    type: 'ANAMNESIS_SUBMITTED_BY_PATIENT',
+    entity: 'anamneses',
+    action: 'create',
+    payload: {
+      patient: finalPatient,
+      anamnesis: finalAnamnesis,
+      message: `🎉 O paciente ${finalPatient.name} preencheu sua ficha de cadastro e anamnese!`,
+    },
+    id: finalAnamnesis.id,
+  });
+
+  broadcastRealtime(tenantId, {
+    type: 'PATIENT_UPDATED',
+    entity: 'patients',
+    action: 'update',
+    payload: finalPatient,
+    id: finalPatient.id,
+  });
+
+  res.json({
+    success: true,
+    patient: finalPatient,
+    anamnesis: finalAnamnesis,
+    message: 'Ficha de cadastro e anamnese preenchida e gravada com sucesso!',
+  });
+});
+
 
 // Evolutions
 app.get('/api/patients/:patientId/evolutions', (req, res) => {

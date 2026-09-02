@@ -16,8 +16,11 @@ import {
   decodePayload,
   createSessionValidationUrl,
   createPackageValidationUrl,
+  createAnamnesisValidationUrl,
+  formatAnamnesisWhatsAppMessage,
   DecodedSessionPayload,
   DecodedPackagePayload,
+  DecodedAnamnesisPayload,
 } from '../utils/validationPayload';
 import { INITIAL_TENANTS, INITIAL_USERS, INITIAL_PATIENTS, INITIAL_PACKAGES } from './mockSeed';
 import { supabaseDirectApi } from './supabaseDirectApi';
@@ -26,6 +29,7 @@ const STORAGE_KEYS = {
   TENANTS: 'clinica_tenants',
   USERS: 'clinica_users',
   PATIENTS: 'clinica_patients',
+  DELETED_PATIENTS: 'clinica_deleted_patients',
   ANAMNESIS: 'clinica_anamnesis',
   PACKAGES: 'clinica_packages',
   SESSIONS: 'clinica_sessions',
@@ -531,20 +535,31 @@ export const api = {
   // Patients
   async getPatients(tenantId: string, user?: User | null): Promise<Patient[]> {
     const mergedMap = new Map<string, Patient>();
+    const deletedIds = new Set(getLocal<string[]>(STORAGE_KEYS.DELETED_PATIENTS, []));
 
-    // 1. Add all initial default patients so baseline data is never empty or desynchronized across environments
-    INITIAL_PATIENTS.forEach(p => {
-      mergedMap.set(p.id, p);
-      if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
-      mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
-    });
+    // 1. First-time seed only if never initialized and local store is empty
+    const isInitialized = typeof window !== 'undefined' && localStorage.getItem('clinica_patients_initialized') === 'true';
+    if (!isInitialized) {
+      INITIAL_PATIENTS.forEach(p => {
+        if (!deletedIds.has(p.id) && !p.deletedAt) {
+          mergedMap.set(p.id, p);
+        }
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('clinica_patients_initialized', 'true');
+      }
+    }
 
-    // 2. Add local storage patients
+    // 2. Add local storage patients (skipping deleted ones)
     const localList = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
     localList.forEach(p => {
-      mergedMap.set(p.id, p);
-      if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
-      mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+      if (p.deletedAt || deletedIds.has(p.id)) {
+        deletedIds.add(p.id);
+      } else {
+        mergedMap.set(p.id, p);
+        if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
+        mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+      }
     });
 
     // 3. Query Express backend if available (e.g. on AI Studio / Cloud Run)
@@ -564,10 +579,11 @@ export const api = {
           // Check if localList has any patient not yet on the server
           const missingOnServer: Patient[] = [];
           localList.forEach(lp => {
+            if (lp.deletedAt || deletedIds.has(lp.id)) return;
             const hasOnServer = serverPatients.some(
               sp => sp.id === lp.id || (lp.cpf && sp.cpf === lp.cpf) || sp.name.trim().toLowerCase() === lp.name.trim().toLowerCase()
             );
-            if (!hasOnServer && !lp.deletedAt) {
+            if (!hasOnServer) {
               missingOnServer.push(lp);
             }
           });
@@ -582,9 +598,13 @@ export const api = {
           }
 
           serverPatients.forEach(p => {
-            mergedMap.set(p.id, p);
-            if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
-            mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+            if (p.deletedAt || deletedIds.has(p.id)) {
+              deletedIds.add(p.id);
+            } else {
+              mergedMap.set(p.id, p);
+              if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
+              mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+            }
           });
         }
       } catch (err) {
@@ -596,9 +616,11 @@ export const api = {
         const cloudPatients = await supabaseDirectApi.getPatients(tenantId);
         if (Array.isArray(cloudPatients) && cloudPatients.length > 0) {
           cloudPatients.forEach(p => {
-            mergedMap.set(p.id, p);
-            if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
-            mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+            if (!p.deletedAt && !deletedIds.has(p.id)) {
+              mergedMap.set(p.id, p);
+              if (p.cpf) mergedMap.set(`cpf_${p.cpf}`, p);
+              mergedMap.set(`name_${p.name.trim().toLowerCase()}`, p);
+            }
           });
         }
       } catch (sbErr) {
@@ -606,11 +628,16 @@ export const api = {
       }
     }
 
-    // Unique values array
-    const allUnique = Array.from(new Set(Array.from(mergedMap.values())));
+    // Persist updated deleted list
+    setLocal(STORAGE_KEYS.DELETED_PATIENTS, Array.from(deletedIds));
+
+    // Unique values array excluding any deleted patients
+    const allUnique = Array.from(new Set(Array.from(mergedMap.values()))).filter(
+      p => p && p.id && !p.deletedAt && !deletedIds.has(p.id)
+    );
     setLocal(STORAGE_KEYS.PATIENTS, allUnique);
 
-    let result = allUnique.filter(p => !p.deletedAt);
+    let result = allUnique;
     if (user && user.role === 'PROFESSIONAL' && user.accessMode === 'INDIVIDUAL') {
       result = result.filter(
         p => p.assignedProfessionalId === user.id || !p.assignedProfessionalId || p.assignedProfessionalName === 'Geral'
@@ -660,7 +687,8 @@ export const api = {
   },
 
   async createPatient(tenantId: string, data: Partial<Patient>): Promise<Patient> {
-    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, INITIAL_PATIENTS);
+    const deletedIds = getLocal<string[]>(STORAGE_KEYS.DELETED_PATIENTS, []);
+    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
     const newPatient: Patient = {
       id: data.id || `pat-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       tenantId,
@@ -690,9 +718,14 @@ export const api = {
       updatedAt: new Date().toISOString(),
     };
 
+    // If ID was in deletedIds, un-delete it
+    if (deletedIds.includes(newPatient.id)) {
+      setLocal(STORAGE_KEYS.DELETED_PATIENTS, deletedIds.filter(id => id !== newPatient.id));
+    }
+
     const existingIdx = list.findIndex(p => p.id === newPatient.id || (newPatient.cpf && p.cpf === newPatient.cpf));
     if (existingIdx >= 0) {
-      list[existingIdx] = { ...list[existingIdx], ...newPatient };
+      list[existingIdx] = { ...list[existingIdx], ...newPatient, deletedAt: undefined };
     } else {
       list.unshift(newPatient);
     }
@@ -758,17 +791,48 @@ export const api = {
   },
 
   async deletePatient(id: string, tenantId: string): Promise<boolean> {
-    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, INITIAL_PATIENTS);
+    // 1. Record in deleted list permanently so it cannot be revived by old caches
+    const deletedIds = getLocal<string[]>(STORAGE_KEYS.DELETED_PATIENTS, []);
+    if (!deletedIds.includes(id)) {
+      deletedIds.push(id);
+      setLocal(STORAGE_KEYS.DELETED_PATIENTS, deletedIds);
+    }
+
+    // 2. Remove from local active patients list
+    const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
     const filtered = list.filter(p => p.id !== id);
     setLocal(STORAGE_KEYS.PATIENTS, filtered);
 
-    tryFetch(`/api/patients/${id}`, {
-      method: 'DELETE',
-      headers: { 'x-tenant-id': tenantId },
-    }).catch(() => {});
+    // 3. Remove/archive associated local packages and sessions
+    const pkgs = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
+    setLocal(STORAGE_KEYS.PACKAGES, pkgs.filter(pkg => pkg.patientId !== id));
 
+    const sess = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
+    setLocal(STORAGE_KEYS.SESSIONS, sess.filter(s => s.patientId !== id));
+
+    // 4. Send DELETE request to Express Server
+    try {
+      await tryFetch(`/api/patients/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-tenant-id': tenantId },
+      });
+    } catch (e) {
+      console.warn('Server delete error (local deletion persisted):', e);
+    }
+
+    // 5. Delete on Supabase if enabled
     if (supabaseDirectApi.isEnabled()) {
-      supabaseDirectApi.deletePatient(id).catch(err => console.warn('Supabase delete notice:', err));
+      try {
+        await supabaseDirectApi.deletePatient(id);
+      } catch (err) {
+        console.warn('Supabase delete notice:', err);
+      }
+    }
+
+    // 6. Broadcast local storage event so other open tabs/components sync immediately
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('patient-deleted', { detail: { id } }));
+      window.dispatchEvent(new Event('storage'));
     }
 
     return true;
@@ -1690,6 +1754,299 @@ export const api = {
 
     return jsonResult || { success: true };
   },
+
+  // -------------------------------------------------------------
+  // PUBLIC ANAMNESIS & INTAKE LINK HELPERS
+  // -------------------------------------------------------------
+  async sendAnamnesisWhatsApp(
+    tenant: Partial<Tenant> | null | undefined,
+    patient?: Partial<Patient> | null,
+    professional?: Partial<User> | null
+  ): Promise<{ validationUrl: string; message: string }> {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://clinica.app';
+    const validationUrl = createAnamnesisValidationUrl(origin, tenant, patient, professional);
+    const message = formatAnamnesisWhatsAppMessage(
+      tenant?.tradeName || tenant?.name || 'Clínica',
+      patient?.name || '',
+      validationUrl,
+      professional?.name || ''
+    );
+
+    return {
+      validationUrl,
+      message,
+    };
+  },
+
+  async getPublicAnamnesisData(token: string, payloadData?: string | null): Promise<any> {
+    const cleanToken = decodeURIComponent(token || '').trim();
+
+    // 1. Try payload decoding
+    let decoded: DecodedAnamnesisPayload | null = null;
+    if (payloadData) {
+      decoded = decodePayload<DecodedAnamnesisPayload>(payloadData);
+    }
+    if (!decoded && cleanToken && (cleanToken.startsWith('eyJ') || cleanToken.length > 50)) {
+      decoded = decodePayload<DecodedAnamnesisPayload>(cleanToken);
+    }
+
+    // 2. Try Server API if online
+    const queryParams = payloadData ? `?d=${encodeURIComponent(payloadData)}` : '';
+    const serverRes = await tryFetch(`/api/public/anamnesis/${encodeURIComponent(cleanToken || 'new')}${queryParams}`);
+    if (serverRes) {
+      try {
+        const json = await serverRes.json();
+        if (json && (json.tenant || json.patient)) {
+          return json;
+        }
+      } catch (e) {}
+    }
+
+    // 3. Fallback to LocalStorage / Decoded Payload
+    const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+    const anamneses = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
+    const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+
+    let patient = cleanToken ? patients.find(p => p.id === cleanToken) : null;
+    if (!patient && decoded?.patId) {
+      patient = patients.find(p => p.id === decoded?.patId) || null;
+    }
+    if (!patient && decoded?.cpf) {
+      const cleanCpf = decoded.cpf.replace(/\D/g, '');
+      if (cleanCpf) {
+        patient = patients.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf) || null;
+      }
+    }
+
+    const tenantId = patient?.tenantId || decoded?.tid || tenants[0]?.id || 'tenant-demo-1';
+    const tenant = tenants.find(t => t.id === tenantId) || tenants[0];
+    const existingAnamnesis = patient ? anamneses.find(a => a.patientId === patient?.id) : null;
+
+    return {
+      tenant: tenant || {
+        id: 'tenant-demo-1',
+        name: decoded?.cname || 'Clínica de Fisioterapia & Terapias',
+        tradeName: decoded?.tradeName || decoded?.cname || 'Clínica de Fisioterapia & Terapias',
+        logoUrl: decoded?.logoUrl,
+        city: decoded?.city,
+        state: decoded?.state,
+      },
+      patient: patient || (decoded?.pname ? {
+        id: decoded.patId || undefined,
+        name: decoded.pname,
+        cpf: decoded.cpf || '',
+        phone: decoded.phone || '',
+        whatsapp: decoded.phone || '',
+        birthDate: decoded.birthDate || '',
+        assignedProfessionalName: decoded.profName || '',
+      } : null),
+      existingAnamnesis: existingAnamnesis || null,
+      professionalName: decoded?.profName || patient?.assignedProfessionalName || 'Equipe Terapêutica',
+    };
+  },
+
+  async submitPublicAnamnesis(data: {
+    token?: string;
+    payloadData?: string | null;
+    patientData: Partial<Patient>;
+    anamnesisData: Partial<Anamnesis>;
+    signatureUrl: string;
+    tenantId?: string;
+  }): Promise<{ success: boolean; patient: Patient; anamnesis: Anamnesis; message?: string }> {
+    // 1. Try Server API
+    let serverRes = await tryFetch('/api/public/anamnesis-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (serverRes) {
+      try {
+        const json = await serverRes.json();
+        if (json && json.success) {
+          // Sync with LocalStorage
+          if (json.patient) {
+            const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+            const pIdx = list.findIndex(p => p.id === json.patient.id);
+            if (pIdx !== -1) list[pIdx] = json.patient;
+            else list.unshift(json.patient);
+            setLocal(STORAGE_KEYS.PATIENTS, list);
+          }
+          if (json.anamnesis) {
+            const aList = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
+            const aIdx = aList.findIndex(a => a.patientId === json.anamnesis.patientId);
+            if (aIdx !== -1) aList[aIdx] = json.anamnesis;
+            else aList.unshift(json.anamnesis);
+            setLocal(STORAGE_KEYS.ANAMNESIS, aList);
+          }
+
+          // Trigger realtime event in client
+          try {
+            localStorage.setItem('fisiopro_last_anamnesis_submission', JSON.stringify({
+              patientId: json.patient?.id,
+              patientName: json.patient?.name,
+              time: Date.now(),
+            }));
+            window.dispatchEvent(new CustomEvent('anamnesis-submitted', {
+              detail: { patient: json.patient, anamnesis: json.anamnesis }
+            }));
+          } catch (e) {}
+
+          return json;
+        }
+      } catch (e) {
+        console.warn('Failed to parse server anamnesis response:', e);
+      }
+    }
+
+    // 2. LocalStorage Fallback (Offline / Vercel static)
+    const nowIso = new Date().toISOString();
+    const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+    const anamneses = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
+    const tenantId = data.tenantId || data.patientData.tenantId || 'tenant-demo-1';
+
+    let patientIdx = -1;
+    if (data.patientData.id) {
+      patientIdx = patients.findIndex(p => p.id === data.patientData.id);
+    }
+    if (patientIdx === -1 && data.patientData.cpf) {
+      const cleanCpf = data.patientData.cpf.replace(/\D/g, '');
+      if (cleanCpf) {
+        patientIdx = patients.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf);
+      }
+    }
+
+    let finalPatient: Patient;
+    if (patientIdx !== -1) {
+      patients[patientIdx] = {
+        ...patients[patientIdx],
+        ...data.patientData,
+        updatedAt: nowIso,
+      };
+      finalPatient = patients[patientIdx];
+    } else {
+      finalPatient = {
+        id: data.patientData.id || `pat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        tenantId,
+        name: data.patientData.name || 'Novo Paciente',
+        cpf: data.patientData.cpf || '',
+        rg: data.patientData.rg || '',
+        gender: data.patientData.gender || 'Outro',
+        phone: data.patientData.phone || '',
+        whatsapp: data.patientData.whatsapp || data.patientData.phone || '',
+        profession: data.patientData.profession || '',
+        birthDate: data.patientData.birthDate || '',
+        cep: data.patientData.cep || '',
+        street: data.patientData.street || '',
+        number: data.patientData.number || '',
+        complement: data.patientData.complement || '',
+        neighborhood: data.patientData.neighborhood || '',
+        city: data.patientData.city || '',
+        state: data.patientData.state || '',
+        email: data.patientData.email || '',
+        notes: data.patientData.notes || 'Ficha preenchida e assinada pelo paciente via WhatsApp.',
+        assignedProfessionalName: data.patientData.assignedProfessionalName || 'Geral',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      patients.unshift(finalPatient);
+    }
+    setLocal(STORAGE_KEYS.PATIENTS, patients);
+
+    // Save Anamnesis
+    const aIdx = anamneses.findIndex(a => a.patientId === finalPatient.id);
+    const finalAnamnesis: Anamnesis = {
+      id: aIdx !== -1 ? anamneses[aIdx].id : `anam-${Date.now()}`,
+      tenantId,
+      patientId: finalPatient.id,
+      healthHistory: data.anamnesisData.healthHistory || {
+        fumante: false,
+        diabetes: false,
+        epilepsia: false,
+        varizes: false,
+        trombose: false,
+        cancerEmTratamento: false,
+        historicoCancer: false,
+        cardiopatia: false,
+        artrite: false,
+        fibromialgia: false,
+        protese: false,
+        osteoporose: false,
+        hipertensao: false,
+        hipotensao: false,
+        doencaPeleContagiosa: false,
+        menstruacaoNormal: true,
+        alergias: false,
+        ansiedade: false,
+        depressao: false,
+      },
+      treatments: data.anamnesisData.treatments || {
+        tratamentoMedico: false,
+        medicamentos: false,
+        fisioterapia: false,
+        outroTratamento: false,
+      },
+      habits: data.anamnesisData.habits || {
+        bebidaAlcoolica: false,
+        dormeBem: true,
+        atividadeFisica: false,
+        jaRealizouMassoterapia: false,
+      },
+      evaluation: data.anamnesisData.evaluation || {},
+      responsibilityTermAccepted: true,
+      patientSignatureUrl: data.signatureUrl || data.anamnesisData.patientSignatureUrl || '',
+      city: finalPatient.city || '',
+      state: finalPatient.state || '',
+      signedAt: nowIso,
+      signedByIp: '127.0.0.1',
+      createdAt: aIdx !== -1 ? anamneses[aIdx].createdAt : nowIso,
+    };
+
+    if (aIdx !== -1) {
+      anamneses[aIdx] = finalAnamnesis;
+    } else {
+      anamneses.unshift(finalAnamnesis);
+    }
+    setLocal(STORAGE_KEYS.ANAMNESIS, anamneses);
+
+    // Add Signature Record
+    if (data.signatureUrl) {
+      const signatures = getLocal<SignatureRecord[]>(STORAGE_KEYS.SIGNATURES, []);
+      signatures.unshift({
+        id: `sig-anam-${Date.now()}`,
+        tenantId,
+        patientId: finalPatient.id,
+        patientName: finalPatient.name,
+        documentType: 'ANAMNESIS',
+        referenceId: finalAnamnesis.id,
+        signatureUrl: data.signatureUrl,
+        signedByName: finalPatient.name,
+        signedAt: nowIso,
+        ipAddress: '127.0.0.1',
+        hash: `SIG-ANAM-${Date.now().toString(16).toUpperCase()}`,
+      });
+      setLocal(STORAGE_KEYS.SIGNATURES, signatures);
+    }
+
+    try {
+      localStorage.setItem('fisiopro_last_anamnesis_submission', JSON.stringify({
+        patientId: finalPatient.id,
+        patientName: finalPatient.name,
+        time: Date.now(),
+      }));
+      window.dispatchEvent(new CustomEvent('anamnesis-submitted', {
+        detail: { patient: finalPatient, anamnesis: finalAnamnesis }
+      }));
+    } catch (e) {}
+
+    return {
+      success: true,
+      patient: finalPatient,
+      anamnesis: finalAnamnesis,
+      message: 'Ficha de cadastro e anamnese gravada com sucesso!',
+    };
+  },
+
 
   // Evolutions
   async getEvolutions(patientId: string, tenantId?: string): Promise<ClinicalEvolution[]> {

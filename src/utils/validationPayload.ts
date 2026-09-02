@@ -1,4 +1,4 @@
-import { Session, SessionPackage } from '../types';
+import { Session, SessionPackage, Patient, Tenant, User } from '../types';
 
 export interface DecodedSessionPayload {
   sid: string;
@@ -38,6 +38,23 @@ export interface DecodedPackagePayload {
     status: string;
     hasSig?: boolean;
   }>;
+}
+
+export interface DecodedAnamnesisPayload {
+  patId?: string;
+  pname?: string;
+  phone?: string;
+  cpf?: string;
+  birthDate?: string;
+  tid: string;
+  cname: string;
+  tradeName?: string;
+  logoUrl?: string;
+  profName?: string;
+  profId?: string;
+  city?: string;
+  state?: string;
+  timestamp: string;
 }
 
 // Universal Unicode-Safe Base64 encoder
@@ -170,4 +187,58 @@ export function createPackageValidationUrl(
 
   const encoded = encodePayload(payload);
   return `${effectiveOrigin}/?pacote=${encodeURIComponent(pkg.id)}&d=${encoded}#validar-pacote=${encodeURIComponent(pkg.id)}`;
+}
+
+// Helper to generate public Anamnesis / Intake Form URL with embedded self-contained payload
+export function createAnamnesisValidationUrl(
+  origin: string,
+  tenant: Partial<Tenant> | null | undefined,
+  patient?: Partial<Patient> | null,
+  professional?: Partial<User> | null
+): string {
+  const effectiveOrigin = origin || (typeof window !== 'undefined' ? window.location.origin : 'https://clinica.app');
+  const token = patient?.id || `anam-auto-${Date.now()}`;
+
+  const payload: DecodedAnamnesisPayload = {
+    patId: patient?.id || undefined,
+    pname: patient?.name || '',
+    phone: patient?.phone || patient?.whatsapp || '',
+    cpf: patient?.cpf || '',
+    birthDate: patient?.birthDate || '',
+    tid: tenant?.id || 'tenant-demo-1',
+    cname: tenant?.name || 'Clínica de Fisioterapia & Terapias',
+    tradeName: tenant?.tradeName || tenant?.name || 'Clínica de Fisioterapia & Terapias',
+    logoUrl: tenant?.logoUrl || undefined,
+    profName: professional?.name || patient?.assignedProfessionalName || 'Equipe Terapêutica',
+    profId: professional?.id || patient?.assignedProfessionalId || undefined,
+    city: patient?.city || tenant?.city || '',
+    state: patient?.state || tenant?.state || '',
+    timestamp: new Date().toISOString(),
+  };
+
+  const encoded = encodePayload(payload);
+  return `${effectiveOrigin}/?ficha=${encodeURIComponent(token)}&d=${encoded}#ficha=${encodeURIComponent(token)}`;
+}
+
+// Helper to generate formatted WhatsApp message for Anamnesis Intake
+export function formatAnamnesisWhatsAppMessage(
+  clinicName: string,
+  patientName?: string,
+  url: string = '',
+  professionalName?: string
+): string {
+  const greetingName = patientName && patientName.trim() ? patientName.trim().split(' ')[0] : 'tudo bem';
+  const effectiveClinic = clinicName || 'nossa clínica';
+  const profNotice = professionalName ? ` com ${professionalName}` : '';
+
+  return `Olá ${greetingName}! 👋
+
+Para personalizarmos seu atendimento e garantirmos máxima segurança e eficiência no seu tratamento${profNotice} na *${effectiveClinic}*, solicitamos que preencha sua *Ficha de Cadastro e Avaliação de Saúde (Anamnese)*.
+
+É rápido, 100% seguro e você pode assinar digitalmente com o dedo diretamente no seu celular através do link exclusivo abaixo:
+
+📝 *Acesse sua Ficha de Cadastro:*
+${url}
+
+Ao finalizar, a clínica receberá seus dados automaticamente no sistema! ✨`;
 }

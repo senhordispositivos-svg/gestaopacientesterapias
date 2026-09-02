@@ -16,6 +16,8 @@ import {
   UserX,
   AlertTriangle,
   ArrowRightLeft,
+  FileSignature,
+  Send,
 } from 'lucide-react';
 import { Patient, User } from '../../types';
 import { validateCPF, formatCPF, formatPhone } from '../../utils/cpf';
@@ -28,6 +30,7 @@ interface PatientListProps {
   onOpenCreateModal: () => void;
   onOpenEditModal: (patient: Patient) => void;
   onDeletePatient: (patientId: string) => void;
+  onOpenSendAnamnesisLink?: (patient?: Patient) => void;
 }
 
 export const PatientList: React.FC<PatientListProps> = ({
@@ -37,9 +40,25 @@ export const PatientList: React.FC<PatientListProps> = ({
   onOpenCreateModal,
   onOpenEditModal,
   onDeletePatient,
+  onOpenSendAnamnesisLink,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProfFilter, setSelectedProfFilter] = useState<string>('ALL');
+  const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!patientToDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDeletePatient(patientToDelete.id);
+      setPatientToDelete(null);
+    } catch (err) {
+      console.error('Erro ao excluir paciente:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const inactiveProfIds = new Set(
     professionals.filter(p => p.active === false).map(p => p.id)
@@ -86,13 +105,26 @@ export const PatientList: React.FC<PatientListProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenCreateModal}
-          className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition"
-        >
-          <Plus className="w-4 h-4" /> Cadastrar Novo Paciente
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenSendAnamnesisLink && (
+            <button
+              type="button"
+              onClick={() => onOpenSendAnamnesisLink()}
+              className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition"
+              title="Gerar e Enviar Link de Cadastro e Anamnese no WhatsApp"
+            >
+              <FileSignature className="w-4 h-4" /> Enviar Link no WhatsApp
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onOpenCreateModal}
+            className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition"
+          >
+            <Plus className="w-4 h-4" /> Cadastrar Novo Paciente
+          </button>
+        </div>
       </div>
 
       {/* Banner if there are patients with inactive professionals */}
@@ -251,6 +283,17 @@ export const PatientList: React.FC<PatientListProps> = ({
                         <span>Ver Prontuário</span>
                       </button>
 
+                      {onOpenSendAnamnesisLink && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenSendAnamnesisLink(pat)}
+                          title="Enviar Ficha no WhatsApp"
+                          className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => onOpenEditModal(pat)}
@@ -262,11 +305,7 @@ export const PatientList: React.FC<PatientListProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => {
-                          if (confirm(`Deseja realmente remover o paciente ${pat.name}? (Exclusão Lógica)`)) {
-                            onDeletePatient(pat.id);
-                          }
-                        }}
+                        onClick={() => setPatientToDelete(pat)}
                         title="Excluir Paciente"
                         className="p-2 rounded-lg border border-rose-200 dark:border-rose-900/40 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                       >
@@ -383,6 +422,16 @@ export const PatientList: React.FC<PatientListProps> = ({
 
                         <td className="px-4 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {onOpenSendAnamnesisLink && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenSendAnamnesisLink(pat)}
+                                title="Enviar Ficha de Cadastro & Anamnese via WhatsApp"
+                                className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition"
+                              >
+                                <Send className="w-4 h-4" />
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => onSelectPatient(pat)}
@@ -401,11 +450,7 @@ export const PatientList: React.FC<PatientListProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (confirm(`Deseja realmente remover o paciente ${pat.name}? (Exclusão Lógica)`)) {
-                                  onDeletePatient(pat.id);
-                                }
-                              }}
+                              onClick={() => setPatientToDelete(pat)}
                               title="Excluir Paciente"
                               className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                             >
@@ -422,6 +467,81 @@ export const PatientList: React.FC<PatientListProps> = ({
           </>
         )}
       </div>
+
+      {/* In-App Delete Confirmation Modal */}
+      {patientToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-900">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Excluir Cadastro do Paciente
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Esta ação removerá o paciente e sincronizará imediatamente.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-1.5 text-xs">
+              <div className="font-bold text-slate-800 dark:text-slate-200">
+                {patientToDelete.name}
+              </div>
+              {patientToDelete.cpf && (
+                <div className="text-slate-500 dark:text-slate-400">
+                  CPF: {formatCPF(patientToDelete.cpf)}
+                </div>
+              )}
+              {patientToDelete.phone && (
+                <div className="text-slate-500 dark:text-slate-400">
+                  Telefone: {formatPhone(patientToDelete.phone)}
+                </div>
+              )}
+              {patientToDelete.assignedProfessionalName && (
+                <div className="text-slate-500 dark:text-slate-400">
+                  Profissional: {patientToDelete.assignedProfessionalName}
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+              Aviso: Os registros e pacotes vinculados a este paciente serão arquivados do sistema.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setPatientToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Excluindo e sincronizando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Sim, Excluir Paciente
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

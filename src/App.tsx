@@ -19,6 +19,8 @@ import { AttendanceModal } from './components/sessions/AttendanceModal';
 import { WhatsAppModal } from './components/whatsapp/WhatsAppModal';
 import { PublicValidationPage } from './components/public/PublicValidationPage';
 import { PublicPackageValidationPage } from './components/public/PublicPackageValidationPage';
+import { PublicAnamnesisPage } from './components/public/PublicAnamnesisPage';
+import { SendAnamnesisLinkModal } from './components/whatsapp/SendAnamnesisLinkModal';
 import { PackageDetailModal } from './components/packages/PackageDetailModal';
 import { PackagesTrackerView } from './components/packages/PackagesTrackerView';
 import { LoginView } from './components/auth/LoginView';
@@ -31,6 +33,9 @@ import {
   Package,
   ArrowLeft,
   Menu as MenuIcon,
+  FileSignature,
+  CheckCircle2,
+  X,
 } from 'lucide-react';
 import { Patient, User, Session, SessionPackage } from './types';
 import { api } from './services/api';
@@ -42,7 +47,7 @@ export function App() {
 
   // Reactive URL token detection for public mobile & desktop validation
   const getPublicTokens = () => {
-    if (typeof window === 'undefined') return { sessionToken: null, packageToken: null };
+    if (typeof window === 'undefined') return { sessionToken: null, packageToken: null, anamnesisToken: null };
     const query = new URLSearchParams(window.location.search);
     const hash = window.location.hash || '';
 
@@ -68,7 +73,22 @@ export function App() {
       pkgToken = match ? match.split('&')[0].split('?')[0] : null;
     }
 
-    return { sessionToken: sessToken, packageToken: pkgToken };
+    // Anamnesis / Patient Intake token detection
+    let anamnesisToken = query.get('ficha') || query.get('anamnese') || query.get('cadastro') || query.get('intake');
+    if (!anamnesisToken && hash.includes('ficha=')) {
+      const match = hash.split('ficha=')[1];
+      anamnesisToken = match ? match.split('&')[0].split('?')[0] : null;
+    }
+    if (!anamnesisToken && hash.includes('anamnese=')) {
+      const match = hash.split('anamnese=')[1];
+      anamnesisToken = match ? match.split('&')[0].split('?')[0] : null;
+    }
+    if (!anamnesisToken && hash.includes('cadastro=')) {
+      const match = hash.split('cadastro=')[1];
+      anamnesisToken = match ? match.split('&')[0].split('?')[0] : null;
+    }
+
+    return { sessionToken: sessToken, packageToken: pkgToken, anamnesisToken };
   };
 
   const [tokens, setTokens] = useState(getPublicTokens);
@@ -88,7 +108,7 @@ export function App() {
   const clearPublicUrl = () => {
     if (typeof window !== 'undefined') {
       window.history.replaceState(null, '', window.location.pathname);
-      setTokens({ sessionToken: null, packageToken: null });
+      setTokens({ sessionToken: null, packageToken: null, anamnesisToken: null });
     }
   };
 
@@ -123,6 +143,17 @@ export function App() {
   const [isSingleSessionModalOpen, setIsSingleSessionModalOpen] = useState(false);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+  const [isSendAnamnesisModalOpen, setIsSendAnamnesisModalOpen] = useState(false);
+  const [anamnesisModalPatient, setAnamnesisModalPatient] = useState<Patient | null>(null);
+  const [newSubmissionToast, setNewSubmissionToast] = useState<{ patientName: string; patientId?: string } | null>(null);
+
+  // Auto-clear toast
+  useEffect(() => {
+    if (newSubmissionToast) {
+      const timer = setTimeout(() => setNewSubmissionToast(null), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [newSubmissionToast]);
 
   // Load tenant data & filter according to user role and tenant
   const loadData = async () => {
@@ -199,17 +230,43 @@ export function App() {
         refreshTenantData();
       };
 
+      const handleAnamnesisSubmitted = (e: any) => {
+        loadData();
+        refreshTenantData();
+        const pName = e.detail?.patient?.name || 'Um paciente';
+        const pId = e.detail?.patient?.id;
+        setNewSubmissionToast({ patientName: pName, patientId: pId });
+      };
+
+      const handlePatientDeleted = (e: any) => {
+        const deletedId = e.detail?.id;
+        if (deletedId) {
+          setPatients(prev => prev.filter(p => p.id !== deletedId));
+          setSelectedPatient(curr => (curr?.id === deletedId ? null : curr));
+        }
+        loadData();
+        refreshTenantData();
+      };
+
       window.addEventListener('storage', handleStorageChange);
       window.addEventListener('session-signed', handleCustomSync);
+      window.addEventListener('anamnesis-submitted', handleAnamnesisSubmitted);
+      window.addEventListener('patient-deleted', handlePatientDeleted);
 
       return () => {
         window.removeEventListener('storage', handleStorageChange);
         window.removeEventListener('session-signed', handleCustomSync);
+        window.removeEventListener('anamnesis-submitted', handleAnamnesisSubmitted);
+        window.removeEventListener('patient-deleted', handlePatientDeleted);
       };
     }
   }, [tenant, user]);
 
-  // Handle Public Links (Without requiring authentication)
+  // Handle Public Links (Without requiring authentication - patient has access ONLY to the public form)
+  if (tokens.anamnesisToken) {
+    return <PublicAnamnesisPage token={tokens.anamnesisToken} onBackToApp={clearPublicUrl} />;
+  }
+
   if (tokens.packageToken) {
     return <PublicPackageValidationPage token={tokens.packageToken} onBackToApp={clearPublicUrl} />;
   }
@@ -222,6 +279,23 @@ export function App() {
   if (!user || !tenant) {
     return <LoginView />;
   }
+
+  const handleDeletePatient = async (patientId: string) => {
+    if (!tenant) return;
+    // Optimistic UI state update
+    setPatients(prev => prev.filter(p => p.id !== patientId));
+    if (selectedPatient?.id === patientId) {
+      setSelectedPatient(null);
+    }
+    try {
+      await api.deletePatient(patientId, tenant.id);
+      await loadData();
+      refreshTenantData();
+    } catch (err) {
+      console.error('Erro ao excluir paciente:', err);
+      await loadData();
+    }
+  };
 
   return (
     <div className="flex h-screen bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 overflow-hidden font-sans">
@@ -366,6 +440,10 @@ export function App() {
                       onOpenAnamnesis={() => setIsAnamnesisModalOpen(true)}
                       onOpenPackageModal={() => setIsPackageModalOpen(true)}
                       onOpenSingleSessionModal={() => setIsSingleSessionModalOpen(true)}
+                      onOpenSendAnamnesisLink={pat => {
+                        setAnamnesisModalPatient(pat || selectedPatient);
+                        setIsSendAnamnesisModalOpen(true);
+                      }}
                       onAttendSession={session => {
                         setSelectedSessionForAttendance(session);
                         setIsAttendanceModalOpen(true);
@@ -382,12 +460,17 @@ export function App() {
                       onRefreshPatient={async () => {
                         await loadData();
                       }}
+                      onDeletePatient={handleDeletePatient}
                     />
                   ) : (
                     <PatientList
                       patients={patients}
                       professionals={professionals}
                       onSelectPatient={patient => setSelectedPatient(patient)}
+                      onOpenSendAnamnesisLink={pat => {
+                        setAnamnesisModalPatient(pat || null);
+                        setIsSendAnamnesisModalOpen(true);
+                      }}
                       onOpenCreateModal={() => {
                         setPatientToEdit(null);
                         setIsPatientModalOpen(true);
@@ -396,12 +479,7 @@ export function App() {
                         setPatientToEdit(patient);
                         setIsPatientModalOpen(true);
                       }}
-                      onDeletePatient={async patientId => {
-                        if (window.confirm('Tem certeza que deseja excluir este paciente?')) {
-                          await api.deletePatient(patientId, tenant.id);
-                          await loadData();
-                        }
-                      }}
+                      onDeletePatient={handleDeletePatient}
                     />
                   )}
                 </>
@@ -430,7 +508,7 @@ export function App() {
                         setPatientToEdit(patient);
                         setIsPatientModalOpen(true);
                       }}
-                      onDeletePatient={() => {}}
+                      onDeletePatient={handleDeletePatient}
                     />
                   </div>
                 </div>
@@ -773,6 +851,69 @@ export function App() {
           }}
           onRefresh={loadData}
         />
+      )}
+
+      {/* Send WhatsApp Anamnesis / Registration Link Modal */}
+      {isSendAnamnesisModalOpen && (
+        <SendAnamnesisLinkModal
+          isOpen={isSendAnamnesisModalOpen}
+          onClose={() => {
+            setIsSendAnamnesisModalOpen(false);
+            setAnamnesisModalPatient(null);
+          }}
+          patient={anamnesisModalPatient || undefined}
+          patients={patients}
+          professionals={professionals}
+        />
+      )}
+
+      {/* Real-time Toast Notification when Patient Submits Anamnesis */}
+      {newSubmissionToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-emerald-700 text-white p-4 rounded-2xl shadow-2xl border border-emerald-500/50 flex items-start gap-3 animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="w-10 h-10 rounded-xl bg-emerald-800/80 flex items-center justify-center shrink-0 border border-emerald-400/30">
+            <CheckCircle2 className="w-5 h-5 text-emerald-200" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold uppercase tracking-wider text-emerald-200">
+              Nova Ficha Recebida!
+            </p>
+            <p className="text-sm font-semibold mt-0.5">
+              <strong>{newSubmissionToast.patientName}</strong> acabou de preencher e assinar a ficha de cadastro e anamnese!
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (newSubmissionToast.patientId) {
+                    const pat = patients.find(p => p.id === newSubmissionToast.patientId);
+                    if (pat) {
+                      setSelectedPatient(pat);
+                      setActiveView('patients');
+                    }
+                  }
+                  setNewSubmissionToast(null);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-white text-emerald-900 text-xs font-bold hover:bg-emerald-50 transition shadow-xs"
+              >
+                Visualizar Prontuário
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewSubmissionToast(null)}
+                className="text-xs text-emerald-200 hover:text-white underline font-medium"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNewSubmissionToast(null)}
+            className="text-emerald-200 hover:text-white p-1 rounded-lg transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
     </div>
   );
