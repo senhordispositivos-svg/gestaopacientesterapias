@@ -189,22 +189,22 @@
       "patientId": "pat-1788364258960-jihh",
       "healthHistory": {},
       "treatments": {
-        "tratamentoMedico": false,
-        "medicamentos": false,
         "fisioterapia": false,
-        "outroTratamento": false
+        "medicamentos": false,
+        "outroTratamento": false,
+        "tratamentoMedico": false
       },
       "habits": {
-        "bebidaAlcoolica": false,
         "dormeBem": true,
         "atividadeFisica": false,
+        "bebidaAlcoolica": false,
         "jaRealizouMassoterapia": false
       },
       "evaluation": {},
       "responsibilityTermAccepted": true,
       "patientSignatureUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-      "city": "",
-      "state": "",
+      "city": null,
+      "state": null,
       "signedAt": "2026-09-02T15:50:58.958Z",
       "signedByIp": "127.0.0.1",
       "createdAt": "2026-09-02T15:50:58.958Z"
@@ -257,6 +257,20 @@
   "publicTokens": [],
   "auditLogs": [
     {
+      "id": "log-1788365427139-8lts",
+      "tenantId": "tenant-demo-1",
+      "userId": "user-master-2",
+      "userName": "senhordispositivos",
+      "userRole": "SUPER_ADMIN",
+      "action": "TEST_DB_CONNECTION",
+      "entity": "DATABASE",
+      "entityId": "database-engine",
+      "ipAddress": "127.0.0.1",
+      "timestamp": "2026-09-02T16:10:27.139Z",
+      "result": "SUCCESS",
+      "details": "Diagnóstico de banco de dados executado pelo Super Usuário. Status: ONLINE. Tempo de resposta: 3378ms."
+    },
+    {
       "id": "log-1788364263357-dc0g",
       "tenantId": "tenant-demo-1",
       "userId": "sys",
@@ -293,6 +307,7 @@
       "patientId": "pat-1788364258960-jihh",
       "patientName": "TESTE PACIENTE INSTANTANEO",
       "documentType": "ANAMNESIS",
+      "documentId": null,
       "referenceId": "anam-1788364258960",
       "signatureUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
       "signedByName": "TESTE PACIENTE INSTANTANEO",
