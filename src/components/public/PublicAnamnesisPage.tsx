@@ -232,6 +232,9 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
   }, [loading, isSubmitted]);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if ('touches' in e && e.cancelable) {
+      e.preventDefault();
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -251,6 +254,9 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
+    if ('touches' in e && e.cancelable) {
+      e.preventDefault();
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -401,8 +407,8 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
   // Success Confirmation Screen
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-center">
-        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 p-8 text-center space-y-6 animate-fade-in">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-center notranslate" translate="no">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 p-8 text-center space-y-6 animate-fade-in notranslate">
           <div className="w-20 h-20 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
             <CheckCircle2 className="w-12 h-12" />
           </div>
@@ -444,9 +450,9 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
             <button
               type="button"
               onClick={onBackToApp}
-              className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition"
+              className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition notranslate"
             >
-              Voltar ao Painel da Clínica
+              <span>Voltar ao Painel da Clínica</span>
             </button>
           )}
         </div>
@@ -455,7 +461,7 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-6 sm:py-10 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-6 sm:py-10 px-4 sm:px-6 lg:px-8 flex flex-col items-center notranslate" translate="no">
       <div className="max-w-3xl w-full space-y-6">
         {/* Header with Clinic Branding & Security Badge */}
         <header className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
@@ -983,18 +989,18 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
             <button
               type="submit"
               disabled={submitting}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-teal-600/20 transition disabled:opacity-50"
+              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-teal-600/20 transition disabled:opacity-50 notranslate"
             >
               {submitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Gravando Ficha no Sistema...
-                </>
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <span>Gravando Ficha no Sistema...</span>
+                </span>
               ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  Concluir e Enviar Ficha
-                </>
+                <span className="flex items-center justify-center gap-2">
+                  <Send className="w-4 h-4 shrink-0" />
+                  <span>Concluir e Enviar Ficha</span>
+                </span>
               )}
             </button>
           </div>

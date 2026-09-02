@@ -221,10 +221,10 @@ export const PublicPackageValidationPage: React.FC<PublicPackageValidationPagePr
             <button
               type="submit"
               disabled={isSubmitting || !confirmedCheck || !signatureUrl}
-              className="w-full py-3.5 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-black uppercase tracking-wider shadow-xl transition disabled:opacity-40 flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-black uppercase tracking-wider shadow-xl transition disabled:opacity-40 flex items-center justify-center gap-2 notranslate"
             >
-              <FileSignature className="w-4 h-4" />
-              {isSubmitting ? 'Enviando Ciente...' : 'ASSINAR E CONFIRMAR CIENTE DO PACOTE'}
+              <FileSignature className="w-4 h-4 shrink-0" />
+              <span>{isSubmitting ? 'Enviando Ciente...' : 'ASSINAR E CONFIRMAR CIENTE DO PACOTE'}</span>
             </button>
           </form>
         </div>
