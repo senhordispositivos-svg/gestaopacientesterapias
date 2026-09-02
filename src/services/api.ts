@@ -24,6 +24,7 @@ import {
 } from '../utils/validationPayload';
 import { INITIAL_TENANTS, INITIAL_USERS, INITIAL_PATIENTS, INITIAL_PACKAGES } from './mockSeed';
 import { supabaseDirectApi } from './supabaseDirectApi';
+import { realtimeService } from './realtime';
 
 const STORAGE_KEYS = {
   TENANTS: 'clinica_tenants',
@@ -535,17 +536,18 @@ export const api = {
   // Patients
   async getPatients(tenantId: string, user?: User | null): Promise<Patient[]> {
     const mergedMap = new Map<string, Patient>();
-    const deletedIds = new Set<string>(getLocal<string[]>(STORAGE_KEYS.DELETED_PATIENTS, []));
-    // Ensure deleted tombstone for Fabio
-    deletedIds.add('pat-fabio-santos');
-    deletedIds.add('005.835.893-59');
+    const rawDeleted = getLocal<string[]>(STORAGE_KEYS.DELETED_PATIENTS, []);
+    // Purge any old legacy tombstones from local storage
+    const cleanedDeleted = rawDeleted.filter(id => id !== 'pat-fabio-santos' && id !== '005.835.893-59');
+    if (cleanedDeleted.length !== rawDeleted.length) {
+      setLocal(STORAGE_KEYS.DELETED_PATIENTS, cleanedDeleted);
+    }
+    const deletedIds = new Set<string>(cleanedDeleted);
 
     const isDeleted = (p: Patient) => {
       if (!p || !p.id) return true;
       if (p.deletedAt) return true;
       if (deletedIds.has(p.id)) return true;
-      if (p.cpf && deletedIds.has(p.cpf)) return true;
-      if (p.name && p.name.toUpperCase().includes('FABIO SANTOS')) return true;
       return false;
     };
 
@@ -565,54 +567,46 @@ export const api = {
     // 2. Add local storage patients (skipping deleted ones)
     const localList = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
     localList.forEach(p => {
-      if (isDeleted(p)) {
-        deletedIds.add(p.id);
-        if (p.cpf) deletedIds.add(p.cpf);
-      } else {
+      if (!isDeleted(p)) {
         mergedMap.set(p.id, p);
       }
     });
 
     // 3. Query Express backend if available (e.g. on AI Studio / Cloud Run)
-    const serverRes = await tryFetch('/api/patients', {
-      headers: {
-        'x-tenant-id': tenantId,
-        'x-user-id': user?.id || '',
-        'x-user-role': user?.role || '',
-        'x-user-access-mode': user?.accessMode || '',
-      },
-    });
+    try {
+      const serverRes = await tryFetch('/api/patients', {
+        headers: {
+          'x-tenant-id': tenantId,
+          'x-user-id': user?.id || '',
+          'x-user-role': user?.role || '',
+          'x-user-access-mode': user?.accessMode || '',
+        },
+      });
 
-    if (serverRes) {
-      try {
+      if (serverRes) {
         const serverPatients: Patient[] = await serverRes.json();
         if (Array.isArray(serverPatients)) {
-          // Reconcile server patients
           serverPatients.forEach(p => {
-            if (isDeleted(p)) {
-              deletedIds.add(p.id);
-              if (p.cpf) deletedIds.add(p.cpf);
-              mergedMap.delete(p.id);
-            } else {
+            if (!isDeleted(p)) {
               mergedMap.set(p.id, p);
+            } else {
+              mergedMap.delete(p.id);
             }
           });
         }
-      } catch (err) {
-        console.warn('Error parsing server patients:', err);
       }
-    } else if (supabaseDirectApi.isEnabled()) {
-      // 4. When deployed on Vercel/Netlify or offline without server.ts, query Supabase Cloud directly!
+    } catch (err) {
+      console.warn('Error parsing server patients:', err);
+    }
+
+    // 4. Query Supabase Cloud if enabled (e.g. on Vercel or cloud multi-device)
+    if (supabaseDirectApi.isEnabled()) {
       try {
         const cloudPatients = await supabaseDirectApi.getPatients(tenantId);
         if (Array.isArray(cloudPatients) && cloudPatients.length > 0) {
           cloudPatients.forEach(p => {
             if (!isDeleted(p)) {
               mergedMap.set(p.id, p);
-            } else {
-              deletedIds.add(p.id);
-              if (p.cpf) deletedIds.add(p.cpf);
-              mergedMap.delete(p.id);
             }
           });
         }
@@ -1844,57 +1838,10 @@ export const api = {
     signatureUrl: string;
     tenantId?: string;
   }): Promise<{ success: boolean; patient: Patient; anamnesis: Anamnesis; message?: string }> {
-    // 1. Try Server API
-    let serverRes = await tryFetch('/api/public/anamnesis-submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-
-    if (serverRes) {
-      try {
-        const json = await serverRes.json();
-        if (json && json.success) {
-          // Sync with LocalStorage
-          if (json.patient) {
-            const list = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
-            const pIdx = list.findIndex(p => p.id === json.patient.id);
-            if (pIdx !== -1) list[pIdx] = json.patient;
-            else list.unshift(json.patient);
-            setLocal(STORAGE_KEYS.PATIENTS, list);
-          }
-          if (json.anamnesis) {
-            const aList = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
-            const aIdx = aList.findIndex(a => a.patientId === json.anamnesis.patientId);
-            if (aIdx !== -1) aList[aIdx] = json.anamnesis;
-            else aList.unshift(json.anamnesis);
-            setLocal(STORAGE_KEYS.ANAMNESIS, aList);
-          }
-
-          // Trigger realtime event in client
-          try {
-            localStorage.setItem('fisiopro_last_anamnesis_submission', JSON.stringify({
-              patientId: json.patient?.id,
-              patientName: json.patient?.name,
-              time: Date.now(),
-            }));
-            window.dispatchEvent(new CustomEvent('anamnesis-submitted', {
-              detail: { patient: json.patient, anamnesis: json.anamnesis }
-            }));
-          } catch (e) {}
-
-          return json;
-        }
-      } catch (e) {
-        console.warn('Failed to parse server anamnesis response:', e);
-      }
-    }
-
-    // 2. LocalStorage Fallback (Offline / Vercel static)
     const nowIso = new Date().toISOString();
+    const tenantId = data.tenantId || data.patientData.tenantId || 'tenant-demo-1';
     const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
     const anamneses = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
-    const tenantId = data.tenantId || data.patientData.tenantId || 'tenant-demo-1';
 
     let patientIdx = -1;
     if (data.patientData.id) {
@@ -1913,7 +1860,9 @@ export const api = {
         ...patients[patientIdx],
         ...data.patientData,
         updatedAt: nowIso,
+        deletedAt: undefined,
       };
+      delete (patients[patientIdx] as any).deletedAt;
       finalPatient = patients[patientIdx];
     } else {
       finalPatient = {
@@ -1944,9 +1893,16 @@ export const api = {
     }
     setLocal(STORAGE_KEYS.PATIENTS, patients);
 
+    // CRITICAL: Un-tombstone immediately so the newly submitted patient is instantly visible
+    const rawDel = getLocal<string[]>(STORAGE_KEYS.DELETED_PATIENTS, []);
+    const cleanDel = rawDel.filter(
+      id => id !== finalPatient.id && (!finalPatient.cpf || id !== finalPatient.cpf) && id !== 'pat-fabio-santos' && id !== '005.835.893-59'
+    );
+    setLocal(STORAGE_KEYS.DELETED_PATIENTS, cleanDel);
+
     // Save Anamnesis
     const aIdx = anamneses.findIndex(a => a.patientId === finalPatient.id);
-    const finalAnamnesis: Anamnesis = {
+    let finalAnamnesis: Anamnesis = {
       id: aIdx !== -1 ? anamneses[aIdx].id : `anam-${Date.now()}`,
       tenantId,
       patientId: finalPatient.id,
@@ -2000,7 +1956,7 @@ export const api = {
     }
     setLocal(STORAGE_KEYS.ANAMNESIS, anamneses);
 
-    // Add Signature Record
+    // Save Signature Record
     if (data.signatureUrl) {
       const signatures = getLocal<SignatureRecord[]>(STORAGE_KEYS.SIGNATURES, []);
       signatures.unshift({
@@ -2019,6 +1975,56 @@ export const api = {
       setLocal(STORAGE_KEYS.SIGNATURES, signatures);
     }
 
+    // 1. Dual-Sync: Direct to Supabase Cloud (ensures instant persistence across mobile & desktop on Vercel/Netlify)
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        await supabaseDirectApi.upsertPatient(finalPatient);
+        await supabaseDirectApi.saveAnamnesis(finalAnamnesis);
+        if (data.signatureUrl) {
+          await supabaseDirectApi.createSignature({
+            tenantId,
+            patientId: finalPatient.id,
+            patientName: finalPatient.name,
+            documentType: 'ANAMNESIS',
+            referenceId: finalAnamnesis.id,
+            signatureUrl: data.signatureUrl,
+            signedByName: finalPatient.name,
+            signedAt: nowIso,
+            ipAddress: '127.0.0.1',
+            hash: `SIG-ANAM-${Date.now().toString(16).toUpperCase()}`,
+          });
+        }
+      } catch (sbErr) {
+        console.warn('Supabase direct intake sync notice:', sbErr);
+      }
+    }
+
+    // 2. Dual-Sync: Server API (Express backend)
+    try {
+      const serverRes = await tryFetch('/api/public/anamnesis-submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...data,
+          patientData: finalPatient,
+          anamnesisData: finalAnamnesis,
+        }),
+      });
+
+      if (serverRes) {
+        const json = await serverRes.json();
+        if (json && json.patient) {
+          finalPatient = { ...finalPatient, ...json.patient };
+        }
+        if (json && json.anamnesis) {
+          finalAnamnesis = { ...finalAnamnesis, ...json.anamnesis };
+        }
+      }
+    } catch (srvErr) {
+      console.warn('Express server intake submission notice:', srvErr);
+    }
+
+    // 3. Trigger immediate local & network realtime events
     try {
       localStorage.setItem('fisiopro_last_anamnesis_submission', JSON.stringify({
         patientId: finalPatient.id,
@@ -2028,13 +2034,15 @@ export const api = {
       window.dispatchEvent(new CustomEvent('anamnesis-submitted', {
         detail: { patient: finalPatient, anamnesis: finalAnamnesis }
       }));
+      realtimeService.notifyDataChange('patients', 'create', finalPatient);
+      realtimeService.notifyDataChange('anamneses', 'create', finalAnamnesis);
     } catch (e) {}
 
     return {
       success: true,
       patient: finalPatient,
       anamnesis: finalAnamnesis,
-      message: 'Ficha de cadastro e anamnese gravada com sucesso!',
+      message: 'Ficha de cadastro e anamnese gravada e sincronizada com sucesso!',
     };
   },
 

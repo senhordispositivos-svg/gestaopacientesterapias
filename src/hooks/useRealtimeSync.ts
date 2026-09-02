@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { realtimeService } from '../services/realtime';
 import { RealtimeConnectionStatus, RealtimeEvent } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface UseRealtimeSyncProps {
   tenantId: string | undefined;
@@ -27,6 +28,38 @@ export function useRealtimeSync({ tenantId, onSync }: UseRealtimeSyncProps) {
       setLastSyncTime(new Date());
       onSync(event);
     });
+
+    // Supabase Realtime subscription for instant multi-device / cloud cross-platform sync
+    let supabaseChannel: any = null;
+    if (isSupabaseConfigured) {
+      try {
+        supabaseChannel = supabase
+          .channel(`clinic-realtime-${tenantId}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'patients' },
+            () => {
+              setLastSyncTime(new Date());
+              onSync();
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'anamneses' },
+            () => {
+              setLastSyncTime(new Date());
+              onSync();
+            }
+          )
+          .subscribe((chanStatus) => {
+            if (chanStatus === 'SUBSCRIBED') {
+              setStatus('connected');
+            }
+          });
+      } catch (err) {
+        console.warn('Supabase realtime channel setup notice:', err);
+      }
+    }
 
     // Mobile & Desktop resume handlers: when window gains focus or visibility becomes 'visible'
     const handleVisibilityChange = () => {
@@ -56,6 +89,9 @@ export function useRealtimeSync({ tenantId, onSync }: UseRealtimeSyncProps) {
     return () => {
       unsubStatus();
       unsubEvents();
+      if (supabaseChannel) {
+        supabase.removeChannel(supabaseChannel);
+      }
       clearInterval(pollInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);

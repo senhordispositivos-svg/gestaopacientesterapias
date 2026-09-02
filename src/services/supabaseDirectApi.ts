@@ -90,11 +90,18 @@ export const supabaseDirectApi = {
 
   // Patients
   async getPatients(tenantId: string): Promise<Patient[]> {
-    const { data, error } = await supabase
+    let query = supabase
       .from('patients')
       .select('*')
-      .eq('tenant_id', tenantId)
       .is('deleted_at', null);
+
+    if (tenantId && tenantId !== 'tenant-demo-1') {
+      query = query.or(`tenant_id.eq.${tenantId},tenant_id.eq.tenant-demo-1`);
+    } else if (tenantId) {
+      query = query.eq('tenant_id', tenantId);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return (data || []).map((p: Record<string, unknown>) => ({
@@ -126,6 +133,51 @@ export const supabaseDirectApi = {
       updatedAt: p.updated_at as string,
       deletedAt: p.deleted_at as string | undefined,
     }));
+  },
+
+  async upsertPatient(patient: Patient): Promise<Patient> {
+    const id = patient.id || `pat-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    const now = new Date().toISOString();
+    const row = {
+      id,
+      tenant_id: patient.tenantId || 'tenant-demo-1',
+      name: patient.name,
+      email: patient.email || null,
+      cpf: patient.cpf || null,
+      rg: patient.rg || null,
+      gender: patient.gender || null,
+      phone: patient.phone || '',
+      whatsapp: patient.whatsapp || null,
+      profession: patient.profession || null,
+      birth_date: patient.birthDate || null,
+      cep: patient.cep || null,
+      street: patient.street || null,
+      number: patient.number || null,
+      complement: patient.complement || null,
+      neighborhood: patient.neighborhood || null,
+      city: patient.city || null,
+      state: patient.state || null,
+      reference_point: patient.referencePoint || null,
+      notes: patient.notes || null,
+      photo_url: patient.photoUrl || null,
+      avatar_url: patient.avatarUrl || null,
+      assigned_professional_id: patient.assignedProfessionalId || null,
+      assigned_professional_name: patient.assignedProfessionalName || null,
+      created_at: patient.createdAt || now,
+      updated_at: now,
+      deleted_at: null,
+    };
+
+    try {
+      const { error } = await supabase.from('patients').upsert(row);
+      if (error) {
+        console.warn('Supabase upsertPatient warning, attempting insert fallback:', error);
+        await supabase.from('patients').insert(row);
+      }
+    } catch (e) {
+      console.warn('Supabase upsertPatient failed:', e);
+    }
+    return { ...patient, id };
   },
 
   async createPatient(patient: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Promise<Patient> {

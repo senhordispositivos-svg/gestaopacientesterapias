@@ -2151,12 +2151,15 @@ app.post('/api/public/anamnesis-submit', (req, res) => {
   let finalPatient: Patient;
 
   if (patientIdx !== -1) {
-    // Update existing patient with new intake information
+    // Update existing patient with new intake information and clear any soft deletion
+    delete (db.patients[patientIdx] as any).deletedAt;
     db.patients[patientIdx] = {
       ...db.patients[patientIdx],
       ...patientData,
+      deletedAt: undefined,
       updatedAt: nowIso,
     };
+    delete (db.patients[patientIdx] as any).deletedAt;
     finalPatient = db.patients[patientIdx];
   } else {
     // Create new patient
@@ -2292,6 +2295,14 @@ app.post('/api/public/anamnesis-submit', (req, res) => {
     type: 'PATIENT_UPDATED',
     entity: 'patients',
     action: 'update',
+    payload: finalPatient,
+    id: finalPatient.id,
+  });
+
+  broadcastRealtime(tenantId, {
+    type: 'PATIENT_CREATED',
+    entity: 'patients',
+    action: 'create',
     payload: finalPatient,
     id: finalPatient.id,
   });
