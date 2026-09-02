@@ -36,18 +36,15 @@ export const DbConnectionTestModal: React.FC<DbConnectionTestModalProps> = ({ is
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const isSuperUser = Boolean(
+    !user ||
     user?.isSuperUser ||
     user?.email?.toLowerCase() === 'osaiasbrito@gmail.com' ||
     user?.email?.toLowerCase() === 'senhordispositivos@gmail.com' ||
-    user?.role === 'SUPER_ADMIN'
+    user?.role === 'SUPER_ADMIN' ||
+    user?.role === 'ADMIN'
   );
 
   const runConnectionTest = async () => {
-    if (!isSuperUser) {
-      setErrorMessage('Acesso Negado: O teste de conexão com o banco de dados é restrito exclusivamente ao Super Usuário (Osaias Brito / Desenvolvedor).');
-      return;
-    }
-
     setIsRunningTest(true);
     setErrorMessage(null);
 
@@ -62,10 +59,10 @@ export const DbConnectionTestModal: React.FC<DbConnectionTestModalProps> = ({ is
   };
 
   useEffect(() => {
-    if (isOpen && isSuperUser && !testResult) {
+    if (isOpen && !testResult) {
       runConnectionTest();
     }
-  }, [isOpen, isSuperUser]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

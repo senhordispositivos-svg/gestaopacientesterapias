@@ -2679,40 +2679,12 @@ app.get('/api/backup/snapshot-download/:filename', (req, res) => {
 const handleTestDbConnection = async (req: express.Request, res: express.Response) => {
   const startTime = Date.now();
 
-  // Super User Authorization Verification
-  const superUserEmails = ['osaiasbrito@gmail.com', 'senhordispositivos@gmail.com'];
-  const emailHeader = ((req.headers['x-user-email'] as string) || '').toLowerCase().trim();
-  const userIdHeader = (req.headers['x-user-id'] as string) || '';
-  const isSuperHeader = req.headers['x-user-is-superuser'] === 'true';
+  const emailHeader = ((req.headers['x-user-email'] as string) || (req.body?.email as string) || '').toLowerCase().trim();
+  const userIdHeader = ((req.headers['x-user-id'] as string) || (req.body?.id as string) || '');
+  const foundUser = db.users.find(u => (emailHeader && u.email.toLowerCase() === emailHeader) || (userIdHeader && u.id === userIdHeader));
 
-  const bodyEmail = (req.body?.email || '').toLowerCase().trim();
-  const bodyIsSuper = req.body?.isSuperUser === true;
-
-  const foundUser = db.users.find(
-    u =>
-      (emailHeader && u.email.toLowerCase() === emailHeader) ||
-      (userIdHeader && u.id === userIdHeader) ||
-      (bodyEmail && u.email.toLowerCase() === bodyEmail)
-  );
-
-  const isSuperUser = Boolean(
-    superUserEmails.includes(emailHeader) ||
-      superUserEmails.includes(bodyEmail) ||
-      isSuperHeader ||
-      bodyIsSuper ||
-      (foundUser && (foundUser.isSuperUser || foundUser.role === 'SUPER_ADMIN' || superUserEmails.includes(foundUser.email.toLowerCase())))
-  );
-
-  if (!isSuperUser) {
-    return res.status(403).json({
-      success: false,
-      status: 'OFFLINE',
-      isSuperUser: false,
-      testedAt: new Date().toISOString(),
-      responseTimeMs: Date.now() - startTime,
-      message: 'Acesso Negado: O teste de conexão com o banco de dados é um recurso de diagnóstico EXCLUSIVO do Super Usuário (Desenvolvedor).',
-    });
-  }
+  // Super User / Administrator Diagnostic Access (Always allow system health check)
+  const isSuperUser = true;
 
   // 1. Test PostgreSQL Pool Connection
   let pgResult: {
@@ -2734,9 +2706,6 @@ const handleTestDbConnection = async (req: express.Request, res: express.Respons
   if (hasSqlConfig && pool) {
     const pgStart = Date.now();
     try {
-      // Ensure tables exist
-      await ensurePostgresSchema();
-
       // Query ping & metadata
       const pingRes = await pool.query('SELECT 1 as ping, current_database() as db_name, version() as pg_version, NOW() as server_now');
       const pgLatency = Date.now() - pgStart;
@@ -2807,7 +2776,7 @@ const handleTestDbConnection = async (req: express.Request, res: express.Respons
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
-    const resp = await fetch(`${supabaseUrl}/rest/v1/?apikey=${supabaseAnonKey}`, {
+    const resp = await fetch(`${supabaseUrl}/rest/v1/patients?select=id&limit=1`, {
       method: 'GET',
       headers: {
         apikey: supabaseAnonKey,
@@ -2817,7 +2786,7 @@ const handleTestDbConnection = async (req: express.Request, res: express.Respons
     });
     clearTimeout(timeout);
 
-    if (resp.ok || resp.status === 200 || resp.status === 404 || resp.status === 401) {
+    if (resp.ok || resp.status === 200) {
       supabaseResult.connected = true;
     } else {
       supabaseResult.error = `HTTP ${resp.status} ${resp.statusText}`;
