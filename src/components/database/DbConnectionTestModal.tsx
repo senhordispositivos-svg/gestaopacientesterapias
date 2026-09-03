@@ -59,7 +59,7 @@ export const DbConnectionTestModal: React.FC<DbConnectionTestModalProps> = ({ is
   };
 
   useEffect(() => {
-    if (isOpen && !testResult) {
+    if (isOpen) {
       runConnectionTest();
     }
   }, [isOpen]);
@@ -116,8 +116,22 @@ export const DbConnectionTestModal: React.FC<DbConnectionTestModalProps> = ({ is
             </div>
           ) : (
             <>
-              {/* Overall Status Banner */}
-              {testResult && (
+              {/* Overall Status Banner or Testing State */}
+              {isRunningTest ? (
+                <div className="p-4 rounded-2xl border border-teal-300 dark:border-teal-800/80 bg-teal-50/70 dark:bg-teal-950/40 text-teal-950 dark:text-teal-200 flex items-center gap-3 animate-pulse">
+                  <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black uppercase tracking-wider block text-teal-900 dark:text-teal-100">
+                      Executando Diagnóstico da Conexão...
+                    </span>
+                    <p className="text-xs text-teal-700 dark:text-teal-300 mt-0.5">
+                      Consultando ping relacional PostgreSQL e API REST Supabase em tempo real.
+                    </p>
+                  </div>
+                </div>
+              ) : testResult ? (
                 <div
                   className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition ${
                     testResult.status === 'ONLINE'
@@ -173,7 +187,7 @@ export const DbConnectionTestModal: React.FC<DbConnectionTestModalProps> = ({ is
                     <span className="text-[10px] block">Testado agora</span>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Error Alert if any */}
               {errorMessage && (

@@ -2229,10 +2229,10 @@ export const api = {
   async testDbConnection(user?: User | null): Promise<DbConnectionTestResult> {
     const isSuper = true;
 
-    // 1. First Attempt: Call server-side diagnostics endpoint with timeout
+    // 1. First Attempt: Call server-side diagnostics endpoint with adequate timeout (12s)
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const res = await fetch('/api/system/test-db-connection', {
         method: 'POST',

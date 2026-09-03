@@ -2706,37 +2706,21 @@ const handleTestDbConnection = async (req: express.Request, res: express.Respons
   if (hasSqlConfig && pool) {
     const pgStart = Date.now();
     try {
-      // Query ping & metadata
-      const pingRes = await pool.query('SELECT 1 as ping, current_database() as db_name, version() as pg_version, NOW() as server_now');
+      // Query ping, metadata and table list concurrently in single round-trip
+      const [pingRes, tablesRes] = await Promise.all([
+        pool.query('SELECT current_database() as db_name, version() as pg_version, (SELECT COALESCE(sum(n_live_tup)::int, 0) FROM pg_stat_user_tables) as total_rows'),
+        pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name ASC`),
+      ]);
       const pgLatency = Date.now() - pgStart;
-
-      // Query tables count & names
-      const tablesRes = await pool.query(`
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        ORDER BY table_name ASC
-      `);
-
       const tableNames = tablesRes.rows.map((r: any) => r.table_name);
-
-      // Query row counts in core tables safely
-      let totalRows = 0;
-      for (const t of ['tenants', 'users', 'patients', 'sessions', 'packages', 'anamneses', 'evolutions', 'signatures']) {
-        if (tableNames.includes(t)) {
-          try {
-            const countRes = await pool.query(`SELECT COUNT(*) as cnt FROM "${t}"`);
-            totalRows += parseInt(countRes.rows[0]?.cnt || '0', 10);
-          } catch (_) {}
-        }
-      }
+      const totalRows = parseInt(pingRes.rows[0]?.total_rows || '0', 10);
 
       pgResult = {
         configured: true,
         connected: true,
         latencyMs: pgLatency,
         databaseName: pingRes.rows[0]?.db_name || 'postgres',
-        serverVersion: pingRes.rows[0]?.pg_version?.split(',')[0] || 'PostgreSQL 15',
+        serverVersion: pingRes.rows[0]?.pg_version?.split(',')[0] || 'PostgreSQL 17',
         tablesCount: tableNames.length,
         existingTables: tableNames,
         totalRowsCount: totalRows,

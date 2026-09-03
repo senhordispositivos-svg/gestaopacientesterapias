@@ -213,6 +213,32 @@
   ],
   "anamneses": [
     {
+      "id": "anam-1788364258960",
+      "tenantId": "tenant-demo-1",
+      "patientId": "pat-1788364258960-jihh",
+      "healthHistory": {},
+      "treatments": {
+        "fisioterapia": false,
+        "medicamentos": false,
+        "outroTratamento": false,
+        "tratamentoMedico": false
+      },
+      "habits": {
+        "dormeBem": true,
+        "atividadeFisica": false,
+        "bebidaAlcoolica": false,
+        "jaRealizouMassoterapia": false
+      },
+      "evaluation": {},
+      "responsibilityTermAccepted": true,
+      "patientSignatureUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      "city": null,
+      "state": null,
+      "signedAt": "2026-09-02T15:50:58.958Z",
+      "signedByIp": "127.0.0.1",
+      "createdAt": "2026-09-02T15:50:58.958Z"
+    },
+    {
       "id": "anam-1788365249933",
       "tenantId": "tenant-demo-1",
       "patientId": "pat-1788365249932-4bui",
@@ -264,32 +290,6 @@
       "signedAt": "2026-09-02T16:07:29.931Z",
       "signedByIp": "127.0.0.1",
       "createdAt": "2026-09-02T16:07:30.228Z"
-    },
-    {
-      "id": "anam-1788364258960",
-      "tenantId": "tenant-demo-1",
-      "patientId": "pat-1788364258960-jihh",
-      "healthHistory": {},
-      "treatments": {
-        "fisioterapia": false,
-        "medicamentos": false,
-        "outroTratamento": false,
-        "tratamentoMedico": false
-      },
-      "habits": {
-        "dormeBem": true,
-        "atividadeFisica": false,
-        "bebidaAlcoolica": false,
-        "jaRealizouMassoterapia": false
-      },
-      "evaluation": {},
-      "responsibilityTermAccepted": true,
-      "patientSignatureUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-      "city": null,
-      "state": null,
-      "signedAt": "2026-09-02T15:50:58.958Z",
-      "signedByIp": "127.0.0.1",
-      "createdAt": "2026-09-02T15:50:58.958Z"
     }
   ],
   "packages": [
@@ -338,6 +338,62 @@
   "evolutions": [],
   "publicTokens": [],
   "auditLogs": [
+    {
+      "id": "log-1788370624895-mtih",
+      "tenantId": "tenant-demo-1",
+      "userId": "sys-super",
+      "userName": "Super Usuário",
+      "userRole": "SUPER_ADMIN",
+      "action": "TEST_DB_CONNECTION",
+      "entity": "DATABASE",
+      "entityId": "database-engine",
+      "ipAddress": "127.0.0.1",
+      "timestamp": "2026-09-02T17:37:04.895Z",
+      "result": "SUCCESS",
+      "details": "Diagnóstico de banco de dados executado pelo Super Usuário. Status: ONLINE. Tempo de resposta: 1124ms."
+    },
+    {
+      "id": "log-1788370510926-tkk0",
+      "tenantId": "tenant-demo-1",
+      "userId": "sys-super",
+      "userName": "Super Usuário",
+      "userRole": "SUPER_ADMIN",
+      "action": "TEST_DB_CONNECTION",
+      "entity": "DATABASE",
+      "entityId": "database-engine",
+      "ipAddress": "127.0.0.1",
+      "timestamp": "2026-09-02T17:35:10.926Z",
+      "result": "SUCCESS",
+      "details": "Diagnóstico de banco de dados executado pelo Super Usuário. Status: ONLINE. Tempo de resposta: 3711ms."
+    },
+    {
+      "id": "log-1788370428816-74ya",
+      "tenantId": "tenant-demo-1",
+      "userId": "user-super-osaias",
+      "userName": "osaiasbrito",
+      "userRole": "SUPER_ADMIN",
+      "action": "TEST_DB_CONNECTION",
+      "entity": "DATABASE",
+      "entityId": "database-engine",
+      "ipAddress": "127.0.0.1",
+      "timestamp": "2026-09-02T17:33:48.816Z",
+      "result": "SUCCESS",
+      "details": "Diagnóstico de banco de dados executado pelo Super Usuário. Status: ONLINE. Tempo de resposta: 2445ms."
+    },
+    {
+      "id": "log-1788370412211-lxf8",
+      "tenantId": "tenant-demo-1",
+      "userId": "sys-super",
+      "userName": "Super Usuário",
+      "userRole": "SUPER_ADMIN",
+      "action": "TEST_DB_CONNECTION",
+      "entity": "DATABASE",
+      "entityId": "database-engine",
+      "ipAddress": "127.0.0.1",
+      "timestamp": "2026-09-02T17:33:32.211Z",
+      "result": "SUCCESS",
+      "details": "Diagnóstico de banco de dados executado pelo Super Usuário. Status: ONLINE. Tempo de resposta: 3893ms."
+    },
     {
       "id": "log-1788365997298-f6bz",
       "tenantId": "tenant-demo-1",
