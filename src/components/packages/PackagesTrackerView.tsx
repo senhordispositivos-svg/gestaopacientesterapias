@@ -29,6 +29,7 @@ import {
   Printer,
   Download,
   X,
+  Trash2,
 } from 'lucide-react';
 import { Patient, Session, SessionPackage, User } from '../../types';
 import { CanvasSignature } from '../common/CanvasSignature';
@@ -50,6 +51,8 @@ interface PackagesTrackerViewProps {
   onOpenAttendanceModal?: (session: Session) => void;
   onOpenWhatsAppModal?: (session: Session) => void;
   onOpenPackageDetail?: (pkg: SessionPackage) => void;
+  onOpenEditPackage?: (pkg: SessionPackage) => void;
+  onDeletePackage?: (pkg: SessionPackage) => Promise<void>;
 }
 
 export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
@@ -62,6 +65,8 @@ export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
   onOpenAttendanceModal,
   onOpenWhatsAppModal,
   onOpenPackageDetail,
+  onOpenEditPackage,
+  onDeletePackage,
 }) => {
   const { tenant, user } = useAuth();
 
@@ -71,6 +76,10 @@ export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
 
   // Collapse / Expand Packages state
   const [collapsedPackageIds, setCollapsedPackageIds] = useState<{ [id: string]: boolean }>({});
+
+  // Package Delete Confirmation Modal State
+  const [packageToDelete, setPackageToDelete] = useState<SessionPackage | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // History Consultation Modal State
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -306,6 +315,25 @@ export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
       alert('Erro ao salvar detalhes da sessão.');
     } finally {
       setIsSavingDetails(false);
+    }
+  };
+
+  // Confirm Delete Package Handler
+  const handleConfirmDelete = async () => {
+    if (!packageToDelete || !tenant) return;
+    setIsDeleting(true);
+    try {
+      if (onDeletePackage) {
+        await onDeletePackage(packageToDelete);
+      } else {
+        await api.deletePackage(tenant.id, packageToDelete.id);
+      }
+      setPackageToDelete(null);
+      onRefreshData();
+    } catch (err) {
+      alert('Erro ao excluir o pacote. Tente novamente.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -775,7 +803,7 @@ export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 self-start lg:self-center" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-2 self-start lg:self-center flex-wrap" onClick={e => e.stopPropagation()}>
                     <button
                       type="button"
                       onClick={() => togglePackageCollapse(pkg.id)}
@@ -796,12 +824,39 @@ export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
                       <button
                         type="button"
                         onClick={() => onOpenPackageDetail(pkg)}
-                        className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition"
+                        className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition"
+                        title="Ver detalhes do pacote e histórico completo"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         Detalhes
                       </button>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenEditPackage) {
+                          onOpenEditPackage(pkg);
+                        } else if (onOpenPackageDetail) {
+                          onOpenPackageDetail(pkg);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/40 text-teal-200 hover:text-white border border-teal-400/30 text-xs font-bold flex items-center gap-1.5 transition"
+                      title="Editar informações deste pacote"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      Editar
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPackageToDelete(pkg)}
+                      className="px-3 py-1.5 rounded-xl bg-rose-500/25 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-400/30 text-xs font-bold flex items-center gap-1.5 transition"
+                      title="Apagar este pacote"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Excluir
+                    </button>
                   </div>
                 </div>
 
@@ -1535,6 +1590,57 @@ export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
                 className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition"
               >
                 {isSavingDetails ? 'Salvando...' : 'Salvar Informações'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal de Exclusão de Pacote */}
+      {packageToDelete && (
+        <Modal
+          isOpen={!!packageToDelete}
+          onClose={() => {
+            if (!isDeleting) setPackageToDelete(null);
+          }}
+          title="Excluir Pacote de Sessões"
+          subtitle="Confirme a exclusão definitiva do pacote"
+          maxWidth="md"
+        >
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-300 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1 text-xs text-rose-900 dark:text-rose-200">
+                <p className="font-bold text-sm">Atenção: Ação irreversível!</p>
+                <p className="leading-relaxed">
+                  Deseja realmente apagar o pacote <strong>"{packageToDelete.title}"</strong> de{' '}
+                  <strong>{packageToDelete.patientName}</strong>?
+                </p>
+                <p className="text-[11px] text-rose-700 dark:text-rose-300">
+                  Todas as {packageToDelete.sessionCount} sessões vinculadas a este pacote serão excluídas permanentemente do sistema.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end items-center gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setPackageToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                {isDeleting ? 'Excluindo...' : 'Sim, Apagar Pacote'}
               </button>
             </div>
           </div>

@@ -1,9 +1,29 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Building2, Palette, MessageSquare, Check, Sparkles, Save, Headset, Mail, PhoneCall, Code2, Lock, Unlock, ShieldCheck, Database, Download, RefreshCw, Server, Activity } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Settings, Building2, Palette, MessageSquare, Check, Sparkles, Save, Headset, Mail, PhoneCall, Code2, Lock, Unlock, ShieldCheck, Database, Download, RefreshCw, Server, Activity, AlertCircle, Loader2, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { formatCNPJ, formatPhone, formatCEP } from '../../utils/cpf';
 import { ImageUploadInput } from '../common/ImageUploadInput';
 import { DbConnectionTestModal } from '../database/DbConnectionTestModal';
+
+// Preset elegant clinic logos that can be chosen with 1 click
+const PRESET_LOGOS = [
+  {
+    name: 'Ícone Saúde & Bem-Estar',
+    url: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=240&auto=format&fit=crop&q=80',
+  },
+  {
+    name: 'Ícone Fisioterapia Movimento',
+    url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=240&auto=format&fit=crop&q=80',
+  },
+  {
+    name: 'Ícone Coluna & Reabilitação',
+    url: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=240&auto=format&fit=crop&q=80',
+  },
+  {
+    name: 'Ícone Flor de Lótus & Terapias',
+    url: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=240&auto=format&fit=crop&q=80',
+  },
+];
 
 interface SettingsViewProps {
   onUpdate?: () => void;
@@ -40,88 +60,161 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
   const [isDbTestModalOpen, setIsDbTestModalOpen] = useState(false);
 
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const initialTenantIdRef = useRef<string | null>(null);
 
+  // Load tenant into state, but DO NOT wipe fields if the user has unsaved edits
   useEffect(() => {
     if (tenant) {
-      setTradeName(tenant.tradeName || '');
-      setCorporateName(tenant.corporateName || '');
-      setDocType(tenant.docType || 'CNPJ');
-      setDocumentNumber(tenant.documentNumber || '');
-      setEmail(tenant.email || '');
-      setPhone(tenant.phone || '');
-      setCep(tenant.cep || '');
-      setAddress(tenant.address || '');
-      setNumber(tenant.number || '');
-      setNeighborhood(tenant.neighborhood || '');
-      setCity(tenant.city || '');
-      setState(tenant.state || '');
-      setLogoUrl(tenant.logoUrl || '');
-      setPrimaryColor(tenant.primaryColor || '#0d9488');
-      setSecondaryColor(tenant.secondaryColor || '#0f766e');
-      setCustomHeader(tenant.customHeader || '');
-      setWhatsappToken(tenant.whatsappConfig?.token || '');
-      setWhatsappPhoneId(tenant.whatsappConfig?.phoneNumberId || '');
-      setWhatsappStatus(tenant.whatsappConfig?.status || 'NOT_CONFIGURED');
-      setSupportEmail(tenant.supportEmail || 'suporte@fisiomassoterapia.com.br');
-      setSupportPhone(tenant.supportPhone || '(11) 98765-4321');
+      const isNewTenant = initialTenantIdRef.current !== tenant.id;
+      if (isNewTenant || !isDirty) {
+        initialTenantIdRef.current = tenant.id;
+        setTradeName(tenant.tradeName || tenant.name || '');
+        setCorporateName(tenant.corporateName || '');
+        setDocType(tenant.docType || 'CNPJ');
+        setDocumentNumber(tenant.documentNumber || '');
+        setEmail(tenant.email || '');
+        setPhone(tenant.phone || '');
+        setCep(tenant.cep || '');
+        setAddress(tenant.address || '');
+        setNumber(tenant.number || '');
+        setNeighborhood(tenant.neighborhood || '');
+        setCity(tenant.city || '');
+        setState(tenant.state || '');
+        setLogoUrl(tenant.logoUrl || '');
+        setPrimaryColor(tenant.primaryColor || '#0d9488');
+        setSecondaryColor(tenant.secondaryColor || '#0f766e');
+        setCustomHeader(tenant.customHeader || '');
+        setWhatsappToken(tenant.whatsappConfig?.token || '');
+        setWhatsappPhoneId(tenant.whatsappConfig?.phoneNumberId || '');
+        setWhatsappStatus(tenant.whatsappConfig?.status || 'NOT_CONFIGURED');
+        setSupportEmail(tenant.supportEmail || 'suporte@fisiomassoterapia.com.br');
+        setSupportPhone(tenant.supportPhone || '(11) 98765-4321');
+      }
     }
-  }, [tenant]);
+  }, [tenant, isDirty]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!tenant) return;
 
-    await updateTenantConfig({
-      tradeName,
-      corporateName,
-      docType,
-      documentNumber,
-      email,
-      phone,
-      cep,
-      address,
-      number,
-      neighborhood,
-      city,
-      state,
-      logoUrl,
-      primaryColor,
-      secondaryColor,
-      customHeader,
-      supportEmail,
-      supportPhone,
-      creatorName: 'Osaias Brito',
-      whatsappConfig: {
-        token: whatsappToken,
-        phoneNumberId: whatsappPhoneId,
-        status: whatsappToken ? 'CONFIGURED' : 'NOT_CONFIGURED',
-      },
-    });
+    setIsSaving(true);
+    setSaveFeedback(null);
 
-    setIsSaved(true);
-    if (onUpdate) onUpdate();
-    setTimeout(() => setIsSaved(false), 3000);
+    try {
+      const updatedClinicName = tradeName.trim() || corporateName.trim() || tenant.name || 'Minha Clínica';
+
+      await updateTenantConfig({
+        name: updatedClinicName,
+        tradeName: updatedClinicName,
+        corporateName: corporateName.trim(),
+        docType,
+        documentNumber: documentNumber.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        cep: cep.trim(),
+        address: address.trim(),
+        number: number.trim(),
+        neighborhood: neighborhood.trim(),
+        city: city.trim(),
+        state: state.trim(),
+        logoUrl: logoUrl.trim(),
+        primaryColor,
+        secondaryColor,
+        customHeader: customHeader.trim() || `${updatedClinicName} - Fisioterapia e Massoterapia Integrativa`,
+        supportEmail: supportEmail.trim(),
+        supportPhone: supportPhone.trim(),
+        creatorName: 'Osaias Brito',
+        whatsappConfig: {
+          token: whatsappToken.trim(),
+          phoneNumberId: whatsappPhoneId.trim(),
+          status: whatsappToken.trim() ? 'CONFIGURED' : 'NOT_CONFIGURED',
+        },
+      });
+
+      setIsDirty(false);
+      setIsSaved(true);
+      setSaveFeedback('Configurações e logomarca da empresa salvas com sucesso!');
+
+      if (onUpdate) onUpdate();
+      setTimeout(() => {
+        setIsSaved(false);
+        setSaveFeedback(null);
+      }, 4000);
+    } catch (err) {
+      console.error('Erro ao salvar tenant:', err);
+      setSaveFeedback('Erro ao salvar as configurações. Tente novamente.');
+      alert('Erro ao salvar alterações da empresa. Verifique a conexão e tente novamente.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+      {/* Top Header with Instant Save Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Settings className="w-5 h-5 text-teal-600" />
             Configurações do Tenant & White Label
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Personalize a identidade visual, logo, cores, endereço e WhatsApp Business API da empresa.
+            Personalize a identidade visual, logo, cores, endereço e dados oficiais da empresa.
           </p>
         </div>
 
-        {isSaved && (
-          <div className="px-3.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5">
-            <Check className="w-4 h-4" /> Configurações Salvas!
-          </div>
-        )}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {saveFeedback && (
+            <div className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+              isSaved
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
+            }`}>
+              {isSaved ? <Check className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-rose-600" />}
+              <span>{saveFeedback}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => handleSave()}
+            disabled={isSaving}
+            className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-teal-500/20 transition cursor-pointer"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                Salvar Alterações
+              </>
+            )}
+          </button>
+        </div>
       </div>
+
+      {isDirty && !isSaved && (
+        <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+            <span>Você tem edições não salvas no cadastro da empresa ou logomarca.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleSave()}
+            disabled={isSaving}
+            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+          >
+            Salvar Agora
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* Section 1: Dados da Empresa */}
@@ -136,7 +229,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
               <input
                 type="text"
                 value={tradeName}
-                onChange={e => setTradeName(e.target.value)}
+                onChange={e => {
+                  setTradeName(e.target.value);
+                  setIsDirty(true);
+                }}
                 className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
               />
             </div>
@@ -146,7 +242,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
               <input
                 type="text"
                 value={corporateName}
-                onChange={e => setCorporateName(e.target.value)}
+                onChange={e => {
+                  setCorporateName(e.target.value);
+                  setIsDirty(true);
+                }}
                 className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
               />
             </div>
@@ -156,7 +255,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
               <input
                 type="text"
                 value={documentNumber}
-                onChange={e => setDocumentNumber(e.target.value)}
+                onChange={e => {
+                  setDocumentNumber(e.target.value);
+                  setIsDirty(true);
+                }}
                 className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
               />
             </div>
@@ -166,7 +268,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
               <input
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={e => {
+                  setEmail(e.target.value);
+                  setIsDirty(true);
+                }}
                 className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
               />
             </div>
@@ -176,7 +281,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
               <input
                 type="text"
                 value={phone}
-                onChange={e => setPhone(formatPhone(e.target.value))}
+                onChange={e => {
+                  setPhone(formatPhone(e.target.value));
+                  setIsDirty(true);
+                }}
                 className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
               />
             </div>
@@ -186,7 +294,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
               <input
                 type="text"
                 value={cep}
-                onChange={e => setCep(formatCEP(e.target.value))}
+                onChange={e => {
+                  setCep(formatCEP(e.target.value));
+                  setIsDirty(true);
+                }}
                 className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
               />
             </div>
@@ -194,21 +305,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
         </div>
 
         {/* Section 2: White Label & Identidade Visual */}
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
             <Palette className="w-4 h-4 text-teal-600" /> 2. Personalização White Label & Cores
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 space-y-3">
               <ImageUploadInput
                 label="Logomarca Oficial da Empresa (Logotipo)"
                 value={logoUrl}
-                onChange={setLogoUrl}
+                onChange={url => {
+                  setLogoUrl(url);
+                  setIsDirty(true);
+                }}
                 shape="square"
                 fallbackInitials={tradeName || 'E'}
-                helperText="Upload direto por arrastar/soltar ou arquivo. A logomarca é aplicada em todo o sistema, menus e relatórios."
+                helperText="Upload direto por arrastar/soltar ou arquivo PNG/JPG. A logomarca é aplicada no cabeçalho do sistema, menu lateral e relatórios."
               />
+
+              {/* Quick Model Logos */}
+              <div>
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1.5">
+                  Ou selecione uma logomarca modelo para sua clínica:
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {PRESET_LOGOS.map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setLogoUrl(preset.url);
+                        setIsDirty(true);
+                      }}
+                      className={`p-2 rounded-xl border text-left flex items-center gap-2 transition cursor-pointer ${
+                        logoUrl === preset.url
+                          ? 'border-teal-500 bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-200 ring-2 ring-teal-500/20'
+                          : 'border-slate-200 dark:border-slate-700 hover:border-teal-400 bg-slate-50/50 dark:bg-slate-800/40'
+                      }`}
+                    >
+                      <img
+                        src={preset.url}
+                        alt={preset.name}
+                        className="w-7 h-7 rounded-lg object-cover shrink-0"
+                        referrerPolicy="no-referrer"
+                      />
+                      <span className="text-[10px] font-medium leading-tight truncate">
+                        {preset.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div>
@@ -217,13 +365,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
                 <input
                   type="color"
                   value={primaryColor}
-                  onChange={e => setPrimaryColor(e.target.value)}
+                  onChange={e => {
+                    setPrimaryColor(e.target.value);
+                    setIsDirty(true);
+                  }}
                   className="w-10 h-9 rounded cursor-pointer border-0"
                 />
                 <input
                   type="text"
                   value={primaryColor}
-                  onChange={e => setPrimaryColor(e.target.value)}
+                  onChange={e => {
+                    setPrimaryColor(e.target.value);
+                    setIsDirty(true);
+                  }}
                   className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-mono"
                 />
               </div>
@@ -231,16 +385,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
 
             <div className="md:col-span-3">
               <label className="font-semibold text-slate-700 dark:text-slate-300">
-                Cabeçalho de Documentos e Prontuários Imprime
+                Cabeçalho de Documentos e Prontuários Impressos
               </label>
               <input
                 type="text"
                 value={customHeader}
-                onChange={e => setCustomHeader(e.target.value)}
+                onChange={e => {
+                  setCustomHeader(e.target.value);
+                  setIsDirty(true);
+                }}
                 placeholder="Texto para ser exibido nos relatórios e prontuários..."
                 className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
               />
             </div>
+          </div>
+
+          {/* Dedicated Section 2 Save Button */}
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {logoUrl ? 'Logomarca selecionada e pronta para salvar.' : 'Adicione uma logomarca ou use a inicial da clínica.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => handleSave()}
+              disabled={isSaving}
+              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition cursor-pointer"
+            >
+              {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Salvar Dados da Empresa & Logomarca
+            </button>
           </div>
         </div>
 
@@ -469,12 +642,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
           </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between pt-2">
+          {saveFeedback ? (
+            <p className={`text-xs font-semibold ${isSaved ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {saveFeedback}
+            </p>
+          ) : (
+            <span />
+          )}
           <button
             type="submit"
-            className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-2 shadow-md transition"
+            disabled={isSaving}
+            className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-xs font-bold flex items-center gap-2 shadow-md transition cursor-pointer"
           >
-            <Save className="w-4 h-4" /> Salvar Configurações
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {isSaving ? 'Salvando Configurações...' : 'Salvar Todas as Configurações'}
           </button>
         </div>
       </form>

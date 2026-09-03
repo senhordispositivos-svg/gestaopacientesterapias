@@ -140,6 +140,7 @@ export function App() {
 
   const [isAnamnesisModalOpen, setIsAnamnesisModalOpen] = useState(false);
   const [isPackageModalOpen, setIsPackageModalOpen] = useState(false);
+  const [packageToEdit, setPackageToEdit] = useState<SessionPackage | null>(null);
   const [isSingleSessionModalOpen, setIsSingleSessionModalOpen] = useState(false);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
@@ -295,6 +296,22 @@ export function App() {
       refreshTenantData();
     } catch (err) {
       console.error('Erro ao excluir paciente:', err);
+      await loadData();
+    }
+  };
+
+  const handleDeletePackage = async (pkg: SessionPackage) => {
+    if (!tenant) return;
+    setPackages(prev => prev.filter(p => p.id !== pkg.id));
+    setSessions(prev => prev.filter(s => s.packageId !== pkg.id));
+    if (selectedPackageDetail?.id === pkg.id) {
+      setSelectedPackageDetail(null);
+    }
+    try {
+      await api.deletePackage(tenant.id, pkg.id);
+      await loadData();
+    } catch (err) {
+      console.error('Erro ao excluir pacote:', err);
       await loadData();
     }
   };
@@ -463,6 +480,11 @@ export function App() {
                         await loadData();
                       }}
                       onDeletePatient={handleDeletePatient}
+                      onEditPackage={pkg => {
+                        setPackageToEdit(pkg);
+                        setIsPackageModalOpen(true);
+                      }}
+                      onDeletePackage={handleDeletePackage}
                     />
                   ) : (
                     <PatientList
@@ -526,6 +548,7 @@ export function App() {
                   onRefreshData={loadData}
                   onOpenCreatePackage={() => {
                     setSelectedPatient(null);
+                    setPackageToEdit(null);
                     setIsPackageModalOpen(true);
                   }}
                   onOpenAttendanceModal={session => {
@@ -538,6 +561,18 @@ export function App() {
                   }}
                   onOpenPackageDetail={pkg => {
                     setSelectedPackageDetail(pkg);
+                  }}
+                  onOpenEditPackage={pkg => {
+                    setPackageToEdit(pkg);
+                    setIsPackageModalOpen(true);
+                  }}
+                  onDeletePackage={async pkg => {
+                    if (!tenant) return;
+                    await api.deletePackage(tenant.id, pkg.id);
+                    if (selectedPackageDetail?.id === pkg.id) {
+                      setSelectedPackageDetail(null);
+                    }
+                    await loadData();
                   }}
                 />
               )}
@@ -768,21 +803,36 @@ export function App() {
         />
       )}
 
-      {/* Create Package Modal */}
+      {/* Create or Edit Package Modal */}
       <PackageModal
         isOpen={isPackageModalOpen}
         onClose={() => {
           setIsPackageModalOpen(false);
+          setPackageToEdit(null);
           setSelectedPatient(null);
         }}
         patients={patients}
         professionals={professionals}
-        preselectedPatientId={selectedPatient?.id}
+        preselectedPatientId={packageToEdit ? packageToEdit.patientId : selectedPatient?.id}
+        packageToEdit={packageToEdit}
+        onDeletePackage={async pkg => {
+          if (!tenant) return;
+          await api.deletePackage(tenant.id, pkg.id);
+          if (selectedPackageDetail?.id === pkg.id) {
+            setSelectedPackageDetail(null);
+          }
+          await loadData();
+        }}
         onSavePackage={async (pkgData) => {
           if (!tenant) return;
-          await api.createPackage(tenant.id, pkgData);
+          if (packageToEdit) {
+            await api.updatePackage(tenant.id, packageToEdit.id, pkgData);
+          } else {
+            await api.createPackage(tenant.id, pkgData);
+          }
           await loadData();
           setIsPackageModalOpen(false);
+          setPackageToEdit(null);
           setSelectedPatient(null);
         }}
       />
@@ -850,6 +900,17 @@ export function App() {
             setSelectedPackageDetail(null);
             setSelectedSessionForWhatsApp(session);
             setIsWhatsAppModalOpen(true);
+          }}
+          onDeletePackage={async pkg => {
+            if (!tenant) return;
+            await api.deletePackage(tenant.id, pkg.id);
+            setSelectedPackageDetail(null);
+            await loadData();
+          }}
+          onOpenEditModal={pkg => {
+            setSelectedPackageDetail(null);
+            setPackageToEdit(pkg);
+            setIsPackageModalOpen(true);
           }}
           onRefresh={loadData}
         />

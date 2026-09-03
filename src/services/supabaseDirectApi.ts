@@ -424,6 +424,34 @@ export const supabaseDirectApi = {
     return { ...pkg, id, createdAt: now };
   },
 
+  async updatePackage(id: string, updates: Partial<SessionPackage>): Promise<void> {
+    const row: Record<string, unknown> = {};
+    if (updates.title !== undefined) row.title = updates.title;
+    if (updates.treatmentType !== undefined) row.treatment_type = updates.treatmentType;
+    if (updates.sessionCount !== undefined) row.session_count = updates.sessionCount;
+    if (updates.completedCount !== undefined) row.completed_count = updates.completedCount;
+    if (updates.price !== undefined) row.price = updates.price;
+    if (updates.validityDate !== undefined) row.validity_date = updates.validityDate;
+    if (updates.status !== undefined) row.status = updates.status;
+    if (updates.clientSignatureUrl !== undefined) row.client_signature_url = updates.clientSignatureUrl;
+    if (updates.clientConfirmedAt !== undefined) row.client_confirmed_at = updates.clientConfirmedAt;
+    if (updates.professionalId !== undefined) row.professional_id = updates.professionalId;
+    if (updates.professionalName !== undefined) row.professional_name = updates.professionalName;
+    if (Object.keys(row).length > 0) {
+      await supabase.from('packages').update(row).eq('id', id);
+    }
+  },
+
+  async deletePackage(id: string): Promise<void> {
+    try {
+      await supabase.from('sessions').delete().eq('package_id', id);
+    } catch {
+      // ignore
+    }
+    const { error } = await supabase.from('packages').delete().eq('id', id);
+    if (error) throw error;
+  },
+
   // Anamneses
   async getAnamneses(tenantId: string, patientId?: string): Promise<Anamnesis[]> {
     let query = supabase.from('anamneses').select('*').eq('tenant_id', tenantId);

@@ -988,15 +988,30 @@ export const api = {
     return newPkg;
   },
 
-  async updatePackage(tenantId: string, id: string, updates: Partial<SessionPackage>): Promise<SessionPackage> {
+  async updatePackage(param1: string, param2: string, updates: Partial<SessionPackage>): Promise<SessionPackage> {
+    // Discriminate between tenantId and package id to be completely resilient to call signatures
+    const isParam1Tenant = param1.startsWith('tenant-') || param1.includes('clinic') || param1.includes('demo');
+    const tenantId = isParam1Tenant ? param1 : param2;
+    const id = isParam1Tenant ? param2 : param1;
+
     const serverRes = await tryFetch(`/api/packages/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
       body: JSON.stringify(updates),
     });
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseDirectApi.updatePackage(id, updates);
+      } catch (sbErr) {
+        console.warn('Supabase update package notice:', sbErr);
+      }
+    }
+
+    let updatedPkg: SessionPackage | null = null;
     if (serverRes) {
       try {
-        return await serverRes.json();
+        updatedPkg = await serverRes.json();
       } catch (e) {
         console.warn('Failed to parse updatePackage JSON');
       }
@@ -1005,11 +1020,39 @@ export const api = {
     const list = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
     const idx = list.findIndex(p => p.id === id);
     if (idx !== -1) {
-      list[idx] = { ...list[idx], ...updates };
+      list[idx] = { ...list[idx], ...updates, ...(updatedPkg || {}) };
       setLocal(STORAGE_KEYS.PACKAGES, list);
       return list[idx];
     }
-    return updates as SessionPackage;
+    return (updatedPkg || { ...updates, id, tenantId }) as SessionPackage;
+  },
+
+  async deletePackage(param1: string, param2: string): Promise<void> {
+    const isParam1Tenant = param1.startsWith('tenant-') || param1.includes('clinic') || param1.includes('demo');
+    const tenantId = isParam1Tenant ? param1 : param2;
+    const id = isParam1Tenant ? param2 : param1;
+
+    await tryFetch(`/api/packages/${id}`, {
+      method: 'DELETE',
+      headers: { 'x-tenant-id': tenantId },
+    });
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseDirectApi.deletePackage(id);
+      } catch (sbErr) {
+        console.warn('Supabase delete package notice:', sbErr);
+      }
+    }
+
+    const list = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
+    const updatedList = list.filter(p => p.id !== id);
+    setLocal(STORAGE_KEYS.PACKAGES, updatedList);
+
+    // Also remove or unlink local sessions belonging to this package
+    const sessions = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
+    const updatedSessions = sessions.filter(s => s.packageId !== id);
+    setLocal(STORAGE_KEYS.SESSIONS, updatedSessions);
   },
 
   // Sessions

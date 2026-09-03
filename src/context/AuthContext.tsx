@@ -14,7 +14,7 @@ interface AuthContextType {
   logout: () => void;
   switchTenant: (tenantId: string) => Promise<void>;
   createClinic: (clinicData: Partial<Tenant>) => Promise<Tenant>;
-  updateTenantConfig: (updates: Partial<Tenant>) => Promise<void>;
+  updateTenantConfig: (updates: Partial<Tenant>) => Promise<Tenant | void>;
   updateUserProfile: (updates: Partial<User>) => Promise<User | void>;
   toggleTheme: () => void;
   refreshTenantData: () => Promise<void>;
@@ -66,8 +66,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const updated = fetchedTenants.find(t => t.id === activeId) || fetchedTenants[0];
         if (updated) {
           setTenant(prev => {
-            if (!prev || prev.logoUrl !== updated.logoUrl || prev.tradeName !== updated.tradeName || prev.customHeader !== updated.customHeader || prev.primaryColor !== updated.primaryColor) {
-              return updated;
+            if (!prev) return updated;
+            // Never overwrite non-empty logo with empty/null from background poll!
+            const effectiveLogo = updated.logoUrl || prev.logoUrl || '';
+            const effectiveTradeName = updated.tradeName || updated.name || prev.tradeName || prev.name;
+            const effectiveName = updated.name || updated.tradeName || prev.name || prev.tradeName;
+
+            const merged = {
+              ...prev,
+              ...updated,
+              logoUrl: effectiveLogo,
+              tradeName: effectiveTradeName,
+              name: effectiveName,
+            };
+
+            if (
+              prev.logoUrl !== merged.logoUrl ||
+              prev.tradeName !== merged.tradeName ||
+              prev.name !== merged.name ||
+              prev.customHeader !== merged.customHeader ||
+              prev.primaryColor !== merged.primaryColor ||
+              prev.phone !== merged.phone ||
+              prev.email !== merged.email ||
+              prev.corporateName !== merged.corporateName ||
+              prev.documentNumber !== merged.documentNumber
+            ) {
+              return merged;
             }
             return prev;
           });
@@ -207,9 +231,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateTenantConfig = async (updates: Partial<Tenant>) => {
     if (!tenant) return;
-    const updated = await api.updateTenant(tenant.id, updates);
+    const cleanUpdates = {
+      ...updates,
+      name: updates.name || updates.tradeName || tenant.name,
+      tradeName: updates.tradeName || updates.name || tenant.tradeName,
+    };
+    const updated = await api.updateTenant(tenant.id, cleanUpdates);
     setTenant(updated);
     setAllTenants(prev => prev.map(t => (t.id === updated.id ? updated : t)));
+    return updated;
   };
 
   const updateUserProfile = async (updates: Partial<User>) => {

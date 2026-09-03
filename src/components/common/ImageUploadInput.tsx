@@ -40,46 +40,68 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
     const reader = new FileReader();
 
     reader.onload = (e) => {
+      const rawResult = e.target?.result as string;
+      const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+      const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+
+      if (isSvg) {
+        onChange(rawResult);
+        setIsProcessing(false);
+        return;
+      }
+
       const img = new Image();
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 480;
-        const MAX_HEIGHT = 480;
-        let width = img.width;
-        let height = img.height;
+        try {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 512;
+          const MAX_HEIGHT = 512;
+          let width = img.width;
+          let height = img.height;
 
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height = Math.round((height * MAX_WIDTH) / width);
-            width = MAX_WIDTH;
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round((width * MAX_HEIGHT) / height);
+              height = MAX_HEIGHT;
+            }
           }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width = Math.round((width * MAX_HEIGHT) / height);
-            height = MAX_HEIGHT;
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const format = isPng ? 'image/png' : 'image/jpeg';
+            const quality = isPng ? undefined : 0.85;
+            const compressedDataUrl = canvas.toDataURL(format, quality);
+            onChange(compressedDataUrl);
+          } else {
+            onChange(rawResult);
           }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-          onChange(compressedDataUrl);
-        } else {
-          onChange(e.target?.result as string);
+        } catch (canvasErr) {
+          console.warn('Canvas compression error, using raw image data:', canvasErr);
+          onChange(rawResult);
         }
         setIsProcessing(false);
       };
 
       img.onerror = () => {
+        // Fallback: still use raw data if browser can't decode in Image()
+        if (rawResult) {
+          onChange(rawResult);
+        } else {
+          alert('Não foi possível processar a imagem.');
+        }
         setIsProcessing(false);
-        alert('Não foi possível processar a imagem.');
       };
 
-      img.src = e.target?.result as string;
+      img.src = rawResult;
     };
 
     reader.onerror = () => {
@@ -247,14 +269,31 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
               <input
                 type="url"
                 value={tempUrl}
-                onChange={e => setTempUrl(e.target.value)}
+                onChange={e => {
+                  const val = e.target.value;
+                  setTempUrl(val);
+                  if (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:image/')) {
+                    onChange(val.trim());
+                  }
+                }}
+                onBlur={() => {
+                  if (tempUrl.trim()) {
+                    onChange(tempUrl.trim());
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleApplyUrl();
+                  }
+                }}
                 placeholder="https://exemplo.com/minha-foto.jpg"
                 className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-teal-500"
               />
               <button
                 type="button"
                 onClick={handleApplyUrl}
-                className="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                className="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
               >
                 <Check className="w-3.5 h-3.5" />
                 Aplicar

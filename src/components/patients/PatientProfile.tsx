@@ -56,6 +56,8 @@ interface PatientProfileProps {
   onRefreshPatient?: () => Promise<void>;
   onOpenSendAnamnesisLink?: (patient?: Patient) => void;
   onDeletePatient?: (patientId: string) => void;
+  onEditPackage?: (pkg: SessionPackage) => void;
+  onDeletePackage?: (pkg: SessionPackage) => Promise<void>;
 }
 
 export const PatientProfile: React.FC<PatientProfileProps> = ({
@@ -74,6 +76,8 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
   onRefreshPatient,
   onOpenSendAnamnesisLink,
   onDeletePatient,
+  onEditPackage,
+  onDeletePackage,
 }) => {
   const handleOpenAnamnesis = onOpenAnamnesis || onOpenAnamnesisModal || (() => {});
   const handleOpenPackage = onOpenPackageModal || (() => {});
@@ -97,6 +101,34 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
   const [selectedPackageDetail, setSelectedPackageDetail] = useState<SessionPackage | null>(null);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [packageToDelete, setPackageToDelete] = useState<SessionPackage | null>(null);
+  const [isDeletingPackage, setIsDeletingPackage] = useState(false);
+
+  const handleConfirmDeletePackage = async () => {
+    if (!packageToDelete || !tenant) return;
+    setIsDeletingPackage(true);
+    try {
+      if (onDeletePackage) {
+        await onDeletePackage(packageToDelete);
+      } else {
+        await api.deletePackage(tenant.id, packageToDelete.id);
+      }
+      setPackageToDelete(null);
+      if (selectedPackageDetail?.id === packageToDelete.id) {
+        setSelectedPackageDetail(null);
+      }
+      const pkgs = await api.getPackages(tenant.id).then(p => p.filter(x => x.patientId === patient.id));
+      setPackages(pkgs);
+      const sess = await api.getSessions(tenant.id, patient.id);
+      setSessions(sess);
+      if (onRefreshPatient) await onRefreshPatient();
+    } catch (err) {
+      console.error('Erro ao excluir pacote:', err);
+      alert('Erro ao excluir o pacote.');
+    } finally {
+      setIsDeletingPackage(false);
+    }
+  };
 
   const handleConfirmDelete = async () => {
     if (!onDeletePatient) return;
@@ -553,24 +585,74 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
                 <div
                   key={pkg.id}
                   onClick={() => setSelectedPackageDetail(pkg)}
-                  className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 hover:border-teal-500 cursor-pointer transition bg-slate-50/50 dark:bg-slate-800/30"
+                  className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 hover:border-teal-500 cursor-pointer transition bg-white dark:bg-slate-850 shadow-xs group"
                 >
-                  <div className="flex items-center justify-between">
-                    <h5 className="font-bold text-xs text-slate-900 dark:text-white">{pkg.title}</h5>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  <div className="flex items-center justify-between gap-2">
+                    <h5 className="font-bold text-sm text-slate-900 dark:text-white leading-tight">{pkg.title}</h5>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
                       {pkg.status}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500">Tratamento: {pkg.treatmentType}</p>
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-teal-600 h-full rounded-full transition-all"
-                      style={{ width: `${(pkg.completedCount / pkg.sessionCount) * 100}%` }}
-                    />
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Tratamento: <strong className="text-slate-700 dark:text-slate-300">{pkg.treatmentType}</strong>
+                  </p>
+                  
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                      <span>Progresso: {pkg.completedCount} de {pkg.sessionCount} sessões</span>
+                      <span>{Math.round(((pkg.completedCount || 0) / (pkg.sessionCount || 1)) * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-teal-600 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(100, ((pkg.completedCount || 0) / (pkg.sessionCount || 1)) * 100)}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 dark:text-slate-400">
-                    <span>Sessões: {pkg.completedCount} de {pkg.sessionCount} realizadas</span>
-                    <span className="text-teal-600">Ver Extrato / Ciente &rarr;</span>
+
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800" onClick={e => e.stopPropagation()}>
+                    <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                      {pkg.price ? `R$ ${pkg.price.toFixed(2).replace('.', ',')}` : 'Sob consulta'}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPackageDetail(pkg);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1"
+                        title="Ver detalhes do pacote"
+                      >
+                        Ver Detalhes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onEditPackage) {
+                            onEditPackage(pkg);
+                          } else {
+                            setSelectedPackageDetail(pkg);
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 text-xs font-bold transition flex items-center gap-1 border border-teal-200 dark:border-teal-800"
+                        title="Editar pacote"
+                      >
+                        <Edit3 className="w-3 h-3" /> Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPackageToDelete(pkg);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 text-xs font-bold transition flex items-center gap-1 border border-rose-200 dark:border-rose-800"
+                        title="Apagar pacote"
+                      >
+                        <Trash2 className="w-3 h-3" /> Excluir
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -691,14 +773,96 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
         isOpen={!!selectedPackageDetail}
         onClose={() => setSelectedPackageDetail(null)}
         pkg={selectedPackageDetail}
-        sessions={sessions}
+        sessions={sessions.filter(s => s.packageId === selectedPackageDetail?.id)}
+        onOpenEditModal={(pkg) => {
+          setSelectedPackageDetail(null);
+          if (onEditPackage) {
+            onEditPackage(pkg);
+          }
+        }}
+        onDeletePackage={async (pkg) => {
+          if (tenant) {
+            await api.deletePackage(tenant.id, pkg.id);
+            setSelectedPackageDetail(null);
+            const pkgs = await api.getPackages(tenant.id).then(p => p.filter(x => x.patientId === patient.id));
+            setPackages(pkgs);
+            const sess = await api.getSessions(tenant.id, patient.id);
+            setSessions(sess);
+            if (onRefreshPatient) await onRefreshPatient();
+          }
+        }}
         onRefresh={async () => {
           if (tenant) {
             const pkgs = await api.getPackages(tenant.id).then(p => p.filter(x => x.patientId === patient.id));
             setPackages(pkgs);
+            const sess = await api.getSessions(tenant.id, patient.id);
+            setSessions(sess);
+            if (onRefreshPatient) await onRefreshPatient();
           }
         }}
       />
+
+      {/* Delete Package Confirmation Modal */}
+      {packageToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-900">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Excluir Pacote de Sessões
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Confirme a exclusão definitiva deste pacote.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-rose-50 dark:bg-rose-950/30 rounded-xl border border-rose-200 dark:border-rose-900/50 space-y-2 text-xs text-rose-900 dark:text-rose-200">
+              <p className="font-bold text-sm">
+                "{packageToDelete.title}"
+              </p>
+              <p className="leading-relaxed">
+                Tratamento: <strong>{packageToDelete.treatmentType}</strong> ({packageToDelete.sessionCount} sessões)
+              </p>
+              <p className="text-[11px] text-rose-700 dark:text-rose-300">
+                Todas as sessões associadas a este pacote serão removidas do sistema. Esta ação não poderá ser desfeita.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingPackage}
+                onClick={() => setPackageToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingPackage}
+                onClick={handleConfirmDeletePackage}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition disabled:opacity-50"
+              >
+                {isDeletingPackage ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Excluindo pacote...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Sim, Excluir Pacote
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Patient Confirmation Modal */}
       {isConfirmDeleteOpen && (

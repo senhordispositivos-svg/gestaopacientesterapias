@@ -778,9 +778,15 @@ app.put('/api/tenants/:id', (req, res) => {
     index = db.tenants.length - 1;
   }
 
+  const updatedName = (req.body.name || req.body.tradeName || db.tenants[index].name || 'Clínica').trim();
+  const updatedTradeName = (req.body.tradeName || req.body.name || db.tenants[index].tradeName || updatedName).trim();
+
   db.tenants[index] = {
     ...db.tenants[index],
     ...req.body,
+    name: updatedName,
+    tradeName: updatedTradeName,
+    logoUrl: req.body.logoUrl !== undefined ? req.body.logoUrl : db.tenants[index].logoUrl,
   };
   saveDatabase();
 
@@ -1124,6 +1130,34 @@ app.post('/api/sync/bidirectional', (req, res) => {
         db.tenants[targetIdx].primaryColor = tenant.primaryColor;
         hasChanged = true;
       }
+      if (tenant.corporateName && tenant.corporateName !== db.tenants[targetIdx].corporateName) {
+        db.tenants[targetIdx].corporateName = tenant.corporateName;
+        hasChanged = true;
+      }
+      if (tenant.documentNumber && tenant.documentNumber !== db.tenants[targetIdx].documentNumber) {
+        db.tenants[targetIdx].documentNumber = tenant.documentNumber;
+        hasChanged = true;
+      }
+      if (tenant.email && tenant.email !== db.tenants[targetIdx].email) {
+        db.tenants[targetIdx].email = tenant.email;
+        hasChanged = true;
+      }
+      if (tenant.phone && tenant.phone !== db.tenants[targetIdx].phone) {
+        db.tenants[targetIdx].phone = tenant.phone;
+        hasChanged = true;
+      }
+      if (tenant.city && tenant.city !== db.tenants[targetIdx].city) {
+        db.tenants[targetIdx].city = tenant.city;
+        hasChanged = true;
+      }
+      if (tenant.state && tenant.state !== db.tenants[targetIdx].state) {
+        db.tenants[targetIdx].state = tenant.state;
+        hasChanged = true;
+      }
+      if (tenant.address && tenant.address !== db.tenants[targetIdx].address) {
+        db.tenants[targetIdx].address = tenant.address;
+        hasChanged = true;
+      }
     }
   }
 
@@ -1364,9 +1398,14 @@ app.delete('/api/patients/:id', (req, res) => {
     db.patients[index].deletedAt = new Date().toISOString();
     db.patients[index].updatedAt = new Date().toISOString();
 
-    // Clean up associated packages and sessions
+    // Clean up associated packages, sessions, anamneses and records
     db.packages = db.packages.filter(pkg => pkg.patientId !== req.params.id);
     db.sessions = db.sessions.filter(sess => sess.patientId !== req.params.id);
+    db.anamneses = db.anamneses.filter(a => a.patientId !== req.params.id);
+    db.evolutions = db.evolutions.filter(e => e.patientId !== req.params.id);
+    db.documentFiles = db.documentFiles.filter(d => d.patientId !== req.params.id);
+    db.signatures = db.signatures.filter(s => s.patientId !== req.params.id);
+    db.publicTokens = db.publicTokens.filter(t => t.patientId !== req.params.id);
 
     saveDatabase();
     broadcastRealtime(tenantId, { type: 'PATIENT_DELETED', entity: 'patients', action: 'delete', id: req.params.id });
@@ -1506,24 +1545,76 @@ app.put('/api/packages/:id', (req, res) => {
   const index = db.packages.findIndex(p => p.id === req.params.id);
   if (index === -1) return res.status(404).json({ message: 'Pacote não encontrado' });
 
+  const oldPkg = db.packages[index];
+  const oldSessionCount = oldPkg.sessionCount || 0;
+  const newSessionCount = req.body.sessionCount !== undefined ? Number(req.body.sessionCount) : oldSessionCount;
+
   db.packages[index] = {
-    ...db.packages[index],
+    ...oldPkg,
     ...req.body,
+    sessionCount: newSessionCount,
   };
+
+  const updatedPkg = db.packages[index];
+
+  // If sessionCount increased, generate missing session slots
+  if (newSessionCount > oldSessionCount) {
+    for (let i = oldSessionCount + 1; i <= newSessionCount; i++) {
+      const alreadyExists = db.sessions.some(s => s.packageId === updatedPkg.id && s.sessionNumber === i);
+      if (!alreadyExists) {
+        const scheduledDate = new Date(Date.now() + (i - 1) * 7 * 86400000).toISOString().split('T')[0];
+        const sess: Session = {
+          id: `sess-${updatedPkg.id}-${i}`,
+          tenantId: updatedPkg.tenantId,
+          packageId: updatedPkg.id,
+          patientId: updatedPkg.patientId,
+          patientName: updatedPkg.patientName,
+          professionalId: updatedPkg.professionalId,
+          professionalName: updatedPkg.professionalName,
+          sessionNumber: i,
+          scheduledDate,
+          scheduledTime: '14:00',
+          procedures: [updatedPkg.treatmentType || 'Atendimento Integrativo'],
+          status: 'PENDING',
+          validationToken: `SESS-${updatedPkg.id}-${i}-${Date.now().toString(16).toUpperCase()}`,
+          createdAt: new Date().toISOString(),
+        };
+        db.sessions.push(sess);
+      }
+    }
+  }
+
+  // Also synchronize title/treatment/patientName on pending sessions if changed
+  if (req.body.treatmentType || req.body.patientName) {
+    db.sessions.forEach(s => {
+      if (s.packageId === updatedPkg.id && s.status === 'PENDING') {
+        if (req.body.patientName) s.patientName = req.body.patientName;
+        if (req.body.treatmentType && (!s.procedures || s.procedures.length === 0 || s.procedures[0] === oldPkg.treatmentType)) {
+          s.procedures = [req.body.treatmentType];
+        }
+      }
+    });
+  }
+
   saveDatabase();
-  broadcastRealtime(db.packages[index].tenantId, { type: 'PACKAGE_UPDATED', entity: 'packages', action: 'update', payload: db.packages[index], id: db.packages[index].id });
-  res.json(db.packages[index]);
+  broadcastRealtime(updatedPkg.tenantId, { type: 'PACKAGE_UPDATED', entity: 'packages', action: 'update', payload: updatedPkg, id: updatedPkg.id });
+  broadcastRealtime(updatedPkg.tenantId, { type: 'SESSIONS_SYNC', entity: 'sessions', action: 'sync' });
+  res.json(updatedPkg);
 });
 
 app.delete('/api/packages/:id', (req, res) => {
-  const index = db.packages.findIndex(p => p.id === req.params.id);
+  const pkgId = req.params.id;
+  const index = db.packages.findIndex(p => p.id === pkgId);
   const tenantId = (req.headers['x-tenant-id'] as string) || (index !== -1 ? db.packages[index].tenantId : 'tenant-demo-1');
   if (index !== -1) {
     db.packages.splice(index, 1);
-    saveDatabase();
-    broadcastRealtime(tenantId, { type: 'PACKAGE_DELETED', entity: 'packages', action: 'delete', id: req.params.id });
   }
-  res.json({ message: 'Pacote excluído com sucesso.' });
+  // Clean up sessions linked to this package
+  db.sessions = db.sessions.filter(s => s.packageId !== pkgId);
+  saveDatabase();
+  broadcastRealtime(tenantId, { type: 'PACKAGE_DELETED', entity: 'packages', action: 'delete', id: pkgId });
+  broadcastRealtime(tenantId, { type: 'SESSIONS_SYNC', entity: 'sessions', action: 'sync' });
+  res.json({ message: 'Pacote e sessões vinculadas excluídos com sucesso.' });
 });
 
 // -------------------------------------------------------------

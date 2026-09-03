@@ -52,18 +52,19 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
     setSuccessMessage('');
 
     try {
+      const cleanName = tradeName.trim() || corporateName.trim() || tenant.name || 'Clínica';
       await updateTenantConfig({
-        tradeName,
-        name: tradeName,
-        corporateName,
-        documentNumber,
-        email,
-        phone,
-        city,
-        state,
-        address,
-        logoUrl: logoUrl || undefined,
-        customHeader: customHeader || `${tradeName} - Fisioterapia e Massoterapia Integrativa`,
+        tradeName: cleanName,
+        name: cleanName,
+        corporateName: corporateName.trim(),
+        documentNumber: documentNumber.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        city: city.trim(),
+        state: state.trim(),
+        address: address.trim(),
+        logoUrl: logoUrl.trim(),
+        customHeader: customHeader.trim() || `${cleanName} - Fisioterapia e Massoterapia Integrativa`,
         primaryColor,
       });
 

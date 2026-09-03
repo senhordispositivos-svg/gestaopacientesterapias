@@ -23,6 +23,7 @@ import {
   Calendar,
   AlertTriangle,
   Filter,
+  Trash2,
 } from 'lucide-react';
 
 interface PackageDetailModalProps {
@@ -33,6 +34,8 @@ interface PackageDetailModalProps {
   onRefresh: () => void;
   onAttendSession?: (session: Session) => void;
   onSendWhatsApp?: (session: Session) => void;
+  onDeletePackage?: (pkg: SessionPackage) => Promise<void>;
+  onOpenEditModal?: (pkg: SessionPackage) => void;
 }
 
 export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
@@ -43,8 +46,14 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
   onRefresh,
   onAttendSession,
   onSendWhatsApp,
+  onDeletePackage,
+  onOpenEditModal,
 }) => {
   const { tenant } = useAuth();
+
+  // Package Delete State
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [isDeletingPkg, setIsDeletingPkg] = useState(false);
 
   // Package Edit State
   const [isEditingPkg, setIsEditingPkg] = useState(false);
@@ -138,7 +147,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
     if (!tenant) return;
     setIsSavingPkg(true);
     try {
-      await api.updatePackage(pkg.id, tenant.id, {
+      await api.updatePackage(tenant.id, pkg.id, {
         title: editTitle,
         treatmentType: editTreatmentType,
         price: parseFloat(editPrice) || pkg.price,
@@ -150,6 +159,24 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
       alert('Erro ao atualizar dados do pacote');
     } finally {
       setIsSavingPkg(false);
+    }
+  };
+
+  const handleDeletePackage = async () => {
+    if (!tenant) return;
+    setIsDeletingPkg(true);
+    try {
+      if (onDeletePackage) {
+        await onDeletePackage(pkg);
+      } else {
+        await api.deletePackage(tenant.id, pkg.id);
+      }
+      onRefresh();
+      onClose();
+    } catch (err) {
+      alert('Erro ao excluir o pacote.');
+    } finally {
+      setIsDeletingPkg(false);
     }
   };
 
@@ -389,22 +416,57 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
 
           <div className="flex items-center gap-2">
             {!isEditingPkg ? (
-              <button
-                type="button"
-                onClick={startEditingPackage}
-                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition"
-              >
-                <Edit2 className="w-3.5 h-3.5" /> Editar
-              </button>
+              <div className="flex items-center gap-2">
+                {onOpenEditModal ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenEditModal(pkg);
+                      onClose();
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/40 text-teal-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition"
+                    title="Editar informações completas do pacote"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Editar
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startEditingPackage}
+                    className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition"
+                    title="Editar informações do pacote"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Editar
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmDelete(true)}
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/25 hover:bg-rose-600 text-rose-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition"
+                  title="Apagar este pacote"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Excluir
+                </button>
+              </div>
             ) : (
-              <button
-                type="button"
-                onClick={handleSavePackage}
-                disabled={isSavingPkg}
-                className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
-              >
-                <Save className="w-3.5 h-3.5" /> {isSavingPkg ? 'Salvando...' : 'Salvar'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSavePackage}
+                  disabled={isSavingPkg}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
+                >
+                  <Save className="w-3.5 h-3.5" /> {isSavingPkg ? 'Salvando...' : 'Salvar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingPkg(false)}
+                  className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 text-xs font-bold transition"
+                >
+                  Cancelar
+                </button>
+              </div>
             )}
 
             <button
@@ -419,6 +481,37 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1 bg-slate-50/50 dark:bg-slate-900/50">
+          {/* Delete Confirmation Alert Banner */}
+          {showConfirmDelete && (
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 space-y-2.5 animate-fade-in shadow-sm">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
+                <h4 className="font-extrabold text-sm">Deseja realmente apagar este pacote?</h4>
+              </div>
+              <p className="text-xs text-rose-800 dark:text-rose-300 leading-relaxed">
+                Você está prestes a excluir o pacote <strong>"{pkg.title}"</strong> de <strong>{pkg.patientName}</strong> ({pkg.sessionCount} sessões). Todas as sessões vinculadas a este pacote serão removidas do sistema.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleDeletePackage}
+                  disabled={isDeletingPkg}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {isDeletingPkg ? 'Excluindo...' : 'Sim, Apagar Pacote'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmDelete(false)}
+                  disabled={isDeletingPkg}
+                  className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
           {/* Package Editor Drawer */}
           {isEditingPkg && (
             <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 space-y-3 animate-fade-in">
