@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { realtimeService } from '../services/realtime';
 import { RealtimeConnectionStatus, RealtimeEvent } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
@@ -11,6 +11,24 @@ interface UseRealtimeSyncProps {
 export function useRealtimeSync({ tenantId, onSync }: UseRealtimeSyncProps) {
   const [status, setStatus] = useState<RealtimeConnectionStatus>(realtimeService.getStatus());
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+
+  // Keep latest onSync callback without triggering useEffect re-runs
+  const onSyncRef = useRef(onSync);
+  useEffect(() => {
+    onSyncRef.current = onSync;
+  }, [onSync]);
+
+  // Debounced trigger to prevent rapid repeated calls
+  const debounceTimerRef = useRef<any>(null);
+  const triggerSync = useCallback((event?: RealtimeEvent) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setLastSyncTime(new Date());
+      onSyncRef.current?.(event);
+    }, 300);
+  }, []);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -25,8 +43,7 @@ export function useRealtimeSync({ tenantId, onSync }: UseRealtimeSyncProps) {
 
     // Subscribe to incoming data sync events
     const unsubEvents = realtimeService.subscribe((event) => {
-      setLastSyncTime(new Date());
-      onSync(event);
+      triggerSync(event);
     });
 
     // Supabase Realtime subscription for instant multi-device / cloud cross-platform sync
@@ -39,16 +56,14 @@ export function useRealtimeSync({ tenantId, onSync }: UseRealtimeSyncProps) {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'patients' },
             () => {
-              setLastSyncTime(new Date());
-              onSync();
+              triggerSync();
             }
           )
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'anamneses' },
             () => {
-              setLastSyncTime(new Date());
-              onSync();
+              triggerSync();
             }
           )
           .subscribe((chanStatus) => {
@@ -61,34 +76,37 @@ export function useRealtimeSync({ tenantId, onSync }: UseRealtimeSyncProps) {
       }
     }
 
-    // Mobile & Desktop resume handlers: when window gains focus or visibility becomes 'visible'
+    // Resume handlers: when window gains focus or visibility becomes 'visible'
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        onSync();
+        triggerSync();
       }
     };
 
     const handleOnline = () => {
       realtimeService.connect(tenantId);
-      onSync();
+      triggerSync();
     };
 
     const handleFocus = () => {
-      onSync();
+      triggerSync();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleOnline);
     window.addEventListener('focus', handleFocus);
 
-    // Periodic sync check every 4 seconds for multi-device instant consistency
+    // Gentle background poll every 30 seconds for resiliency if WebSocket/SSE drops
     const pollInterval = setInterval(() => {
-      onSync();
-    }, 4000);
+      triggerSync();
+    }, 30000);
 
     return () => {
       unsubStatus();
       unsubEvents();
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
       if (supabaseChannel) {
         supabase.removeChannel(supabaseChannel);
       }
@@ -97,7 +115,7 @@ export function useRealtimeSync({ tenantId, onSync }: UseRealtimeSyncProps) {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [tenantId, onSync]);
+  }, [tenantId, triggerSync]);
 
   return {
     status,

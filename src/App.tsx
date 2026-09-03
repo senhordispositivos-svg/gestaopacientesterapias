@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
@@ -197,17 +197,19 @@ export function App() {
     }
   };
 
-  // Real-time Centralized WebSockets/SSE sync hook
+  // Real-time Centralized WebSockets/SSE sync callback memoized
+  const handleRealtimeSync = useCallback(() => {
+    loadData();
+    refreshTenantData();
+  }, [tenant?.id, user?.id]);
+
   const { status: realtimeStatus, lastSyncTime } = useRealtimeSync({
     tenantId: tenant?.id,
-    onSync: () => {
-      loadData();
-      refreshTenantData();
-    },
+    onSync: handleRealtimeSync,
   });
 
   useEffect(() => {
-    if (tenant && user) {
+    if (tenant?.id && user?.id) {
       loadData();
       refreshTenantData();
 
@@ -260,7 +262,7 @@ export function App() {
         window.removeEventListener('patient-deleted', handlePatientDeleted);
       };
     }
-  }, [tenant, user]);
+  }, [tenant?.id, user?.id]);
 
   // Handle Public Links (Without requiring authentication - patient has access ONLY to the public form)
   if (tokens.anamnesisToken) {

@@ -511,7 +511,7 @@ const wsHeartbeat = setInterval(() => {
 }, 25000);
 
 // SSE Streaming Route Fallback (Ultra reliable for mobile browsers and restricted networks)
-app.get('/api/realtime/stream', (req, res) => {
+app.get(['/api/realtime/stream', '/api/realtime/events'], (req, res) => {
   const tenantId = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
   const userId = (req.query.userId as string) || '';
 

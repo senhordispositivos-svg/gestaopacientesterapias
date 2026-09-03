@@ -47,7 +47,13 @@ class RealtimeClient {
   }
 
   public connect(tenantId: string) {
-    if (this.currentTenantId === tenantId && (this.ws?.readyState === WebSocket.OPEN || this.eventSource?.readyState === EventSource.OPEN)) {
+    if (
+      this.currentTenantId === tenantId &&
+      (this.ws?.readyState === WebSocket.OPEN ||
+        this.ws?.readyState === WebSocket.CONNECTING ||
+        this.eventSource?.readyState === EventSource.OPEN ||
+        this.eventSource?.readyState === EventSource.CONNECTING)
+    ) {
       return;
     }
 
@@ -86,25 +92,23 @@ class RealtimeClient {
         }
       };
 
-      this.ws.onerror = (err) => {
-        console.warn('Realtime WS connection warning:', err);
+      this.ws.onerror = () => {
+        // Will trigger onclose and fallback to SSE smoothly
       };
 
-      this.ws.onclose = (event) => {
+      this.ws.onclose = () => {
         if (this.isDestroyed) return;
         this.ws = null;
         
-        // If WS closes abruptly or fails repeatedly, try SSE fallback
+        // If WS closes, fallback to SSE immediately or retry gently
         this.reconnectAttempts++;
-        if (this.reconnectAttempts > 2) {
+        if (this.reconnectAttempts >= 1) {
           this.connectSSE();
         } else {
-          this.setStatus('connecting');
-          this.scheduleReconnect(() => this.connectWebSocket(), 2000);
+          this.scheduleReconnect(() => this.connectWebSocket(), 3000);
         }
       };
     } catch (e) {
-      console.warn('WebSocket init failed, switching to SSE fallback:', e);
       this.connectSSE();
     }
   }
@@ -114,12 +118,13 @@ class RealtimeClient {
     if (typeof EventSource === 'undefined') return;
 
     try {
-      this.setStatus('fallback_sse');
-      const sseUrl = `/api/realtime/events?tenantId=${encodeURIComponent(this.currentTenantId)}`;
+      // Connect to the active server SSE stream endpoint
+      const sseUrl = `/api/realtime/stream?tenantId=${encodeURIComponent(this.currentTenantId)}`;
       this.eventSource = new EventSource(sseUrl);
 
       this.eventSource.onopen = () => {
-        this.setStatus('fallback_sse');
+        this.reconnectAttempts = 0;
+        this.setStatus('connected');
       };
 
       this.eventSource.onmessage = (event) => {
@@ -136,7 +141,7 @@ class RealtimeClient {
         this.eventSource?.close();
         this.eventSource = null;
         this.setStatus('disconnected');
-        this.scheduleReconnect(() => this.connectWebSocket(), 5000);
+        this.scheduleReconnect(() => this.connectSSE(), 10000);
       };
     } catch (err) {
       console.warn('SSE fallback failed:', err);

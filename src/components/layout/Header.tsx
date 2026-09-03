@@ -178,50 +178,50 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right User Info Controls */}
       <div className="flex items-center gap-2.5 sm:gap-3 md:gap-4">
-        {/* Real-time Status Badge */}
+        {/* Real-time Status Badge with Fixed Width to prevent any layout shifts/shaking */}
         <div
           title={
             realtimeStatus === 'connected'
-              ? 'Sincronização em tempo real ativa (WebSockets). Alterações em qualquer aparelho aparecem instantaneamente.'
+              ? 'Sincronização em tempo real ativa (WebSockets/SSE). Alterações em qualquer aparelho aparecem instantaneamente.'
               : realtimeStatus === 'fallback_sse'
               ? 'Sincronização em tempo real ativa via SSE.'
               : realtimeStatus === 'connecting'
               ? 'Conectando ao canal de tempo real...'
               : 'Modo offline resiliente / Reconectando...'
           }
-          className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all border select-none bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700"
+          className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border select-none bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 w-[124px] shrink-0 justify-between"
         >
-          <span className="relative flex h-2 w-2">
-            {(realtimeStatus === 'connected' || realtimeStatus === 'fallback_sse') && (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            )}
-            <span
-              className={`relative inline-flex rounded-full h-2 w-2 ${
-                realtimeStatus === 'connected' || realtimeStatus === 'fallback_sse'
-                  ? 'bg-emerald-500'
-                  : realtimeStatus === 'connecting'
-                  ? 'bg-amber-400'
-                  : 'bg-slate-400'
-              }`}
-            />
-          </span>
-          <span className="text-slate-600 dark:text-slate-300">
-            {realtimeStatus === 'connected'
-              ? 'Tempo Real'
-              : realtimeStatus === 'fallback_sse'
-              ? 'Tempo Real'
-              : realtimeStatus === 'connecting'
-              ? 'Conectando...'
-              : 'Offline'}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="relative flex h-2 w-2 shrink-0">
+              {(realtimeStatus === 'connected' || realtimeStatus === 'fallback_sse') && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              )}
+              <span
+                className={`relative inline-flex rounded-full h-2 w-2 ${
+                  realtimeStatus === 'connected' || realtimeStatus === 'fallback_sse'
+                    ? 'bg-emerald-500'
+                    : realtimeStatus === 'connecting'
+                    ? 'bg-amber-400'
+                    : 'bg-slate-400'
+                }`}
+              />
+            </span>
+            <span className="text-slate-600 dark:text-slate-300 truncate">
+              {realtimeStatus === 'connected' || realtimeStatus === 'fallback_sse'
+                ? 'Tempo Real'
+                : realtimeStatus === 'connecting'
+                ? 'Conectando'
+                : 'Offline'}
+            </span>
+          </div>
           {onManualRefresh && (
             <button
               type="button"
               onClick={onManualRefresh}
               title="Forçar sincronização com o banco central"
-              className="ml-0.5 p-0.5 text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 transition"
+              className="p-0.5 text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 transition shrink-0"
             >
-              <RefreshCw className="w-2.5 h-2.5" />
+              <RefreshCw className={`w-2.5 h-2.5 ${realtimeStatus === 'connecting' ? 'animate-spin text-amber-500' : ''}`} />
             </button>
           )}
         </div>
