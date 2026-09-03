@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Building2, Palette, MessageSquare, Check, Sparkles, Save, Headset, Mail, PhoneCall, Code2, Lock, Unlock, ShieldCheck, Database, Download, RefreshCw, Server, Activity, AlertCircle, Loader2, Image as ImageIcon } from 'lucide-react';
+import { Settings, Building2, Palette, MessageSquare, Check, Sparkles, Save, Headset, Mail, PhoneCall, Code2, Lock, Unlock, ShieldCheck, Database, Download, RefreshCw, Server, Activity, AlertCircle, Loader2, Image as ImageIcon, MapPin, Search, Plus, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { formatCNPJ, formatPhone, formatCEP } from '../../utils/cpf';
 import { ImageUploadInput } from '../common/ImageUploadInput';
 import { DbConnectionTestModal } from '../database/DbConnectionTestModal';
+import { ClinicProfileModal } from '../layout/ClinicProfileModal';
 
 // Preset elegant clinic logos that can be chosen with 1 click
 const PRESET_LOGOS = [
@@ -31,7 +32,7 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigateToBackup }) => {
-  const { user, tenant, updateTenantConfig } = useAuth();
+  const { user, tenant, updateTenantConfig, allTenants, switchTenant } = useAuth();
 
   const [tradeName, setTradeName] = useState('');
   const [corporateName, setCorporateName] = useState('');
@@ -42,6 +43,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
   const [cep, setCep] = useState('');
   const [address, setAddress] = useState('');
   const [number, setNumber] = useState('');
+  const [complement, setComplement] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
@@ -58,6 +60,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
   // Super User / Developer Edit Lock Mode
   const [isSuperUserMode, setIsSuperUserMode] = useState(false);
   const [isDbTestModalOpen, setIsDbTestModalOpen] = useState(false);
+  const [isClinicProfileModalOpen, setIsClinicProfileModalOpen] = useState(false);
+  const [isLoadingCep, setIsLoadingCep] = useState(false);
 
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -80,6 +84,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
         setCep(tenant.cep || '');
         setAddress(tenant.address || '');
         setNumber(tenant.number || '');
+        setComplement(tenant.complement || '');
         setNeighborhood(tenant.neighborhood || '');
         setCity(tenant.city || '');
         setState(tenant.state || '');
@@ -95,6 +100,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
       }
     }
   }, [tenant, isDirty]);
+
+  const handleSearchCep = async (cepValue: string) => {
+    const clean = cepValue.replace(/\D/g, '');
+    if (clean.length !== 8) return;
+    setIsLoadingCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const data = await res.json();
+      if (!data.erro) {
+        if (data.logradouro) setAddress(data.logradouro);
+        if (data.bairro) setNeighborhood(data.bairro);
+        if (data.localidade) setCity(data.localidade);
+        if (data.uf) setState(data.uf);
+        setIsDirty(true);
+      }
+    } catch (err) {
+      console.warn('Erro ao consultar ViaCEP:', err);
+    } finally {
+      setIsLoadingCep(false);
+    }
+  };
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -117,6 +143,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
         cep: cep.trim(),
         address: address.trim(),
         number: number.trim(),
+        complement: complement.trim(),
         neighborhood: neighborhood.trim(),
         city: city.trim(),
         state: state.trim(),
@@ -133,6 +160,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
           status: whatsappToken.trim() ? 'CONFIGURED' : 'NOT_CONFIGURED',
         },
       });
+
 
       setIsDirty(false);
       setIsSaved(true);
@@ -216,24 +244,79 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
         </div>
       )}
 
+      {/* Clinic Selector / Multi-Tenancy bar */}
+      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-400 shrink-0">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[10px] text-teal-400 uppercase font-bold tracking-wider">Clínica Ativa no Sistema</div>
+            <div className="text-sm font-bold text-white flex items-center gap-2">
+              <span>{tenant?.tradeName || tenant?.name || 'Clínica Principal'}</span>
+              <span className="text-xs text-slate-400 font-normal">
+                ({tenant?.city || 'São Paulo'}/{tenant?.state || 'SP'})
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs text-slate-300 font-medium">Trocar Unidade:</div>
+          <select
+            value={tenant?.id || ''}
+            onChange={(e) => {
+              if (e.target.value) {
+                switchTenant(e.target.value);
+                setIsDirty(false);
+              }
+            }}
+            className="bg-slate-800 border border-slate-700 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:ring-1 focus:ring-teal-500 cursor-pointer"
+          >
+            {allTenants.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.tradeName || t.name} ({t.city || 'São Paulo'}/{t.state || 'SP'})
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={() => setIsClinicProfileModalOpen(true)}
+            className="px-3 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold text-xs rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>+ Cadastrar Outra Clínica</span>
+          </button>
+        </div>
+      </div>
+
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Section 1: Dados da Empresa */}
+        {/* Section 1: Dados da Empresa & Endereço Completo */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-            <Building2 className="w-4 h-4 text-teal-600" /> 1. Cadastro Geral da Empresa
-          </h3>
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-teal-600" /> 1. Cadastro Geral e Endereço da Empresa / Clínica
+            </h3>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              Unidade atual: <strong className="text-teal-600 dark:text-teal-400">{tenant?.tradeName || tenant?.name}</strong>
+            </span>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div>
-              <label className="font-semibold text-slate-700 dark:text-slate-300">Nome Fantasia</label>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                Nome Fantasia (Nome da Clínica) <span className="text-rose-500">*</span>
+              </label>
               <input
                 type="text"
+                placeholder="Ex: Clínica Fisio Integrada"
                 value={tradeName}
                 onChange={e => {
                   setTradeName(e.target.value);
                   setIsDirty(true);
                 }}
-                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
               />
             </div>
 
@@ -241,12 +324,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
               <label className="font-semibold text-slate-700 dark:text-slate-300">Razão Social</label>
               <input
                 type="text"
+                placeholder="Ex: Clínica Fisio Integrada LTDA"
                 value={corporateName}
                 onChange={e => {
                   setCorporateName(e.target.value);
                   setIsDirty(true);
                 }}
-                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
               />
             </div>
 
@@ -254,12 +338,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
               <label className="font-semibold text-slate-700 dark:text-slate-300">CNPJ / CPF</label>
               <input
                 type="text"
+                placeholder="00.000.000/0001-00"
                 value={documentNumber}
                 onChange={e => {
                   setDocumentNumber(e.target.value);
                   setIsDirty(true);
                 }}
-                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
               />
             </div>
 
@@ -267,42 +352,158 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
               <label className="font-semibold text-slate-700 dark:text-slate-300">E-mail Comercial</label>
               <input
                 type="email"
+                placeholder="contato@clinica.com.br"
                 value={email}
                 onChange={e => {
                   setEmail(e.target.value);
                   setIsDirty(true);
                 }}
-                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="font-semibold text-slate-700 dark:text-slate-300">Telefone</label>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">Telefone / WhatsApp</label>
               <input
                 type="text"
+                placeholder="(11) 98765-4321"
                 value={phone}
                 onChange={e => {
                   setPhone(formatPhone(e.target.value));
                   setIsDirty(true);
                 }}
-                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
               />
             </div>
 
+            {/* CEP com busca automática */}
             <div>
-              <label className="font-semibold text-slate-700 dark:text-slate-300">CEP</label>
+              <label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                <span>CEP</span>
+                {isLoadingCep && <span className="text-[10px] text-teal-600 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando...</span>}
+              </label>
+              <div className="relative mt-1">
+                <input
+                  type="text"
+                  placeholder="00000-000"
+                  maxLength={9}
+                  value={cep}
+                  onChange={e => {
+                    const formatted = formatCEP(e.target.value);
+                    setCep(formatted);
+                    setIsDirty(true);
+                    if (formatted.replace(/\D/g, '').length === 8) {
+                      handleSearchCep(formatted);
+                    }
+                  }}
+                  className="w-full p-2.5 pr-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSearchCep(cep)}
+                  title="Consultar CEP via ViaCEP"
+                  className="absolute right-2 top-2.5 text-slate-400 hover:text-teal-600 cursor-pointer"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Endereço / Logradouro */}
+            <div className="md:col-span-2">
+              <label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-teal-600" /> Endereço / Logradouro (Rua, Av.)
+              </label>
               <input
                 type="text"
-                value={cep}
+                placeholder="Ex: Av. Paulista"
+                value={address}
                 onChange={e => {
-                  setCep(formatCEP(e.target.value));
+                  setAddress(e.target.value);
                   setIsDirty(true);
                 }}
-                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
               />
+            </div>
+
+            {/* Número */}
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">Número</label>
+              <input
+                type="text"
+                placeholder="Ex: 1500"
+                value={number}
+                onChange={e => {
+                  setNumber(e.target.value);
+                  setIsDirty(true);
+                }}
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Complemento */}
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">Complemento</label>
+              <input
+                type="text"
+                placeholder="Ex: Sala 42, Bloco B"
+                value={complement}
+                onChange={e => {
+                  setComplement(e.target.value);
+                  setIsDirty(true);
+                }}
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Bairro */}
+            <div>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">Bairro</label>
+              <input
+                type="text"
+                placeholder="Ex: Bela Vista"
+                value={neighborhood}
+                onChange={e => {
+                  setNeighborhood(e.target.value);
+                  setIsDirty(true);
+                }}
+                className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Cidade e Estado */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label className="font-semibold text-slate-700 dark:text-slate-300">Cidade</label>
+                <input
+                  type="text"
+                  placeholder="Ex: São Paulo"
+                  value={city}
+                  onChange={e => {
+                    setCity(e.target.value);
+                    setIsDirty(true);
+                  }}
+                  className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-slate-300">UF</label>
+                <input
+                  type="text"
+                  placeholder="SP"
+                  maxLength={2}
+                  value={state}
+                  onChange={e => {
+                    setState(e.target.value.toUpperCase());
+                    setIsDirty(true);
+                  }}
+                  className="w-full mt-1 p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none uppercase"
+                />
+              </div>
             </div>
           </div>
         </div>
+
 
         {/* Section 2: White Label & Identidade Visual */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-5">
@@ -664,6 +865,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
       <DbConnectionTestModal
         isOpen={isDbTestModalOpen}
         onClose={() => setIsDbTestModalOpen(false)}
+      />
+
+      <ClinicProfileModal
+        isOpen={isClinicProfileModalOpen}
+        onClose={() => setIsClinicProfileModalOpen(false)}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Users,
   CalendarCheck,
@@ -15,10 +15,13 @@ import {
   Building2,
   Shield,
   UserCheck,
+  Pencil,
+  MapPin,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Patient, Session, SessionPackage } from '../../types';
 import { isBirthdayTomorrow, isBirthdayToday, calculateAge, formatDate } from '../../utils/crypto';
+import { ClinicProfileModal } from '../layout/ClinicProfileModal';
 
 interface DashboardProps {
   patients: Patient[];
@@ -62,6 +65,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const totalBirthdays = birthdaysToday.length + birthdaysTomorrow.length;
 
   const isIndividualMode = user?.role === 'PROFESSIONAL' && user?.accessMode === 'INDIVIDUAL';
+  const [isClinicModalOpen, setIsClinicModalOpen] = useState(false);
 
   return (
     <div className="flex-1 flex flex-col gap-6">
@@ -70,16 +74,44 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
         
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                <Building2 className="w-3 h-3" />
-                {tenant?.tradeName || 'Sua Clínica'}
-              </span>
-              <span className="text-xs text-slate-400">
-                • {tenant?.city || 'São Paulo'}/{tenant?.state || 'SP'}
-              </span>
+          <div className="space-y-2">
+            {/* Interactive Clinic Badge & Quick Edit Button */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsClinicModalOpen(true)}
+                title="Clique para editar o nome da clínica, endereço, cidade e dados"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 transition cursor-pointer group shadow-2xs"
+              >
+                <Building2 className="w-3.5 h-3.5 text-teal-400 group-hover:scale-110 transition shrink-0" />
+                <span className="font-bold">{tenant?.tradeName || tenant?.name || 'Sua Clínica'}</span>
+                <span className="text-teal-200/80 font-normal">
+                  • {tenant?.city || 'São Paulo'}/{tenant?.state || 'SP'}
+                </span>
+                <Pencil className="w-2.5 h-2.5 text-teal-300 ml-1 opacity-70 group-hover:opacity-100 transition" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsClinicModalOpen(true)}
+                title="Editar informações da clínica (Nome, Endereço, Cidade, Telefone, Logomarca)"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-teal-300 hover:text-white transition cursor-pointer"
+              >
+                <Pencil className="w-2.5 h-2.5" />
+                <span>Editar Dados da Clínica</span>
+              </button>
             </div>
+
+            {/* Address summary under badge if available */}
+            {tenant?.address && (
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                <span>
+                  {tenant.address}{tenant.number ? `, ${tenant.number}` : ''}{tenant.neighborhood ? ` - ${tenant.neighborhood}` : ''}
+                  {tenant.cep ? ` • CEP: ${tenant.cep}` : ''}
+                </span>
+              </div>
+            )}
 
             <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
               <span>Olá, {user?.name || 'Profissional'}!</span>
@@ -92,7 +124,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </span>
               ) : (
                 <span>
-                  Visão Geral Administrativa da <strong className="text-teal-300">{tenant?.tradeName}</strong>.
+                  Visão Geral Administrativa da <strong className="text-teal-300">{tenant?.tradeName || tenant?.name}</strong>.
                 </span>
               )}
             </p>
@@ -277,6 +309,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       </div>
+
+      <ClinicProfileModal
+        isOpen={isClinicModalOpen}
+        onClose={() => setIsClinicModalOpen(false)}
+      />
     </div>
   );
 };
+

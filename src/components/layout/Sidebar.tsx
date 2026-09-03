@@ -23,6 +23,8 @@ import {
   Code2,
   Plus,
   X,
+  Pencil,
+  MapPin,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ClinicProfileModal } from './ClinicProfileModal';
@@ -199,36 +201,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <Sparkles className="w-2.5 h-2.5 text-amber-400" />
                 </div>
                 {allTenants.map(t => (
-                  <button
+                  <div
                     key={t.id}
-                    type="button"
-                    onClick={() => {
-                      switchTenant(t.id);
-                      setShowTenantDropdown(false);
-                    }}
-                    className={`w-full px-2.5 py-1.5 text-left text-[11px] flex items-center justify-between hover:bg-slate-700/60 transition ${
+                    className={`w-full px-2.5 py-1.5 text-left text-[11px] flex items-center justify-between hover:bg-slate-700/60 transition group ${
                       t.id === tenant?.id ? 'text-emerald-400 font-semibold bg-emerald-500/10' : 'text-slate-300'
                     }`}
                   >
-                    <span className="truncate">{t.tradeName || t.name}</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        switchTenant(t.id);
+                        setShowTenantDropdown(false);
+                      }}
+                      className="flex-1 min-w-0 text-left truncate cursor-pointer flex flex-col"
+                    >
+                      <span className="truncate font-semibold">{t.tradeName || t.name}</span>
+                      <span className="text-[9px] text-slate-400 font-normal">
+                        {t.city || 'São Paulo'}/{t.state || 'SP'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        switchTenant(t.id);
+                        setIsClinicModalOpen(true);
+                        setShowTenantDropdown(false);
+                      }}
+                      title="Editar dados e endereço desta clínica"
+                      className="p-1 text-slate-400 hover:text-teal-300 hover:bg-slate-600/50 rounded transition shrink-0 ml-1 cursor-pointer opacity-70 group-hover:opacity-100"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
                 ))}
 
-                {/* Add new clinic button for Super User / Admin */}
-                {isSuperUser && (
+                {/* Add new clinic button for Admin / Super User */}
+                {(isSuperUser || user?.role === 'ADMIN') && (
                   <button
                     type="button"
                     onClick={() => {
                       setIsNewClinicModalOpen(true);
                       setShowTenantDropdown(false);
                     }}
-                    className="w-full px-2.5 py-1.5 text-left text-[11px] flex items-center gap-1.5 text-teal-400 hover:bg-teal-500/10 font-bold border-t border-slate-700/80 transition"
+                    className="w-full px-2.5 py-2 text-left text-[11px] flex items-center gap-1.5 text-teal-400 hover:bg-teal-500/10 font-bold border-t border-slate-700/80 transition cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
-                    <span>+ Criar Nova Clínica</span>
+                    <span>+ Cadastrar Nova Clínica</span>
                   </button>
                 )}
               </div>
+
             )}
           </div>
         </div>
