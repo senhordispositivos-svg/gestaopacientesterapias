@@ -27,7 +27,7 @@
       "supportPhone": "(11) 99999-8888",
       "creatorName": "osaiasbrito",
       "whatsappConfig": null,
-      "createdAt": "2026-08-29 02:56:43.179474+00"
+      "createdAt": "2026-09-04T14:30:46.202Z"
     }
   ],
   "users": [
@@ -151,6 +151,35 @@
       "createdAt": "2026-08-30T10:00:00.000Z",
       "updatedAt": "2026-08-30T10:00:00.000Z",
       "deletedAt": "2026-09-02T02:49:51.914Z"
+    },
+    {
+      "id": "pat-1788532340309-rb8gdd",
+      "tenantId": "tenant-demo-1",
+      "name": "Maria Angélica de Almeida Santana",
+      "email": null,
+      "cpf": "297.075.103-82",
+      "rg": "00",
+      "gender": "Feminino",
+      "phone": "(99) 99197-5372",
+      "whatsapp": "(99) 99197-5372",
+      "profession": "Aposentada",
+      "birthDate": "1954-09-22",
+      "cep": "65800-000",
+      "street": "Rua04",
+      "number": "600",
+      "complement": null,
+      "neighborhood": "Catumbi",
+      "city": "Balsas",
+      "state": "MA",
+      "referencePoint": null,
+      "notes": null,
+      "photoUrl": null,
+      "avatarUrl": null,
+      "assignedProfessionalId": null,
+      "assignedProfessionalName": "Geral",
+      "createdAt": "2026-09-04T14:32:20.309Z",
+      "updatedAt": "2026-09-04T14:32:20.309Z",
+      "deletedAt": null
     }
   ],
   "anamneses": [],

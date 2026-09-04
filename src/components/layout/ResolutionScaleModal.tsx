@@ -12,6 +12,8 @@ import {
   Gauge,
   Sliders,
   CheckCircle2,
+  Maximize,
+  Minimize2,
 } from 'lucide-react';
 
 interface ResolutionScaleModalProps {
@@ -19,6 +21,8 @@ interface ResolutionScaleModalProps {
   onClose: () => void;
   currentScale: number;
   onScaleChange: (newScale: number) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 interface ScalePreset {
@@ -86,6 +90,8 @@ export const ResolutionScaleModal: React.FC<ResolutionScaleModalProps> = ({
   onClose,
   currentScale,
   onScaleChange,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
   const [screenInfo, setScreenInfo] = useState({ width: 0, height: 0, dpr: 1 });
 
@@ -197,6 +203,64 @@ export const ResolutionScaleModal: React.FC<ResolutionScaleModalProps> = ({
                 <span>Aplicar {autoScale}%</span>
               </button>
             )}
+          </div>
+
+          {/* Modo Tela Cheia Kiosk (Ocultar Navegador no Tablet) */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-teal-950/60 via-slate-900 to-slate-900 border border-teal-500/40 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-teal-500/20 text-teal-300 flex items-center justify-center border border-teal-400/30 shrink-0 mt-0.5">
+                  <Maximize className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <span>Modo Tela Cheia (Ocultar Navegador)</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                      isFullscreen ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-700 text-slate-300'
+                    }`}>
+                      {isFullscreen ? 'Ativado' : 'Desativado'}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    Oculta a barra de endereços, botões e abas do navegador no tablet, transformando em tela cheia total.
+                  </p>
+                </div>
+              </div>
+
+              {onToggleFullscreen && (
+                <button
+                  type="button"
+                  onClick={onToggleFullscreen}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shrink-0 cursor-pointer ${
+                    isFullscreen
+                      ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                      : 'bg-teal-600 hover:bg-teal-500 text-white'
+                  }`}
+                >
+                  {isFullscreen ? (
+                    <>
+                      <Minimize2 className="w-3.5 h-3.5" />
+                      <span>Sair da Tela Cheia</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize className="w-3.5 h-3.5" />
+                      <span>Ativar Tela Cheia</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+              <span className="font-bold text-teal-400 block">💡 Para abrir SEMPRE sem navegador no tablet (Kiosk Permanente):</span>
+              <p className="leading-relaxed">
+                • <strong>Android (Chrome / Edge / Samsung Internet):</strong> Toque nos 3 pontinhos (⋮) no topo do navegador e selecione <strong>&quot;Adicionar à tela inicial&quot;</strong> ou <strong>&quot;Instalar aplicativo&quot;</strong>.
+              </p>
+              <p className="leading-relaxed">
+                • <strong>iPad (Safari):</strong> Toque no ícone de Compartilhar (quadrado com seta para cima) e toque em <strong>&quot;Adicionar à Tela de Início&quot;</strong>.
+              </p>
+            </div>
           </div>
 
           {/* Slider & Fine-Tuning Control */}

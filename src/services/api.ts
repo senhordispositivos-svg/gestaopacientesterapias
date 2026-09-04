@@ -236,7 +236,27 @@ export const api = {
       try {
         const cloudTenants = await supabaseDirectApi.getTenants();
         if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
-          cloudTenants.forEach(t => mergedMap.set(t.id, t));
+          cloudTenants.forEach(t => {
+            const existing = mergedMap.get(t.id);
+            if (existing) {
+              mergedMap.set(t.id, {
+                ...existing,
+                ...t,
+                logoUrl: t.logoUrl || existing.logoUrl || '',
+                address: t.address || existing.address || '',
+                number: t.number || existing.number || '',
+                complement: t.complement || existing.complement || '',
+                neighborhood: t.neighborhood || existing.neighborhood || '',
+                cep: t.cep || existing.cep || '',
+                phone: t.phone || existing.phone || '',
+                email: t.email || existing.email || '',
+                tradeName: t.tradeName || existing.tradeName || t.name || existing.name,
+                name: t.name || existing.name || t.tradeName || existing.tradeName,
+              });
+            } else {
+              mergedMap.set(t.id, t);
+            }
+          });
         }
       } catch (sbErr) {
         console.warn('Supabase tenants fetch notice:', sbErr);
@@ -272,42 +292,57 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tenantData),
     });
+
+    let newTenant: Tenant;
     if (serverRes) {
-      const created = await serverRes.json();
-      const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
-      list.push(created);
-      setLocal(STORAGE_KEYS.TENANTS, list);
-      return created;
+      newTenant = await serverRes.json();
+    } else {
+      newTenant = {
+        id: `tenant-${Date.now()}`,
+        name: tenantData.name || tenantData.tradeName || 'Nova Clínica',
+        tradeName: tenantData.tradeName || tenantData.name || 'Nova Clínica',
+        corporateName: tenantData.corporateName || tenantData.name || 'Nova Clínica Ltda',
+        docType: tenantData.docType || 'CNPJ',
+        documentNumber: tenantData.documentNumber || '',
+        email: tenantData.email || '',
+        phone: tenantData.phone || '',
+        cep: tenantData.cep || '',
+        address: tenantData.address || '',
+        number: tenantData.number || '',
+        neighborhood: tenantData.neighborhood || '',
+        city: tenantData.city || 'São Paulo',
+        state: tenantData.state || 'SP',
+        country: 'Brasil',
+        logoUrl: tenantData.logoUrl || '',
+        primaryColor: tenantData.primaryColor || '#0d9488',
+        secondaryColor: tenantData.secondaryColor || '#0f766e',
+        themeMode: 'light',
+        customHeader: tenantData.customHeader || '',
+        publicPageTitle: tenantData.publicPageTitle || '',
+        createdAt: new Date().toISOString(),
+      } as Tenant;
+    }
+
+    // Direct Cloud Supabase Sync
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        const cloudCreated = await supabaseDirectApi.createTenant(newTenant);
+        if (cloudCreated) {
+          newTenant = { ...newTenant, ...cloudCreated };
+        }
+      } catch (sbErr) {
+        console.warn('Supabase tenant direct create notice:', sbErr);
+      }
     }
 
     const list = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
-    const newTenant = {
-      id: `tenant-${Date.now()}`,
-      name: tenantData.name || 'Nova Clínica',
-      tradeName: tenantData.tradeName || tenantData.name || 'Nova Clínica',
-      corporateName: tenantData.corporateName || tenantData.name || 'Nova Clínica Ltda',
-      docType: tenantData.docType || 'CNPJ',
-      documentNumber: tenantData.documentNumber || '',
-      email: tenantData.email || '',
-      phone: tenantData.phone || '',
-      cep: tenantData.cep || '',
-      address: tenantData.address || '',
-      number: tenantData.number || '',
-      neighborhood: tenantData.neighborhood || '',
-      city: tenantData.city || 'São Paulo',
-      state: tenantData.state || 'SP',
-      country: 'Brasil',
-      logoUrl: tenantData.logoUrl || '',
-      primaryColor: tenantData.primaryColor || '#0d9488',
-      secondaryColor: tenantData.secondaryColor || '#0f766e',
-      themeMode: 'light',
-      customHeader: tenantData.customHeader || '',
-      publicPageTitle: tenantData.publicPageTitle || '',
-      createdAt: new Date().toISOString(),
-    } as Tenant;
-
     list.push(newTenant);
     setLocal(STORAGE_KEYS.TENANTS, list);
+
+    try {
+      window.dispatchEvent(new CustomEvent('clinica_tenant_updated', { detail: newTenant }));
+    } catch (_) {}
+
     return newTenant;
   },
 
@@ -329,6 +364,18 @@ export const api = {
         updatedTenant = list[idx];
       } else {
         updatedTenant = { id, ...updates } as Tenant;
+      }
+    }
+
+    // Direct Cloud Supabase Sync - Ensures changes are immediately written to Supabase
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        const cloudUpdated = await supabaseDirectApi.updateTenant({ id, ...updates });
+        if (cloudUpdated) {
+          updatedTenant = { ...updatedTenant, ...cloudUpdated };
+        }
+      } catch (sbErr) {
+        console.warn('Supabase tenant direct update notice:', sbErr);
       }
     }
 
@@ -355,6 +402,10 @@ export const api = {
     } catch (e) {
       console.warn('Error updating session storage:', e);
     }
+
+    try {
+      window.dispatchEvent(new CustomEvent('clinica_tenant_updated', { detail: updatedTenant }));
+    } catch (_) {}
 
     return updatedTenant;
   },

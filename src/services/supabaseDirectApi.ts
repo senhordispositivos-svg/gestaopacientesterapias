@@ -50,7 +50,7 @@ export const supabaseDirectApi = {
   },
 
   async updateTenant(tenant: Partial<Tenant> & { id: string }): Promise<Tenant> {
-    const payload: Record<string, unknown> = {};
+    const payload: Record<string, unknown> = { id: tenant.id };
     if (tenant.name !== undefined) payload.name = tenant.name;
     if (tenant.tradeName !== undefined) payload.trade_name = tenant.tradeName;
     if (tenant.corporateName !== undefined) payload.corporate_name = tenant.corporateName;
@@ -77,15 +77,67 @@ export const supabaseDirectApi = {
     if (tenant.creatorName !== undefined) payload.creator_name = tenant.creatorName;
     if (tenant.whatsappConfig !== undefined) payload.whatsapp_config = tenant.whatsappConfig;
 
-    const { data, error } = await supabase
+    // Try update first
+    let resultData: Record<string, unknown> | null = null;
+    const { data: updateData, error: updateError } = await supabase
       .from('tenants')
       .update(payload)
       .eq('id', tenant.id)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (error) throw error;
-    return data as unknown as Tenant;
+    if (updateData) {
+      resultData = updateData as Record<string, unknown>;
+    } else {
+      // If row does not exist yet or update didn't find it, upsert with created_at
+      payload.created_at = tenant.createdAt || new Date().toISOString();
+      const { data: upsertData, error: upsertError } = await supabase
+        .from('tenants')
+        .upsert(payload, { onConflict: 'id' })
+        .select()
+        .single();
+
+      if (upsertError) {
+        console.error('[Supabase] Error saving tenant:', upsertError || updateError);
+        throw upsertError;
+      }
+      resultData = upsertData as Record<string, unknown>;
+    }
+
+    const t = resultData;
+    return {
+      id: t.id as string,
+      name: (t.name as string) || (t.trade_name as string) || 'Clínica',
+      tradeName: (t.trade_name as string) || (t.name as string) || 'Clínica',
+      corporateName: (t.corporate_name as string) || '',
+      docType: (t.doc_type as 'CPF' | 'CNPJ') || 'CNPJ',
+      documentNumber: (t.document_number as string) || '',
+      email: (t.email as string) || '',
+      phone: (t.phone as string) || '',
+      cep: (t.cep as string) || '',
+      address: (t.address as string) || '',
+      number: (t.number as string) || '',
+      complement: (t.complement as string) || '',
+      neighborhood: (t.neighborhood as string) || '',
+      city: (t.city as string) || 'São Paulo',
+      state: (t.state as string) || 'SP',
+      country: (t.country as string) || 'Brasil',
+      logoUrl: (t.logo_url as string) || '',
+      primaryColor: (t.primary_color as string) || '#0d9488',
+      secondaryColor: (t.secondary_color as string) || '#0f766e',
+      themeMode: (t.theme_mode as 'light' | 'dark') || 'light',
+      customHeader: (t.custom_header as string) || '',
+      publicPageTitle: (t.public_page_title as string) || '',
+      supportEmail: (t.support_email as string) || '',
+      supportPhone: (t.support_phone as string) || '',
+      creatorName: (t.creator_name as string) || '',
+      whatsappConfig: t.whatsapp_config as Tenant['whatsappConfig'],
+      createdAt: (t.created_at as string) || new Date().toISOString(),
+    };
+  },
+
+  async createTenant(tenant: Tenant): Promise<Tenant> {
+    return this.updateTenant(tenant);
   },
 
   // Patients

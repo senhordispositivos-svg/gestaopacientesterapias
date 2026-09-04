@@ -26,6 +26,8 @@ import { PackagesTrackerView } from './components/packages/PackagesTrackerView';
 import { LoginView } from './components/auth/LoginView';
 import { MobileTabletHub } from './components/MobileTabletHub';
 import { ResolutionScaleModal } from './components/layout/ResolutionScaleModal';
+import { FullscreenExitButton } from './components/layout/FullscreenExitButton';
+import { useFullscreen } from './hooks/useFullscreen';
 import {
   LayoutDashboard,
   LayoutGrid,
@@ -169,6 +171,15 @@ export function App() {
     return 100;
   });
   const [isResolutionModalOpen, setIsResolutionModalOpen] = useState(false);
+
+  // Fullscreen Mode for Tablets & Desktops (Kiosk Mode)
+  const {
+    isFullscreen,
+    toggleFullscreen,
+    enterFullscreen,
+    exitFullscreen,
+    error: fullscreenError,
+  } = useFullscreen();
 
   // Apply resolution / scale to documentElement
   useEffect(() => {
@@ -394,6 +405,8 @@ export function App() {
           onManualRefresh={loadData}
           resolutionScale={resolutionScale}
           onOpenResolutionModal={() => setIsResolutionModalOpen(true)}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
         />
 
         {/* Scrollable Viewport */}
@@ -448,6 +461,8 @@ export function App() {
                   resolutionScale={resolutionScale}
                   onOpenResolutionModal={() => setIsResolutionModalOpen(true)}
                   onChangeScaleStep={handleScaleStep}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={toggleFullscreen}
                 />
               )}
 
@@ -1042,6 +1057,16 @@ export function App() {
         onClose={() => setIsResolutionModalOpen(false)}
         currentScale={resolutionScale}
         onScaleChange={setResolutionScale}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
+      />
+
+      {/* Persistent Floating Fullscreen Exit Control & Kiosk Info */}
+      <FullscreenExitButton
+        isFullscreen={isFullscreen}
+        onExitFullscreen={exitFullscreen}
+        onEnterFullscreen={enterFullscreen}
+        error={fullscreenError}
       />
     </div>
   );

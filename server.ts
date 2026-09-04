@@ -64,30 +64,30 @@ interface DatabaseStore {
 const DEFAULT_CLEAN_TENANTS: Tenant[] = [
   {
     id: 'tenant-demo-1',
-    name: 'Clínica de Terapias Integradas',
-    tradeName: 'Clínica de Terapias Integradas',
-    corporateName: 'Clínica de Terapias Integradas Ltda',
+    name: 'Clínica Fisio & Terapia Integrada',
+    tradeName: 'Clínica Fisio & Terapia Integrada',
+    corporateName: 'Fisio & Terapia Integrada LTDA',
     docType: 'CNPJ',
     documentNumber: '12.345.678/0001-90',
-    email: 'osaiasbrito@gmail.com',
-    phone: '(98) 98854-1695',
-    cep: '65075-000',
-    address: 'Av. Litorânea',
+    email: 'contato@fisioterapia.com.br',
+    phone: '(11) 99999-8888',
+    cep: '01310-100',
+    address: 'Avenida Paulista',
     number: '1000',
-    complement: 'Sala 301',
-    neighborhood: 'Calhau',
-    city: 'São Luis',
-    state: 'MA',
+    complement: 'Sala 302',
+    neighborhood: 'Bela Vista',
+    city: 'São Paulo',
+    state: 'SP',
     country: 'Brasil',
     logoUrl: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=200&auto=format&fit=crop&q=80',
     primaryColor: '#0d9488',
     secondaryColor: '#0f766e',
     themeMode: 'light',
-    customHeader: 'Clínica de Terapias Integradas - Fisioterapia & Massoterapia',
-    publicPageTitle: 'Validação de Atendimento - Clínica de Terapias Integradas',
-    supportEmail: 'osaiasbrito@gmail.com',
-    supportPhone: '(98) 98854-1695',
-    creatorName: 'Osaias Brito',
+    customHeader: 'Clínica Fisio & Terapia Integrada - Fisioterapia e Massoterapia',
+    publicPageTitle: 'Clínica Fisio & Terapia Integrada',
+    supportEmail: 'contato@fisioterapia.com.br',
+    supportPhone: '(11) 99999-8888',
+    creatorName: 'osaiasbrito',
     whatsappConfig: {
       token: 'whatsapp_token_configured',
       phoneNumberId: '1092837465',
@@ -240,6 +240,70 @@ async function persistTenantToPostgres(t: Tenant) {
     console.log(`[PostgreSQL] Tenant successfully persisted to database: ${t.id} (${t.name})`);
   } catch (err) {
     console.error('[PostgreSQL] Direct persistTenantToPostgres error:', err);
+  }
+}
+
+// Immediate Dedicated Supabase Cloud Tenant Persister
+async function persistTenantToSupabase(t: Tenant) {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://bvggeztgmorusfkedsbj.supabase.co';
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_xhWUFn_vVcVsV1KpLqPBKQ_duFVj-tV';
+    if (!supabaseUrl || !supabaseAnonKey) return;
+
+    const payload: Record<string, unknown> = {
+      name: t.name || t.tradeName || 'Clínica',
+      trade_name: t.tradeName || t.name || 'Clínica',
+      corporate_name: t.corporateName || '',
+      doc_type: t.docType || 'CNPJ',
+      document_number: t.documentNumber || '',
+      email: t.email || '',
+      phone: t.phone || '',
+      cep: t.cep || '',
+      address: t.address || '',
+      number: t.number || '',
+      complement: t.complement || '',
+      neighborhood: t.neighborhood || '',
+      city: t.city || 'São Paulo',
+      state: t.state || 'SP',
+      country: t.country || 'Brasil',
+      logo_url: t.logoUrl || null,
+      primary_color: t.primaryColor || '#0d9488',
+      secondary_color: t.secondaryColor || '#0f766e',
+      theme_mode: t.themeMode || 'light',
+      custom_header: t.customHeader || '',
+      public_page_title: t.publicPageTitle || '',
+      support_email: t.supportEmail || '',
+      support_phone: t.supportPhone || '',
+      creator_name: t.creatorName || '',
+      whatsapp_config: t.whatsappConfig || null,
+    };
+
+    const patchRes = await fetch(`${supabaseUrl}/rest/v1/tenants?id=eq.${encodeURIComponent(t.id)}`, {
+      method: 'PATCH',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!patchRes.ok) {
+      await fetch(`${supabaseUrl}/rest/v1/tenants`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${supabaseAnonKey}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+        body: JSON.stringify({ id: t.id, created_at: t.createdAt || new Date().toISOString(), ...payload }),
+      });
+    }
+    console.log(`[Supabase] Tenant successfully persisted: ${t.id} (${t.name})`);
+  } catch (err) {
+    console.warn('[Supabase] persistTenantToSupabase notice:', err);
   }
 }
 
@@ -818,6 +882,7 @@ app.post('/api/tenants', async (req, res) => {
   db.tenants.push(newTenant);
   saveDatabase();
   await persistTenantToPostgres(newTenant);
+  await persistTenantToSupabase(newTenant);
   res.status(201).json(newTenant);
 });
 
@@ -883,6 +948,7 @@ app.put('/api/tenants/:id', async (req, res) => {
   };
   saveDatabase();
   await persistTenantToPostgres(db.tenants[index]);
+  await persistTenantToSupabase(db.tenants[index]);
 
   // Broadcast to this tenant and default tenant channel for multi-device sync
   broadcastRealtime(db.tenants[index].id, {

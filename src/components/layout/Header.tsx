@@ -19,6 +19,8 @@ import {
   Database,
   Lock,
   Sliders,
+  Maximize,
+  Minimize2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Patient, RealtimeConnectionStatus } from '../../types';
@@ -40,6 +42,8 @@ interface HeaderProps {
   onManualRefresh?: () => void;
   resolutionScale?: number;
   onOpenResolutionModal?: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -56,6 +60,8 @@ export const Header: React.FC<HeaderProps> = ({
   onManualRefresh,
   resolutionScale = 100,
   onOpenResolutionModal,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
   const { tenant: authTenant, user: authUser, logout } = useAuth();
   const user = propUser || authUser;
@@ -256,6 +262,36 @@ export const Header: React.FC<HeaderProps> = ({
             <Sliders className="w-3.5 h-3.5 text-teal-500" />
             <span className="hidden sm:inline">Escala:</span>
             <span className="text-teal-600 dark:text-teal-400">{resolutionScale}%</span>
+          </button>
+        )}
+
+        {/* Fullscreen Mode Toggle Button (Hide browser on tablets / PC) */}
+        {onToggleFullscreen && (
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            title={
+              isFullscreen
+                ? 'Sair da Tela Cheia (ESC)'
+                : 'Modo Tela Cheia (Oculta a barra do navegador no tablet/computador)'
+            }
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs border ${
+              isFullscreen
+                ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 border-rose-300 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/60 ring-1 ring-rose-400/40'
+                : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            {isFullscreen ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5 text-rose-500" />
+                <span className="hidden md:inline">Sair Tela Cheia</span>
+              </>
+            ) : (
+              <>
+                <Maximize className="w-3.5 h-3.5 text-teal-500" />
+                <span className="hidden md:inline">Tela Cheia</span>
+              </>
+            )}
           </button>
         )}
 

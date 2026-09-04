@@ -17,7 +17,7 @@ interface AuthContextType {
   updateTenantConfig: (updates: Partial<Tenant>, targetTenantId?: string) => Promise<Tenant | void>;
   updateUserProfile: (updates: Partial<User>) => Promise<User | void>;
   toggleTheme: () => void;
-  refreshTenantData: () => Promise<void>;
+  refreshTenantData: (targetId?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -149,9 +149,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
+    const handleTenantUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<Tenant>;
+      if (customEvent.detail) {
+        const updated = customEvent.detail;
+        setAllTenants(prev => {
+          const exists = prev.some(t => t.id === updated.id);
+          if (exists) {
+            return prev.map(t => (t.id === updated.id ? { ...t, ...updated } : t));
+          }
+          return [...prev, updated];
+        });
+        setTenant(prev => {
+          if (!prev || prev.id === updated.id) {
+            return { ...prev, ...updated };
+          }
+          return prev;
+        });
+      }
+    };
+
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('clinica_tenant_updated', handleTenantUpdated);
 
     // Periodic check every 8 seconds to ensure instant sync between smartphone and computer
     const interval = setInterval(() => {
@@ -162,6 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('clinica_tenant_updated', handleTenantUpdated);
       clearInterval(interval);
     };
   }, []);
