@@ -17,6 +17,8 @@ import {
   UserCheck,
   Pencil,
   MapPin,
+  Phone,
+  Mail,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Patient, Session, SessionPackage } from '../../types';
@@ -83,7 +85,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 title="Clique para editar o nome da clínica, endereço, cidade e dados"
                 className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-[10.5px] sm:text-[11px] font-bold bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 transition cursor-pointer group shadow-2xs"
               >
-                <Building2 className="w-3.5 h-3.5 text-teal-400 group-hover:scale-110 transition shrink-0" />
+                {tenant?.logoUrl ? (
+                  <img
+                    src={tenant.logoUrl}
+                    alt="Logo"
+                    className="w-3.5 h-3.5 rounded object-cover"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <Building2 className="w-3.5 h-3.5 text-teal-400 group-hover:scale-110 transition shrink-0" />
+                )}
                 <span className="font-bold">{tenant?.tradeName || tenant?.name || 'Sua Clínica'}</span>
                 <span className="text-teal-200/80 font-normal">
                   • {tenant?.city || 'São Paulo'}/{tenant?.state || 'SP'}
@@ -102,12 +113,44 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </div>
 
-            {/* Address summary under badge if available */}
-            {tenant?.address && (
-              <div className="flex items-center gap-1.5 text-[10.5px] sm:text-[11px] text-slate-300">
+            {/* Complete Company Details (Razão Social, CNPJ/CPF, Contatos) */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              {tenant?.corporateName && (
+                <div className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-[10.5px] bg-slate-800/90 text-slate-300 border border-slate-700/80 shadow-2xs">
+                  <span className="text-slate-400">Razão Social:</span>
+                  <strong className="text-white font-medium">{tenant.corporateName}</strong>
+                </div>
+              )}
+
+              {tenant?.documentNumber && (
+                <div className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-[10.5px] bg-slate-800/90 text-slate-300 border border-slate-700/80 shadow-2xs">
+                  <span className="text-teal-400 font-bold uppercase text-[9px]">{tenant.docType || 'CNPJ'}:</span>
+                  <span className="font-mono text-white font-medium">{tenant.documentNumber}</span>
+                </div>
+              )}
+
+              {tenant?.phone && (
+                <div className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-[10.5px] bg-slate-800/90 text-slate-300 border border-slate-700/80 shadow-2xs">
+                  <Phone className="w-3 h-3 text-emerald-400 shrink-0" />
+                  <span className="text-white">{tenant.phone}</span>
+                </div>
+              )}
+
+              {tenant?.email && (
+                <div className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-[10.5px] bg-slate-800/90 text-slate-300 border border-slate-700/80 shadow-2xs">
+                  <Mail className="w-3 h-3 text-sky-400 shrink-0" />
+                  <span className="text-white">{tenant.email}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Address summary under badge */}
+            {(tenant?.address || tenant?.city) && (
+              <div className="flex items-center gap-1.5 text-[10.5px] sm:text-[11px] text-slate-300 bg-slate-800/60 px-2.5 py-1 rounded-lg border border-slate-700/50 w-fit">
                 <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
                 <span>
-                  {tenant.address}{tenant.number ? `, ${tenant.number}` : ''}{tenant.neighborhood ? ` - ${tenant.neighborhood}` : ''}
+                  {tenant.address ? `${tenant.address}${tenant.number ? `, ${tenant.number}` : ''}${tenant.complement ? ` (${tenant.complement})` : ''}${tenant.neighborhood ? ` - ${tenant.neighborhood}` : ''}, ` : ''}
+                  {tenant.city || 'São Paulo'}/{tenant.state || 'SP'}
                   {tenant.cep ? ` • CEP: ${tenant.cep}` : ''}
                 </span>
               </div>

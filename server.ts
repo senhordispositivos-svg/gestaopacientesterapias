@@ -166,6 +166,83 @@ function saveDatabase() {
   }
 }
 
+// Immediate Dedicated PostgreSQL Tenant Persister
+async function persistTenantToPostgres(t: Tenant) {
+  if (!hasSqlConfig || !pool) return;
+  try {
+    const q = `
+      INSERT INTO tenants (
+        id, name, trade_name, corporate_name, doc_type, document_number,
+        email, phone, cep, address, number, complement, neighborhood,
+        city, state, country, logo_url, primary_color, secondary_color,
+        theme_mode, custom_header, public_page_title, support_email,
+        support_phone, creator_name, whatsapp_config, created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+        $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        trade_name = EXCLUDED.trade_name,
+        corporate_name = EXCLUDED.corporate_name,
+        doc_type = EXCLUDED.doc_type,
+        document_number = EXCLUDED.document_number,
+        email = EXCLUDED.email,
+        phone = EXCLUDED.phone,
+        cep = EXCLUDED.cep,
+        address = EXCLUDED.address,
+        number = EXCLUDED.number,
+        complement = EXCLUDED.complement,
+        neighborhood = EXCLUDED.neighborhood,
+        city = EXCLUDED.city,
+        state = EXCLUDED.state,
+        country = EXCLUDED.country,
+        logo_url = EXCLUDED.logo_url,
+        primary_color = EXCLUDED.primary_color,
+        secondary_color = EXCLUDED.secondary_color,
+        theme_mode = EXCLUDED.theme_mode,
+        custom_header = EXCLUDED.custom_header,
+        public_page_title = EXCLUDED.public_page_title,
+        support_email = EXCLUDED.support_email,
+        support_phone = EXCLUDED.support_phone,
+        creator_name = EXCLUDED.creator_name,
+        whatsapp_config = EXCLUDED.whatsapp_config;
+    `;
+    await pool.query(q, [
+      t.id,
+      t.name || t.tradeName || 'Clínica',
+      t.tradeName || t.name || 'Clínica',
+      t.corporateName || '',
+      t.docType || 'CNPJ',
+      t.documentNumber || '',
+      t.email || '',
+      t.phone || '',
+      t.cep || '',
+      t.address || '',
+      t.number || '',
+      t.complement || '',
+      t.neighborhood || '',
+      t.city || 'São Paulo',
+      t.state || 'SP',
+      t.country || 'Brasil',
+      t.logoUrl || '',
+      t.primaryColor || '#0d9488',
+      t.secondaryColor || '#0f766e',
+      t.themeMode || 'light',
+      t.customHeader || '',
+      t.publicPageTitle || '',
+      t.supportEmail || '',
+      t.supportPhone || '',
+      t.creatorName || '',
+      t.whatsappConfig || null,
+      t.createdAt || new Date().toISOString(),
+    ]);
+    console.log(`[PostgreSQL] Tenant successfully persisted to database: ${t.id} (${t.name})`);
+  } catch (err) {
+    console.error('[PostgreSQL] Direct persistTenantToPostgres error:', err);
+  }
+}
+
 // Automatic Snapshot Creation & Rotation (Keeps last 20 snapshots)
 function createSnapshot(label = 'auto') {
   try {
@@ -711,7 +788,7 @@ app.get('/api/tenants/:id', (req, res) => {
   res.json(tenant);
 });
 
-app.post('/api/tenants', (req, res) => {
+app.post('/api/tenants', async (req, res) => {
   const newTenant: Tenant = {
     id: `tenant-${Date.now()}`,
     name: req.body.name || 'Nova Clínica',
@@ -740,10 +817,11 @@ app.post('/api/tenants', (req, res) => {
   };
   db.tenants.push(newTenant);
   saveDatabase();
+  await persistTenantToPostgres(newTenant);
   res.status(201).json(newTenant);
 });
 
-app.put('/api/tenants/:id', (req, res) => {
+app.put('/api/tenants/:id', async (req, res) => {
   let index = db.tenants.findIndex(t => t.id === req.params.id);
   if (index === -1 && db.tenants.length > 0) {
     index = 0; // Graceful fallback to primary tenant so update is never lost
@@ -804,6 +882,7 @@ app.put('/api/tenants/:id', (req, res) => {
     primaryColor: req.body.primaryColor || current.primaryColor || '#0d9488',
   };
   saveDatabase();
+  await persistTenantToPostgres(db.tenants[index]);
 
   // Broadcast to this tenant and default tenant channel for multi-device sync
   broadcastRealtime(db.tenants[index].id, {

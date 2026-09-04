@@ -280,8 +280,8 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
           Cancelar
         </button>
         <button
-          type="submit"
-          form="clinic-profile-form"
+          type="button"
+          onClick={() => handleSubmit()}
           disabled={isSaving}
           className="w-full sm:w-auto px-5 py-2.5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
         >
@@ -635,6 +635,51 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
               />
             </div>
+          </div>
+        </div>
+
+        {/* In-Form Primary Action Bar */}
+        <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-800/50 p-3.5 rounded-xl">
+          <div className="text-xs">
+            {successMessage ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-600" /> {successMessage}
+              </span>
+            ) : errorMessage ? (
+              <span className="text-rose-600 dark:text-rose-400 font-semibold">{errorMessage}</span>
+            ) : (
+              <span className="text-slate-500 dark:text-slate-400">
+                Os dados salvos serão gravados no banco de dados e refletidos imediatamente.
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSubmit()}
+              disabled={isSaving}
+              className="w-full sm:w-auto px-6 py-2.5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-md hover:shadow-lg transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Salvando no Banco...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Salvar Dados da Clínica</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </form>
