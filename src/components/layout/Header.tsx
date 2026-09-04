@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   Database,
   Lock,
+  Sliders,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Patient, RealtimeConnectionStatus } from '../../types';
@@ -37,6 +38,8 @@ interface HeaderProps {
   realtimeStatus?: RealtimeConnectionStatus;
   lastSyncTime?: Date;
   onManualRefresh?: () => void;
+  resolutionScale?: number;
+  onOpenResolutionModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -51,6 +54,8 @@ export const Header: React.FC<HeaderProps> = ({
   realtimeStatus = 'connected',
   lastSyncTime,
   onManualRefresh,
+  resolutionScale = 100,
+  onOpenResolutionModal,
 }) => {
   const { tenant: authTenant, user: authUser, logout } = useAuth();
   const user = propUser || authUser;
@@ -237,6 +242,20 @@ export const Header: React.FC<HeaderProps> = ({
             <Database className="w-3 h-3 text-amber-600 dark:text-amber-400 group-hover:rotate-12 transition-transform" />
             <span>Testar Banco</span>
             <Lock className="w-2.5 h-2.5 text-amber-500 opacity-75" />
+          </button>
+        )}
+
+        {/* Screen Resolution / Zoom Adjuster Button */}
+        {onOpenResolutionModal && (
+          <button
+            type="button"
+            onClick={onOpenResolutionModal}
+            title="Ajustar Resolução / Escala da Tela (Ideal para tablets e celulares)"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
+          >
+            <Sliders className="w-3.5 h-3.5 text-teal-500" />
+            <span className="hidden sm:inline">Escala:</span>
+            <span className="text-teal-600 dark:text-teal-400">{resolutionScale}%</span>
           </button>
         )}
 

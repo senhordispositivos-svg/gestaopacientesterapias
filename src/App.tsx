@@ -25,6 +25,7 @@ import { PackageDetailModal } from './components/packages/PackageDetailModal';
 import { PackagesTrackerView } from './components/packages/PackagesTrackerView';
 import { LoginView } from './components/auth/LoginView';
 import { MobileTabletHub } from './components/MobileTabletHub';
+import { ResolutionScaleModal } from './components/layout/ResolutionScaleModal';
 import {
   LayoutDashboard,
   LayoutGrid,
@@ -36,6 +37,7 @@ import {
   FileSignature,
   CheckCircle2,
   X,
+  Sliders,
 } from 'lucide-react';
 import { Patient, User, Session, SessionPackage } from './types';
 import { api } from './services/api';
@@ -147,6 +149,46 @@ export function App() {
   const [isSendAnamnesisModalOpen, setIsSendAnamnesisModalOpen] = useState(false);
   const [anamnesisModalPatient, setAnamnesisModalPatient] = useState<Patient | null>(null);
   const [newSubmissionToast, setNewSubmissionToast] = useState<{ patientName: string; patientId?: string } | null>(null);
+
+  // Screen Resolution / Scale state (persisted in localStorage)
+  const [resolutionScale, setResolutionScale] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clinic_resolution_scale');
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 65 && parsed <= 135) {
+          return parsed;
+        }
+      }
+      // Auto-detect tablet or smaller landscape screens:
+      // If width <= 1180 and height <= 720 (typical 10" or 8" tablet in landscape), default to 85% for an optimal fit!
+      if (window.innerWidth <= 1180 && window.innerHeight <= 720) {
+        return 85;
+      }
+    }
+    return 100;
+  });
+  const [isResolutionModalOpen, setIsResolutionModalOpen] = useState(false);
+
+  // Apply resolution / scale to documentElement
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      // @ts-ignore
+      document.documentElement.style.zoom = `${resolutionScale}%`;
+    } catch {
+      // fallback if zoom not supported
+    }
+
+    const scaleRatio = resolutionScale / 100;
+    document.documentElement.style.setProperty('--app-scale', `${scaleRatio}`);
+    localStorage.setItem('clinic_resolution_scale', resolutionScale.toString());
+  }, [resolutionScale]);
+
+  const handleScaleStep = useCallback((delta: number) => {
+    setResolutionScale(prev => Math.min(130, Math.max(70, prev + delta)));
+  }, []);
 
   // Auto-clear toast
   useEffect(() => {
@@ -350,6 +392,8 @@ export function App() {
           realtimeStatus={realtimeStatus}
           lastSyncTime={lastSyncTime}
           onManualRefresh={loadData}
+          resolutionScale={resolutionScale}
+          onOpenResolutionModal={() => setIsResolutionModalOpen(true)}
         />
 
         {/* Scrollable Viewport */}
@@ -401,6 +445,9 @@ export function App() {
                   onSwitchToDesktop={() => {
                     setActiveView('dashboard');
                   }}
+                  resolutionScale={resolutionScale}
+                  onOpenResolutionModal={() => setIsResolutionModalOpen(true)}
+                  onChangeScaleStep={handleScaleStep}
                 />
               )}
 
@@ -747,6 +794,16 @@ export function App() {
 
           <button
             type="button"
+            onClick={() => setIsResolutionModalOpen(true)}
+            title="Ajustar Resolução / Tamanho das Letras"
+            className="flex flex-col items-center justify-center py-1 px-1.5 rounded-xl text-slate-400 hover:text-teal-400 transition min-w-[46px]"
+          >
+            <Sliders className="w-4 h-4 mb-0.5 text-teal-400" />
+            <span className="text-[10px] font-bold text-teal-300">{resolutionScale}%</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsMobileMenuOpen(true)}
             className="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-400 hover:text-teal-400 transition min-w-[50px]"
           >
@@ -978,6 +1035,14 @@ export function App() {
           </button>
         </div>
       )}
+
+      {/* Screen Resolution / Zoom Scale Modal */}
+      <ResolutionScaleModal
+        isOpen={isResolutionModalOpen}
+        onClose={() => setIsResolutionModalOpen(false)}
+        currentScale={resolutionScale}
+        onScaleChange={setResolutionScale}
+      />
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   Activity,
   HeartPulse,
   Laptop,
+  Sliders,
 } from 'lucide-react';
 import { Tenant, User } from '../types/index';
 
@@ -28,6 +29,9 @@ interface MobileTabletHubProps {
   onOpenPatientModal?: () => void;
   onOpenAnamnesisModal?: () => void;
   onSwitchToDesktop?: () => void;
+  resolutionScale?: number;
+  onOpenResolutionModal?: () => void;
+  onChangeScaleStep?: (delta: number) => void;
 }
 
 interface HubTileConfig {
@@ -44,6 +48,9 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
   user,
   onNavigate,
   onSwitchToDesktop,
+  resolutionScale = 100,
+  onOpenResolutionModal,
+  onChangeScaleStep,
 }) => {
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
@@ -178,7 +185,44 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
         </div>
 
         {/* Top right quick switcher & user badge */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Quick Resolution Zoom Stepper & Modal Trigger */}
+          {onOpenResolutionModal && (
+            <div className="flex items-center bg-slate-800/90 border border-slate-700/80 rounded-xl p-0.5 shadow-sm">
+              {onChangeScaleStep && (
+                <button
+                  type="button"
+                  onClick={() => onChangeScaleStep(-5)}
+                  className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600 text-slate-200 hover:text-white text-xs font-bold transition cursor-pointer"
+                  title="Diminuir letras (Zoom -5%)"
+                >
+                  -
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={onOpenResolutionModal}
+                className="flex items-center gap-1 px-2 py-1 text-teal-300 hover:text-white text-[11px] sm:text-xs font-bold transition cursor-pointer"
+                title="Escolher melhor resolução para o seu tablet"
+              >
+                <Sliders className="w-3.5 h-3.5 text-teal-400" />
+                <span>{resolutionScale}%</span>
+              </button>
+
+              {onChangeScaleStep && (
+                <button
+                  type="button"
+                  onClick={() => onChangeScaleStep(5)}
+                  className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600 text-slate-200 hover:text-white text-xs font-bold transition cursor-pointer"
+                  title="Aumentar letras (Zoom +5%)"
+                >
+                  +
+                </button>
+              )}
+            </div>
+          )}
+
           {onSwitchToDesktop && (
             <button
               type="button"
@@ -187,7 +231,7 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
               title="Modo Computador / Notebook"
             >
               <Laptop className="w-3.5 h-3.5 text-teal-400" />
-              <span>Visão Desktop</span>
+              <span className="hidden md:inline">Visão Desktop</span>
             </button>
           )}
 
@@ -202,7 +246,7 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
 
       {/* 3x3 Tactile 3D Grid */}
       <main className="relative z-10 flex-1 flex items-center justify-center my-auto py-1 sm:py-2">
-        <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5 md:gap-3.5 lg:gap-4">
+        <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {tiles.map((tile) => {
             const IconComponent = tile.icon;
             const isGold = tile.isGoldHighlighted;
@@ -216,10 +260,10 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
               >
                 {/* 3D Chamfered Outer Beveled Card Frame */}
                 <div
-                  className={`relative flex flex-col justify-between p-2.5 sm:p-3 md:p-3.5 rounded-xl sm:rounded-2xl border transition-all duration-200 min-h-[78px] sm:min-h-[86px] md:min-h-[92px] ${
+                  className={`relative flex flex-col justify-between p-2 sm:p-2.5 md:p-3 rounded-xl sm:rounded-2xl border transition-all duration-200 min-h-[62px] sm:min-h-[68px] md:min-h-[74px] ${
                     isGold
-                      ? 'metallic-bevel-gold border-amber-400/80 hover:border-amber-300 shadow-[0_8px_24px_rgba(0,0,0,0.85),0_0_16px_rgba(245,158,11,0.2)]'
-                      : 'metallic-bevel-blue border-slate-500/70 hover:border-sky-400/80 shadow-[0_8px_20px_rgba(0,0,0,0.85),0_0_12px_rgba(56,189,248,0.12)]'
+                      ? 'metallic-bevel-gold border-amber-400/80 hover:border-amber-300 shadow-[0_6px_18px_rgba(0,0,0,0.85),0_0_14px_rgba(245,158,11,0.2)]'
+                      : 'metallic-bevel-blue border-slate-500/70 hover:border-sky-400/80 shadow-[0_6px_16px_rgba(0,0,0,0.85),0_0_10px_rgba(56,189,248,0.12)]'
                   }`}
                 >
                   {/* Subtle Inner Diamond Faceted Highlight Polygon */}
@@ -242,14 +286,14 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
                   <div className="relative z-10 flex items-center justify-start gap-2.5 sm:gap-3 my-auto">
                     {/* Embossed Chrome Icon Relief Frame */}
                     <div
-                      className={`w-9 h-9 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 ${
+                      className={`w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 ${
                         isGold
                           ? 'bg-gradient-to-br from-amber-500/30 via-amber-700/20 to-slate-900 border border-amber-400/60 shadow-[inset_0_1px_2px_rgba(254,240,138,0.6),0_3px_6px_rgba(0,0,0,0.8)] text-amber-200'
                           : 'bg-gradient-to-br from-slate-600/40 via-slate-800/40 to-slate-950 border border-slate-400/50 shadow-[inset_0_1px_2px_rgba(255,255,255,0.4),0_3px_6px_rgba(0,0,0,0.8)] text-slate-200 group-hover:text-white'
                       }`}
                     >
                       <IconComponent
-                        className={`w-5 h-5 sm:w-5 sm:h-5 md:w-6 md:h-6 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] ${
+                        className={`w-4 h-4 sm:w-5 sm:h-5 md:w-5 md:h-5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] ${
                           isGold ? 'text-amber-200' : 'text-slate-100 group-hover:text-sky-200'
                         }`}
                       />
@@ -283,9 +327,9 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
                   </div>
 
                   {/* Brushed Metal Plaque Subplate */}
-                  <div className="relative z-10 w-full mt-1.5 pt-1 flex justify-center">
+                  <div className="relative z-10 w-full mt-1 pt-0.5 flex justify-center">
                     <div
-                      className={`px-2.5 sm:px-3.5 py-0.5 rounded text-[8.5px] sm:text-[9.5px] md:text-[10px] font-extrabold uppercase tracking-wider border transition-all ${
+                      className={`px-2 sm:px-3 py-0.5 rounded text-[8px] sm:text-[9px] md:text-[9.5px] font-extrabold uppercase tracking-wider border transition-all ${
                         isGold
                           ? 'metal-subplate-gold border-amber-500/50 text-amber-200'
                           : 'metal-subplate border-slate-600/70 text-slate-300 group-hover:text-white group-hover:border-slate-500'
@@ -311,7 +355,19 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-slate-400">
+          {onOpenResolutionModal && (
+            <button
+              type="button"
+              onClick={onOpenResolutionModal}
+              className="text-teal-400 hover:text-teal-300 font-bold transition flex items-center gap-1 cursor-pointer"
+              title="Ajustar Resolução da Tela"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Resolução: {resolutionScale}%</span>
+            </button>
+          )}
+
+          <span className="text-slate-400 hidden sm:inline">
             {new Date().toLocaleDateString('pt-BR', {
               weekday: 'short',
               day: '2-digit',
