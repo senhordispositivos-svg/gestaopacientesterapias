@@ -261,11 +261,16 @@ export const PackageModal: React.FC<PackageModalProps> = ({
               <option value={2}>2 Sessões</option>
               <option value={4}>4 Sessões</option>
               <option value={5}>5 Sessões</option>
+              <option value={6}>6 Sessões</option>
+              <option value={7}>7 Sessões</option>
               <option value={8}>8 Sessões</option>
               <option value={10}>10 Sessões</option>
               <option value={12}>12 Sessões</option>
               <option value={15}>15 Sessões</option>
               <option value={20}>20 Sessões</option>
+              {![2, 4, 5, 6, 7, 8, 10, 12, 15, 20].includes(sessionCount) && sessionCount > 0 && (
+                <option value={sessionCount}>{sessionCount} Sessões</option>
+              )}
             </select>
           </div>
 
