@@ -23,8 +23,39 @@ export const SingleSessionModal: React.FC<SingleSessionModalProps> = ({
   preselectedPatientId,
 }) => {
   const { tenant, user } = useAuth();
+
+  const availableProfessionals = React.useMemo(() => {
+    const list = [...professionals];
+    const osaias = list.find(
+      p =>
+        p.email?.toLowerCase().includes('osaias') ||
+        p.name?.toLowerCase().includes('osaias') ||
+        p.id === 'user-super-osaias' ||
+        p.id === 'user-master-1'
+    );
+    if (!osaias) {
+      list.unshift({
+        id: 'user-super-osaias',
+        tenantId: tenant?.id || 'tenant-demo-1',
+        name: 'Osaias Brito',
+        email: 'osaiasbrito@gmail.com',
+        role: 'ADMIN',
+        accessMode: 'COMPREHENSIVE',
+        specialty: 'Fisioterapeuta & Massoterapeuta / Gestor Master',
+        phone: '(98) 98854-1695',
+        active: true,
+        avatarUrl: '',
+        isSuperUser: true,
+        createdAt: '2026-08-19T02:00:00.000Z',
+      });
+    }
+    return list;
+  }, [professionals, tenant]);
+
+  const defaultProfId = availableProfessionals[0]?.id || user?.id || 'user-super-osaias';
+
   const [patientId, setPatientId] = useState(preselectedPatientId || (patients[0]?.id || ''));
-  const [professionalId, setProfessionalId] = useState(user?.id || (professionals[0]?.id || ''));
+  const [professionalId, setProfessionalId] = useState(defaultProfId);
   const [scheduledDate, setScheduledDate] = useState(new Date().toISOString().split('T')[0]);
   const [scheduledTime, setScheduledTime] = useState('14:00');
   const [procedureName, setProcedureName] = useState('Massagem Relaxante Integrativa');
@@ -37,17 +68,15 @@ export const SingleSessionModal: React.FC<SingleSessionModalProps> = ({
     if (isOpen) {
       if (preselectedPatientId) {
         setPatientId(preselectedPatientId);
-      } else if (patients.length > 0 && !patientId) {
-        setPatientId(patients[0].id);
-      } else if (patients.length > 0 && !patients.some(p => p.id === patientId)) {
+      } else if (patients.length > 0 && (!patientId || !patients.some(p => p.id === patientId))) {
         setPatientId(patients[0].id);
       }
 
-      if (professionals.length > 0 && (!professionalId || !professionals.some(p => p.id === professionalId))) {
-        setProfessionalId(user?.id || professionals[0].id);
+      if (!professionalId || !availableProfessionals.some(p => p.id === professionalId)) {
+        setProfessionalId(defaultProfId);
       }
     }
-  }, [isOpen, preselectedPatientId, patients, professionals, user]);
+  }, [isOpen, preselectedPatientId, patients, availableProfessionals, defaultProfId, professionalId]);
 
   if (!isOpen) return null;
 
@@ -128,9 +157,9 @@ export const SingleSessionModal: React.FC<SingleSessionModalProps> = ({
               required
               className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white font-semibold"
             >
-              {professionals.map(p => (
+              {availableProfessionals.map(p => (
                 <option key={p.id} value={p.id}>
-                  {p.name} ({p.specialty || 'Profissional'})
+                  {p.name} {p.isSuperUser ? '★ (Super Usuário / Gestor Master)' : `(${p.specialty || 'Profissional'})`}
                 </option>
               ))}
             </select>

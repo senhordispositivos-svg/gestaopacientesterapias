@@ -265,7 +265,33 @@ export function App() {
       let filteredPackages = pkgs.filter(pkg => !tenant || pkg.tenantId === tenant.id || pkg.tenantId === 'tenant-demo-1' || isAdmin || pats.some(p => p.id === pkg.patientId));
 
       setPatients(filteredPatients);
-      setProfessionals(profs.filter(pr => !tenant || pr.tenantId === tenant.id || profs.length === 1));
+      const normalizedProfs = profs
+        .map(pr => {
+          if (
+            pr.email?.toLowerCase().includes('osaias') ||
+            pr.name?.toLowerCase().includes('osaias') ||
+            pr.id === 'user-super-osaias' ||
+            pr.id === 'user-master-1'
+          ) {
+            return {
+              ...pr,
+              name: 'Osaias Brito',
+              specialty: pr.specialty || 'Fisioterapeuta & Massoterapeuta / Gestor Master',
+              role: 'ADMIN' as const,
+              isSuperUser: true,
+            };
+          }
+          return pr;
+        })
+        .filter(pr => !tenant || pr.tenantId === tenant.id || pr.isSuperUser || pr.tenantId === 'tenant-demo-1' || profs.length === 1);
+
+      normalizedProfs.sort((a, b) => {
+        const aIsOsaias = a.email?.toLowerCase().includes('osaias') || a.name?.toLowerCase().includes('osaias') ? 1 : 0;
+        const bIsOsaias = b.email?.toLowerCase().includes('osaias') || b.name?.toLowerCase().includes('osaias') ? 1 : 0;
+        return bIsOsaias - aIsOsaias;
+      });
+
+      setProfessionals(normalizedProfs);
       setSessions(filteredSessions);
       setPackages(filteredPackages);
 

@@ -88,7 +88,7 @@ const DEFAULT_CLEAN_TENANTS: Tenant[] = [
     publicPageTitle: 'Clínica Fisio & Terapia Integrada',
     supportEmail: 'contato@fisioterapia.com.br',
     supportPhone: '(11) 99999-8888',
-    creatorName: 'osaiasbrito',
+    creatorName: 'Osaias Brito',
     whatsappConfig: {
       token: 'whatsapp_token_configured',
       phoneNumberId: '1092837465',
@@ -102,11 +102,11 @@ const DEFAULT_USERS: User[] = [
   {
     id: 'user-super-osaias',
     tenantId: 'tenant-demo-1',
-    name: 'osaiasbrito',
+    name: 'Osaias Brito',
     email: 'osaiasbrito@gmail.com',
     role: 'ADMIN',
     accessMode: 'COMPREHENSIVE',
-    specialty: 'Super Administrador do Sistema & Gestor Master',
+    specialty: 'Fisioterapeuta & Massoterapeuta / Gestor Master',
     phone: '(98) 98854-1695',
     active: true,
     avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
@@ -506,15 +506,22 @@ async function initDatabase() {
         photoUrl: '',
         avatarUrl: '',
         assignedProfessionalId: 'user-super-osaias',
-        assignedProfessionalName: 'osaiasbrito',
+        assignedProfessionalName: 'Osaias Brito',
         createdAt: '2026-08-19T02:00:00.000Z',
         updatedAt: '2026-08-19T02:00:00.000Z',
       });
     }
 
-    // Ensure super user exists
-    if (!db.users.some(u => u.email.toLowerCase() === 'osaiasbrito@gmail.com')) {
-      db.users.push(DEFAULT_USERS[0]);
+    // Ensure super user exists and is properly named
+    const osaiasIndex = db.users.findIndex(u => u.email?.toLowerCase() === 'osaiasbrito@gmail.com' || u.id === 'user-super-osaias' || u.id === 'user-master-1');
+    if (osaiasIndex === -1) {
+      db.users.unshift(DEFAULT_USERS[0]);
+    } else {
+      db.users[osaiasIndex].name = 'Osaias Brito';
+      db.users[osaiasIndex].specialty = db.users[osaiasIndex].specialty || 'Fisioterapeuta & Massoterapeuta / Gestor Master';
+      db.users[osaiasIndex].role = 'ADMIN';
+      db.users[osaiasIndex].isSuperUser = true;
+      db.users[osaiasIndex].active = true;
     }
 
     createSnapshot('startup');
@@ -565,6 +572,17 @@ function logAudit(
 // User sanitizer to avoid password leakage
 function sanitizeUser(user: User): User {
   const { password, ...safe } = user;
+  if (
+    safe.email?.toLowerCase() === 'osaiasbrito@gmail.com' ||
+    safe.name?.toLowerCase() === 'osaiasbrito' ||
+    safe.id === 'user-super-osaias' ||
+    safe.id === 'user-master-1'
+  ) {
+    safe.name = 'Osaias Brito';
+    safe.specialty = safe.specialty || 'Fisioterapeuta & Massoterapeuta / Gestor Master';
+    safe.isSuperUser = true;
+    safe.role = 'ADMIN';
+  }
   return safe as User;
 }
 
@@ -1021,7 +1039,14 @@ app.get('/api/professionals', (req, res) => {
   if (tenantId) {
     list = list.filter(u => u.tenantId === tenantId || u.isSuperUser);
   }
-  res.json(list.map(sanitizeUser));
+  const sanitized = list.map(sanitizeUser);
+  // Guarantee Osaias Brito (super user & gestor master) is at the top
+  sanitized.sort((a, b) => {
+    const aIsOsaias = a.email?.toLowerCase().includes('osaias') || a.name?.toLowerCase().includes('osaias') ? 1 : 0;
+    const bIsOsaias = b.email?.toLowerCase().includes('osaias') || b.name?.toLowerCase().includes('osaias') ? 1 : 0;
+    return bIsOsaias - aIsOsaias;
+  });
+  res.json(sanitized);
 });
 
 app.post('/api/professionals', (req, res) => {
@@ -1712,15 +1737,16 @@ app.get('/api/packages', (req, res) => {
 app.post('/api/packages', (req, res) => {
   const tenantId = (req.headers['x-tenant-id'] as string) || req.body.tenantId || 'tenant-demo-1';
   const pat = db.patients.find(p => p.id === req.body.patientId);
-  const prof = db.users.find(u => u.id === req.body.professionalId);
+  const osaiasUser = db.users.find(u => u.email?.toLowerCase() === 'osaiasbrito@gmail.com' || u.id === 'user-super-osaias' || u.id === 'user-master-1') || DEFAULT_USERS[0];
+  const prof = db.users.find(u => u.id === req.body.professionalId) || osaiasUser;
   
   const newPackage: SessionPackage = {
     id: req.body.id || `pkg-${Date.now()}`,
     tenantId,
     patientId: req.body.patientId,
     patientName: req.body.patientName || pat?.name || 'Paciente',
-    professionalId: req.body.professionalId || '',
-    professionalName: req.body.professionalName || prof?.name || 'Profissional',
+    professionalId: req.body.professionalId || prof?.id || 'user-super-osaias',
+    professionalName: req.body.professionalName || prof?.name || 'Osaias Brito',
     title: req.body.title || 'Pacote de Tratamento',
     treatmentType: req.body.treatmentType || req.body.treatmentGoal || 'Massoterapia & Fisioterapia',
     sessionCount: Number(req.body.sessionCount) || 10,

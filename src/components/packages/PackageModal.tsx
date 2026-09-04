@@ -15,6 +15,21 @@ interface PackageModalProps {
   preselectedPatientId?: string;
 }
 
+const OSAIAS_SUPER_USER: User = {
+  id: 'user-super-osaias',
+  tenantId: 'tenant-demo-1',
+  name: 'Osaias Brito',
+  email: 'osaiasbrito@gmail.com',
+  role: 'ADMIN',
+  accessMode: 'COMPREHENSIVE',
+  specialty: 'Fisioterapeuta & Massoterapeuta / Gestor Master',
+  phone: '(98) 98854-1695',
+  active: true,
+  avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+  isSuperUser: true,
+  createdAt: '2026-08-19T02:00:00.000Z',
+};
+
 export const PackageModal: React.FC<PackageModalProps> = ({
   isOpen,
   onClose,
@@ -27,8 +42,38 @@ export const PackageModal: React.FC<PackageModalProps> = ({
 }) => {
   const isEditing = !!packageToEdit;
 
+  // Build robust list of professionals with Osaias Brito (Super User / Gestor) guaranteed first
+  const availableProfessionals = React.useMemo(() => {
+    const list = [...professionals];
+    const osaiasIndex = list.findIndex(
+      p =>
+        p.email?.toLowerCase().includes('osaias') ||
+        p.name?.toLowerCase().includes('osaias') ||
+        p.id === 'user-super-osaias' ||
+        p.id === 'user-master-1'
+    );
+
+    let osaiasEntry: User;
+    if (osaiasIndex >= 0) {
+      osaiasEntry = {
+        ...list[osaiasIndex],
+        name: 'Osaias Brito',
+        specialty: list[osaiasIndex].specialty || 'Fisioterapeuta & Massoterapeuta / Gestor Master',
+        isSuperUser: true,
+        role: 'ADMIN',
+      };
+      list.splice(osaiasIndex, 1);
+    } else {
+      osaiasEntry = OSAIAS_SUPER_USER;
+    }
+
+    return [osaiasEntry, ...list.filter(p => p.id !== osaiasEntry.id)];
+  }, [professionals]);
+
+  const defaultProfessionalId = availableProfessionals[0]?.id || 'user-super-osaias';
+
   const [patientId, setPatientId] = useState('');
-  const [professionalId, setProfessionalId] = useState('');
+  const [professionalId, setProfessionalId] = useState(defaultProfessionalId);
   const [title, setTitle] = useState('Pacote de Massoterapia Integrativa');
   const [treatmentType, setTreatmentType] = useState('Massoterapia Integrativa & Shiatsu');
   const [sessionCount, setSessionCount] = useState(4);
@@ -49,7 +94,7 @@ export const PackageModal: React.FC<PackageModalProps> = ({
       setError('');
       if (packageToEdit) {
         setPatientId(packageToEdit.patientId);
-        setProfessionalId(packageToEdit.professionalId || professionals[0]?.id || '');
+        setProfessionalId(packageToEdit.professionalId || defaultProfessionalId);
         setTitle(packageToEdit.title);
         setTreatmentType(packageToEdit.treatmentType);
         setSessionCount(packageToEdit.sessionCount || 4);
@@ -63,7 +108,7 @@ export const PackageModal: React.FC<PackageModalProps> = ({
       } else {
         const initialPatId = preselectedPatientId || (patients[0]?.id || '');
         setPatientId(initialPatId);
-        setProfessionalId(professionals[0]?.id || '');
+        setProfessionalId(defaultProfessionalId);
         setTitle('Pacote de Massoterapia Integrativa');
         setTreatmentType('Massoterapia Integrativa & Shiatsu');
         setSessionCount(4);
@@ -75,7 +120,11 @@ export const PackageModal: React.FC<PackageModalProps> = ({
         );
       }
     }
-  }, [isOpen, packageToEdit, preselectedPatientId, patients, professionals]);
+  }, [isOpen, packageToEdit, preselectedPatientId, patients, availableProfessionals, defaultProfessionalId]);
+
+  const effectiveProfessionalId = availableProfessionals.some(p => p.id === professionalId)
+    ? professionalId
+    : defaultProfessionalId;
 
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawVal = e.target.value;
@@ -99,15 +148,15 @@ export const PackageModal: React.FC<PackageModalProps> = ({
     }
 
     const selectedPat = patients.find(p => p.id === patientId);
-    const selectedProf = professionals.find(p => p.id === professionalId);
+    const selectedProf = availableProfessionals.find(p => p.id === effectiveProfessionalId) || availableProfessionals[0];
 
     setIsSubmitting(true);
     try {
       await onSavePackage({
         patientId,
         patientName: selectedPat?.name || packageToEdit?.patientName || 'Paciente',
-        professionalId,
-        professionalName: selectedProf?.name || packageToEdit?.professionalName || 'Profissional',
+        professionalId: selectedProf.id,
+        professionalName: selectedProf.name || 'Osaias Brito',
         title: title.trim() || 'Pacote de Sessões',
         treatmentType: treatmentType.trim() || 'Massoterapia & Fisioterapia',
         sessionCount: Number(sessionCount) || 4,
@@ -222,14 +271,14 @@ export const PackageModal: React.FC<PackageModalProps> = ({
               Profissional Responsável <span className="text-rose-500">*</span>
             </label>
             <select
-              value={professionalId}
+              value={effectiveProfessionalId}
               onChange={e => setProfessionalId(e.target.value)}
               required
-              className="w-full mt-1 p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-900"
+              className="w-full mt-1 p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-900 font-medium"
             >
-              {professionals.map(prof => (
+              {availableProfessionals.map(prof => (
                 <option key={prof.id} value={prof.id}>
-                  {prof.name} ({prof.specialty || 'Massoterapeuta'})
+                  {prof.name} {prof.isSuperUser ? '★ (Super Usuário / Gestor Master)' : `(${prof.specialty || 'Profissional'})`}
                 </option>
               ))}
             </select>

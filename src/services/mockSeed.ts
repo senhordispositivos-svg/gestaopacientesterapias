@@ -38,7 +38,7 @@ export const INITIAL_TENANTS: Tenant[] = [
     publicPageTitle: 'Clínica Fisio & Terapia Integrada',
     supportEmail: 'contato@fisioterapia.com.br',
     supportPhone: '(11) 99999-8888',
-    creatorName: 'osaiasbrito',
+    creatorName: 'Osaias Brito',
     whatsappConfig: {
       token: 'whatsapp_token_configured',
       phoneNumberId: '1092837465',
@@ -52,11 +52,11 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'user-super-osaias',
     tenantId: 'tenant-demo-1',
-    name: 'osaiasbrito',
+    name: 'Osaias Brito',
     email: 'osaiasbrito@gmail.com',
     role: 'ADMIN',
     accessMode: 'COMPREHENSIVE',
-    specialty: 'Super Administrador do Sistema & Gestor Master',
+    specialty: 'Fisioterapeuta & Massoterapeuta / Gestor Master',
     phone: '(98) 98854-1695',
     active: true,
     avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
