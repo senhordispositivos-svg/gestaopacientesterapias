@@ -128,8 +128,36 @@ export function App() {
   // Shared Data States with instant initial values
   const [patients, setPatients] = useState<Patient[]>(INITIAL_PATIENTS);
   const [professionals, setProfessionals] = useState<User[]>(INITIAL_USERS);
-  const [sessions, setSessions] = useState<Session[]>(INITIAL_SESSIONS);
-  const [packages, setPackages] = useState<SessionPackage[]>(INITIAL_PACKAGES);
+  const [sessions, setSessions] = useState<Session[]>(() => {
+    if (typeof window === 'undefined') return INITIAL_SESSIONS;
+    try {
+      const deletedPkgIds = new Set(JSON.parse(localStorage.getItem('clinica_deleted_packages') || '[]'));
+      const local = JSON.parse(localStorage.getItem('clinica_sessions') || '[]');
+      if (Array.isArray(local) && local.length > 0) {
+        return local.filter((s: Session) => !s.packageId || !deletedPkgIds.has(s.packageId));
+      }
+      return INITIAL_SESSIONS.filter(s => !s.packageId || !deletedPkgIds.has(s.packageId));
+    } catch {
+      return INITIAL_SESSIONS;
+    }
+  });
+  const [packages, setPackages] = useState<SessionPackage[]>(() => {
+    if (typeof window === 'undefined') return INITIAL_PACKAGES;
+    try {
+      const deletedIds = new Set(JSON.parse(localStorage.getItem('clinica_deleted_packages') || '[]'));
+      const local = JSON.parse(localStorage.getItem('clinica_packages') || '[]');
+      if (Array.isArray(local) && local.length > 0) {
+        return local.filter((p: SessionPackage) => p && p.id && !deletedIds.has(p.id) && !p.deletedAt);
+      }
+      const isInitialized = localStorage.getItem('clinica_packages_initialized') === 'true';
+      if (!isInitialized) {
+        return INITIAL_PACKAGES.filter(p => !deletedIds.has(p.id));
+      }
+      return [];
+    } catch {
+      return INITIAL_PACKAGES;
+    }
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   // Selected Entities
@@ -354,14 +382,14 @@ export function App() {
   };
 
   const handleDeletePackage = async (pkg: SessionPackage) => {
-    if (!tenant) return;
+    const tenantId = tenant?.id || pkg.tenantId || 'tenant-demo-1';
     setPackages(prev => prev.filter(p => p.id !== pkg.id));
     setSessions(prev => prev.filter(s => s.packageId !== pkg.id));
     if (selectedPackageDetail?.id === pkg.id) {
       setSelectedPackageDetail(null);
     }
     try {
-      await api.deletePackage(tenant.id, pkg.id);
+      await api.deletePackage(tenantId, pkg.id);
       await loadData();
     } catch (err) {
       console.error('Erro ao excluir pacote:', err);
@@ -628,14 +656,7 @@ export function App() {
                     setPackageToEdit(pkg);
                     setIsPackageModalOpen(true);
                   }}
-                  onDeletePackage={async pkg => {
-                    if (!tenant) return;
-                    await api.deletePackage(tenant.id, pkg.id);
-                    if (selectedPackageDetail?.id === pkg.id) {
-                      setSelectedPackageDetail(null);
-                    }
-                    await loadData();
-                  }}
+                  onDeletePackage={handleDeletePackage}
                 />
               )}
 
@@ -887,14 +908,7 @@ export function App() {
         professionals={professionals}
         preselectedPatientId={packageToEdit ? packageToEdit.patientId : selectedPatient?.id}
         packageToEdit={packageToEdit}
-        onDeletePackage={async pkg => {
-          if (!tenant) return;
-          await api.deletePackage(tenant.id, pkg.id);
-          if (selectedPackageDetail?.id === pkg.id) {
-            setSelectedPackageDetail(null);
-          }
-          await loadData();
-        }}
+        onDeletePackage={handleDeletePackage}
         onSavePackage={async (pkgData) => {
           if (!tenant) return;
           if (packageToEdit) {
@@ -973,12 +987,7 @@ export function App() {
             setSelectedSessionForWhatsApp(session);
             setIsWhatsAppModalOpen(true);
           }}
-          onDeletePackage={async pkg => {
-            if (!tenant) return;
-            await api.deletePackage(tenant.id, pkg.id);
-            setSelectedPackageDetail(null);
-            await loadData();
-          }}
+          onDeletePackage={handleDeletePackage}
           onOpenEditModal={pkg => {
             setSelectedPackageDetail(null);
             setPackageToEdit(pkg);

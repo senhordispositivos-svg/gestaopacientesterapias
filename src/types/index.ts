@@ -191,6 +191,7 @@ export interface SessionPackage {
   signedTermUrl?: string;
   signedAt?: string;
   createdAt: string;
+  deletedAt?: string | null;
 }
 
 export type SessionStatus = 'PENDING' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';

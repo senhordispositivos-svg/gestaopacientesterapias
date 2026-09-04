@@ -59,6 +59,7 @@ interface DatabaseStore {
   auditLogs: AuditLog[];
   documentFiles: DocumentFile[];
   signatures: SignatureRecord[];
+  deletedPackageIds: string[];
 }
 
 const DEFAULT_CLEAN_TENANTS: Tenant[] = [
@@ -140,6 +141,7 @@ let db: DatabaseStore = {
   auditLogs: [],
   documentFiles: [],
   signatures: [],
+  deletedPackageIds: [],
 };
 
 // Safe Atomic Disk & PostgreSQL Dual-Layer Writes
@@ -307,6 +309,36 @@ async function persistTenantToSupabase(t: Tenant) {
   }
 }
 
+// Immediate Dedicated Supabase Cloud Package Deletion
+async function deletePackageFromSupabase(pkgId: string) {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://bvggeztgmorusfkedsbj.supabase.co';
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_xhWUFn_vVcVsV1KpLqPBKQ_duFVj-tV';
+    if (!supabaseUrl || !supabaseAnonKey) return;
+
+    // Remove sessions linked to package in Supabase
+    await fetch(`${supabaseUrl}/rest/v1/sessions?package_id=eq.${encodeURIComponent(pkgId)}`, {
+      method: 'DELETE',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+    });
+
+    // Remove package from Supabase
+    await fetch(`${supabaseUrl}/rest/v1/packages?id=eq.${encodeURIComponent(pkgId)}`, {
+      method: 'DELETE',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+    });
+    console.log(`[Supabase] Package successfully deleted from cloud: ${pkgId}`);
+  } catch (err) {
+    console.warn('[Supabase] deletePackageFromSupabase notice:', err);
+  }
+}
+
 // Automatic Snapshot Creation & Rotation (Keeps last 20 snapshots)
 function createSnapshot(label = 'auto') {
   try {
@@ -385,6 +417,7 @@ async function initDatabase() {
         auditLogs: Array.isArray(loaded.auditLogs) ? loaded.auditLogs : [],
         documentFiles: Array.isArray(loaded.documentFiles) ? loaded.documentFiles : [],
         signatures: Array.isArray(loaded.signatures) ? loaded.signatures : [],
+        deletedPackageIds: Array.isArray(loaded.deletedPackageIds) ? loaded.deletedPackageIds : [],
       };
     }
 
@@ -405,6 +438,7 @@ async function initDatabase() {
             auditLogs: pgData.auditLogs.length > 0 ? pgData.auditLogs : db.auditLogs,
             documentFiles: pgData.documentFiles.length > 0 ? pgData.documentFiles : db.documentFiles,
             signatures: pgData.signatures.length > 0 ? pgData.signatures : db.signatures,
+            deletedPackageIds: db.deletedPackageIds || [],
           };
           console.log('[PostgreSQL] Loaded relational database state from Cloud SQL.');
         } else {
@@ -1380,8 +1414,10 @@ app.post('/api/sync/bidirectional', (req, res) => {
 
   // 2. Reconcile packages
   if (Array.isArray(packages) && packages.length > 0) {
+    const deletedPkgIds = new Set(db.deletedPackageIds || []);
     packages.forEach((clientPkg: SessionPackage) => {
       if (!clientPkg || !clientPkg.id) return;
+      if (deletedPkgIds.has(clientPkg.id) || clientPkg.deletedAt) return;
       const idx = db.packages.findIndex(p => p.id === clientPkg.id);
       if (idx === -1) {
         db.packages.unshift({
@@ -1402,8 +1438,10 @@ app.post('/api/sync/bidirectional', (req, res) => {
 
   // 3. Reconcile sessions
   if (Array.isArray(sessions) && sessions.length > 0) {
+    const deletedPkgIds = new Set(db.deletedPackageIds || []);
     sessions.forEach((clientSess: Session) => {
       if (!clientSess || !clientSess.id) return;
+      if (clientSess.packageId && deletedPkgIds.has(clientSess.packageId)) return;
       const idx = db.sessions.findIndex(s => s.id === clientSess.id);
       if (idx === -1) {
         db.sessions.unshift({
@@ -1426,11 +1464,12 @@ app.post('/api/sync/bidirectional', (req, res) => {
     }
   }
 
+  const deletedPkgIds = new Set(db.deletedPackageIds || []);
   res.json({
     success: true,
     patients: db.patients.filter(p => !p.deletedAt),
-    packages: db.packages,
-    sessions: db.sessions,
+    packages: db.packages.filter(p => !p.deletedAt && !deletedPkgIds.has(p.id)),
+    sessions: db.sessions.filter(s => !s.packageId || !deletedPkgIds.has(s.packageId)),
     anamneses: db.anamneses,
     users: db.users.map(sanitizeUser),
     tenants: db.tenants,
@@ -1662,7 +1701,8 @@ app.post('/api/patients/:patientId/anamnesis', (req, res) => {
 // -------------------------------------------------------------
 app.get('/api/packages', (req, res) => {
   const tenantId = req.headers['x-tenant-id'] as string;
-  let list = db.packages;
+  const deletedPkgIds = new Set(db.deletedPackageIds || []);
+  let list = db.packages.filter(p => !p.deletedAt && !deletedPkgIds.has(p.id));
   if (tenantId) {
     list = list.filter(p => p.tenantId === tenantId);
   }
@@ -1782,19 +1822,44 @@ app.put('/api/packages/:id', (req, res) => {
   res.json(updatedPkg);
 });
 
-app.delete('/api/packages/:id', (req, res) => {
+app.delete('/api/packages/:id', async (req, res) => {
   const pkgId = req.params.id;
   const index = db.packages.findIndex(p => p.id === pkgId);
   const tenantId = (req.headers['x-tenant-id'] as string) || (index !== -1 ? db.packages[index].tenantId : 'tenant-demo-1');
+
+  // Track permanently deleted package IDs so they never return
+  if (!Array.isArray(db.deletedPackageIds)) {
+    db.deletedPackageIds = [];
+  }
+  if (!db.deletedPackageIds.includes(pkgId)) {
+    db.deletedPackageIds.push(pkgId);
+  }
+
   if (index !== -1) {
+    db.packages[index].deletedAt = new Date().toISOString();
     db.packages.splice(index, 1);
   }
+
   // Clean up sessions linked to this package
   db.sessions = db.sessions.filter(s => s.packageId !== pkgId);
   saveDatabase();
+
+  // Also remove from Postgres if active
+  if (hasSqlConfig && pool) {
+    try {
+      await pool.query('DELETE FROM sessions WHERE package_id = $1', [pkgId]);
+      await pool.query('DELETE FROM packages WHERE id = $1', [pkgId]);
+    } catch (sqlErr) {
+      console.warn('[PostgreSQL] package delete notice:', sqlErr);
+    }
+  }
+
+  // Also delete from Supabase if configured
+  await deletePackageFromSupabase(pkgId);
+
   broadcastRealtime(tenantId, { type: 'PACKAGE_DELETED', entity: 'packages', action: 'delete', id: pkgId });
   broadcastRealtime(tenantId, { type: 'SESSIONS_SYNC', entity: 'sessions', action: 'sync' });
-  res.json({ message: 'Pacote e sessões vinculadas excluídos com sucesso.' });
+  res.json({ success: true, message: 'Pacote e sessões vinculadas excluídos com sucesso.' });
 });
 
 // -------------------------------------------------------------
@@ -2905,6 +2970,7 @@ app.post('/api/backup/snapshot-restore/:filename', (req, res) => {
       auditLogs: Array.isArray(store.auditLogs) ? store.auditLogs : db.auditLogs,
       documentFiles: Array.isArray(store.documentFiles) ? store.documentFiles : db.documentFiles,
       signatures: Array.isArray(store.signatures) ? store.signatures : db.signatures,
+      deletedPackageIds: Array.isArray(store.deletedPackageIds) ? store.deletedPackageIds : (db.deletedPackageIds || []),
     };
 
     saveDatabase();

@@ -163,17 +163,18 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
   };
 
   const handleDeletePackage = async () => {
-    if (!tenant) return;
+    const tenantId = tenant?.id || pkg.tenantId || 'tenant-demo-1';
     setIsDeletingPkg(true);
     try {
       if (onDeletePackage) {
         await onDeletePackage(pkg);
       } else {
-        await api.deletePackage(tenant.id, pkg.id);
+        await api.deletePackage(tenantId, pkg.id);
       }
       onRefresh();
       onClose();
     } catch (err) {
+      console.error('Erro ao excluir o pacote:', err);
       alert('Erro ao excluir o pacote.');
     } finally {
       setIsDeletingPkg(false);

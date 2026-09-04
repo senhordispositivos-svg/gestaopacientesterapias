@@ -320,17 +320,20 @@ export const PackagesTrackerView: React.FC<PackagesTrackerViewProps> = ({
 
   // Confirm Delete Package Handler
   const handleConfirmDelete = async () => {
-    if (!packageToDelete || !tenant) return;
+    if (!packageToDelete) return;
+    const target = packageToDelete;
+    const tenantId = tenant?.id || target.tenantId || 'tenant-demo-1';
     setIsDeleting(true);
     try {
       if (onDeletePackage) {
-        await onDeletePackage(packageToDelete);
+        await onDeletePackage(target);
       } else {
-        await api.deletePackage(tenant.id, packageToDelete.id);
+        await api.deletePackage(tenantId, target.id);
       }
       setPackageToDelete(null);
       onRefreshData();
     } catch (err) {
+      console.error('Erro ao excluir o pacote:', err);
       alert('Erro ao excluir o pacote. Tente novamente.');
     } finally {
       setIsDeleting(false);

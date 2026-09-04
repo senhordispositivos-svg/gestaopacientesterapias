@@ -107,19 +107,20 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
   const handleConfirmDeletePackage = async () => {
     if (!packageToDelete || !tenant) return;
     setIsDeletingPackage(true);
+    const tenantId = tenant?.id || packageToDelete.tenantId || 'tenant-demo-1';
     try {
       if (onDeletePackage) {
         await onDeletePackage(packageToDelete);
       } else {
-        await api.deletePackage(tenant.id, packageToDelete.id);
+        await api.deletePackage(tenantId, packageToDelete.id);
       }
       setPackageToDelete(null);
       if (selectedPackageDetail?.id === packageToDelete.id) {
         setSelectedPackageDetail(null);
       }
-      const pkgs = await api.getPackages(tenant.id).then(p => p.filter(x => x.patientId === patient.id));
+      const pkgs = await api.getPackages(tenantId).then(p => p.filter(x => x.patientId === patient.id));
       setPackages(pkgs);
-      const sess = await api.getSessions(tenant.id, patient.id);
+      const sess = await api.getSessions(tenantId, patient.id);
       setSessions(sess);
       if (onRefreshPatient) await onRefreshPatient();
     } catch (err) {
@@ -781,15 +782,14 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
           }
         }}
         onDeletePackage={async (pkg) => {
-          if (tenant) {
-            await api.deletePackage(tenant.id, pkg.id);
-            setSelectedPackageDetail(null);
-            const pkgs = await api.getPackages(tenant.id).then(p => p.filter(x => x.patientId === patient.id));
-            setPackages(pkgs);
-            const sess = await api.getSessions(tenant.id, patient.id);
-            setSessions(sess);
-            if (onRefreshPatient) await onRefreshPatient();
-          }
+          const tenantId = tenant?.id || pkg.tenantId || 'tenant-demo-1';
+          await api.deletePackage(tenantId, pkg.id);
+          setSelectedPackageDetail(null);
+          const pkgs = await api.getPackages(tenantId).then(p => p.filter(x => x.patientId === patient.id));
+          setPackages(pkgs);
+          const sess = await api.getSessions(tenantId, patient.id);
+          setSessions(sess);
+          if (onRefreshPatient) await onRefreshPatient();
         }}
         onRefresh={async () => {
           if (tenant) {

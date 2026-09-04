@@ -34,6 +34,7 @@ const STORAGE_KEYS = {
   DELETED_PATIENTS: 'clinica_deleted_patients',
   ANAMNESIS: 'clinica_anamnesis',
   PACKAGES: 'clinica_packages',
+  DELETED_PACKAGES: 'clinica_deleted_packages',
   SESSIONS: 'clinica_sessions',
   EVOLUTIONS: 'clinica_evolutions',
   DOCUMENTS: 'clinica_documents',
@@ -685,9 +686,14 @@ export const api = {
 
   async syncBidirectional(tenantId: string, currentTenant?: Tenant | null): Promise<void> {
     try {
+      const deletedPackageIds = new Set(getLocal<string[]>(STORAGE_KEYS.DELETED_PACKAGES, []));
       const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
-      const packages = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
-      const sessions = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
+      const packages = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []).filter(
+        p => p && p.id && !p.deletedAt && !deletedPackageIds.has(p.id)
+      );
+      const sessions = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []).filter(
+        s => !s.packageId || !deletedPackageIds.has(s.packageId)
+      );
       const anamneses = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
       const tenantsList = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
       const activeTenant = currentTenant || tenantsList.find(t => t.id === tenantId) || tenantsList[0];
@@ -701,8 +707,18 @@ export const api = {
       if (serverRes) {
         const synced = await serverRes.json();
         if (synced.patients) setLocal(STORAGE_KEYS.PATIENTS, synced.patients);
-        if (synced.packages) setLocal(STORAGE_KEYS.PACKAGES, synced.packages);
-        if (synced.sessions) setLocal(STORAGE_KEYS.SESSIONS, synced.sessions);
+        if (synced.packages) {
+          const freshPkgs = synced.packages.filter(
+            (p: SessionPackage) => p && p.id && !p.deletedAt && !deletedPackageIds.has(p.id)
+          );
+          setLocal(STORAGE_KEYS.PACKAGES, freshPkgs);
+        }
+        if (synced.sessions) {
+          const freshSess = synced.sessions.filter(
+            (s: Session) => !s.packageId || !deletedPackageIds.has(s.packageId)
+          );
+          setLocal(STORAGE_KEYS.SESSIONS, freshSess);
+        }
         if (synced.anamneses) setLocal(STORAGE_KEYS.ANAMNESIS, synced.anamneses);
         if (synced.tenants && Array.isArray(synced.tenants) && synced.tenants.length > 0) {
           setLocal(STORAGE_KEYS.TENANTS, synced.tenants);
@@ -929,13 +945,34 @@ export const api = {
 
   // Packages
   async getPackages(tenantId: string): Promise<SessionPackage[]> {
+    const deletedIds = new Set(getLocal<string[]>(STORAGE_KEYS.DELETED_PACKAGES, []));
+    const isDeleted = (p: SessionPackage) => {
+      if (!p || !p.id) return true;
+      if (p.deletedAt) return true;
+      if (deletedIds.has(p.id)) return true;
+      return false;
+    };
+
     const mergedMap = new Map<string, SessionPackage>();
-    INITIAL_PACKAGES.forEach(p => {
-      if (!tenantId || p.tenantId === tenantId) mergedMap.set(p.id, p);
-    });
+
+    // Initial packages seed ONLY on first run if never initialized
+    const isInitialized = typeof window !== 'undefined' && localStorage.getItem('clinica_packages_initialized') === 'true';
+    if (!isInitialized) {
+      INITIAL_PACKAGES.forEach(p => {
+        if (!isDeleted(p) && (!tenantId || p.tenantId === tenantId)) {
+          mergedMap.set(p.id, p);
+        }
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('clinica_packages_initialized', 'true');
+      }
+    }
+
     const localList = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
     localList.forEach(p => {
-      if (!tenantId || p.tenantId === tenantId) mergedMap.set(p.id, p);
+      if (!isDeleted(p) && (!tenantId || p.tenantId === tenantId || tenantId === 'tenant-demo-1' || p.tenantId === 'tenant-demo-1')) {
+        mergedMap.set(p.id, p);
+      }
     });
 
     const serverRes = await tryFetch('/api/packages', {
@@ -945,7 +982,13 @@ export const api = {
       try {
         const serverPkgs = await serverRes.json();
         if (Array.isArray(serverPkgs)) {
-          serverPkgs.forEach((p: SessionPackage) => mergedMap.set(p.id, p));
+          serverPkgs.forEach((p: SessionPackage) => {
+            if (!isDeleted(p)) {
+              mergedMap.set(p.id, p);
+            } else {
+              mergedMap.delete(p.id);
+            }
+          });
         }
       } catch (e) {
         console.warn('Failed to parse packages response:', e);
@@ -954,7 +997,13 @@ export const api = {
       try {
         const cloudPkgs = await supabaseDirectApi.getPackages(tenantId);
         if (Array.isArray(cloudPkgs)) {
-          cloudPkgs.forEach((p: SessionPackage) => mergedMap.set(p.id, p));
+          cloudPkgs.forEach((p: SessionPackage) => {
+            if (!isDeleted(p)) {
+              mergedMap.set(p.id, p);
+            } else {
+              mergedMap.delete(p.id);
+            }
+          });
         }
       } catch (sbErr) {
         console.warn('Supabase packages fetch notice:', sbErr);
@@ -1041,9 +1090,22 @@ export const api = {
 
   async updatePackage(param1: string, param2: string, updates: Partial<SessionPackage>): Promise<SessionPackage> {
     // Discriminate between tenantId and package id to be completely resilient to call signatures
-    const isParam1Tenant = param1.startsWith('tenant-') || param1.includes('clinic') || param1.includes('demo');
-    const tenantId = isParam1Tenant ? param1 : param2;
-    const id = isParam1Tenant ? param2 : param1;
+    const localPkgs = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
+    const isParam1Pkg = param1.startsWith('pkg-') || localPkgs.some(p => p.id === param1);
+    const isParam2Pkg = param2.startsWith('pkg-') || localPkgs.some(p => p.id === param2);
+
+    let tenantId = 'tenant-demo-1';
+    let id = '';
+    if (isParam2Pkg && !isParam1Pkg) {
+      tenantId = param1;
+      id = param2;
+    } else if (isParam1Pkg && !isParam2Pkg) {
+      id = param1;
+      tenantId = param2;
+    } else {
+      tenantId = param1;
+      id = param2;
+    }
 
     const serverRes = await tryFetch(`/api/packages/${id}`, {
       method: 'PUT',
@@ -1051,7 +1113,7 @@ export const api = {
       body: JSON.stringify(updates),
     });
 
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured || supabaseDirectApi.isEnabled()) {
       try {
         await supabaseDirectApi.updatePackage(id, updates);
       } catch (sbErr) {
@@ -1078,17 +1140,50 @@ export const api = {
     return (updatedPkg || { ...updates, id, tenantId }) as SessionPackage;
   },
 
-  async deletePackage(param1: string, param2: string): Promise<void> {
-    const isParam1Tenant = param1.startsWith('tenant-') || param1.includes('clinic') || param1.includes('demo');
-    const tenantId = isParam1Tenant ? param1 : param2;
-    const id = isParam1Tenant ? param2 : param1;
+  async deletePackage(param1: string, param2?: string): Promise<void> {
+    let tenantId = 'tenant-demo-1';
+    let id = '';
 
-    await tryFetch(`/api/packages/${id}`, {
-      method: 'DELETE',
-      headers: { 'x-tenant-id': tenantId },
-    });
+    if (!param2) {
+      id = param1;
+    } else {
+      const localPkgs = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
+      const isParam1Pkg = param1.startsWith('pkg-') || localPkgs.some(p => p.id === param1);
+      const isParam2Pkg = param2.startsWith('pkg-') || localPkgs.some(p => p.id === param2);
 
-    if (isSupabaseConfigured) {
+      if (isParam2Pkg && !isParam1Pkg) {
+        tenantId = param1;
+        id = param2;
+      } else if (isParam1Pkg && !isParam2Pkg) {
+        id = param1;
+        tenantId = param2;
+      } else {
+        tenantId = param1;
+        id = param2;
+      }
+    }
+
+    if (!id) return;
+
+    // Permanently remember deleted package ID in localStorage
+    const deletedIds = getLocal<string[]>(STORAGE_KEYS.DELETED_PACKAGES, []);
+    if (!deletedIds.includes(id)) {
+      deletedIds.push(id);
+      setLocal(STORAGE_KEYS.DELETED_PACKAGES, deletedIds);
+    }
+
+    // Call server DELETE endpoint
+    try {
+      await tryFetch(`/api/packages/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-tenant-id': tenantId },
+      });
+    } catch (e) {
+      console.warn('Error calling /api/packages DELETE:', e);
+    }
+
+    // Direct Supabase delete if configured
+    if (isSupabaseConfigured || supabaseDirectApi.isEnabled()) {
       try {
         await supabaseDirectApi.deletePackage(id);
       } catch (sbErr) {
@@ -1096,11 +1191,12 @@ export const api = {
       }
     }
 
+    // Remove from local storage packages
     const list = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
     const updatedList = list.filter(p => p.id !== id);
     setLocal(STORAGE_KEYS.PACKAGES, updatedList);
 
-    // Also remove or unlink local sessions belonging to this package
+    // Also remove local sessions belonging to this package
     const sessions = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
     const updatedSessions = sessions.filter(s => s.packageId !== id);
     setLocal(STORAGE_KEYS.SESSIONS, updatedSessions);
@@ -1108,20 +1204,24 @@ export const api = {
 
   // Sessions
   async getSessions(tenantId: string, patientId?: string): Promise<Session[]> {
+    const deletedPkgIds = new Set(getLocal<string[]>(STORAGE_KEYS.DELETED_PACKAGES, []));
     const url = patientId ? `/api/sessions?patientId=${patientId}` : '/api/sessions';
     const serverRes = await tryFetch(url, {
       headers: { 'x-tenant-id': tenantId },
     });
     if (serverRes) {
       try {
-        return await serverRes.json();
+        const list: Session[] = await serverRes.json();
+        if (Array.isArray(list)) {
+          return list.filter(s => !s.packageId || !deletedPkgIds.has(s.packageId));
+        }
       } catch (e) {
         console.warn('Failed to parse getSessions JSON');
       }
     }
 
     let list = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
-    list = list.filter(s => s.tenantId === tenantId);
+    list = list.filter(s => s.tenantId === tenantId && (!s.packageId || !deletedPkgIds.has(s.packageId)));
     if (patientId) list = list.filter(s => s.patientId === patientId);
     return list;
   },
