@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Eraser, RotateCcw, Check, PenTool } from 'lucide-react';
+import { Eraser, RotateCcw, Check, PenTool, Sparkles, ShieldCheck } from 'lucide-react';
 
 interface CanvasSignatureProps {
   onSave?: (dataUrl: string) => void;
@@ -9,6 +9,12 @@ interface CanvasSignatureProps {
   label?: string;
   width?: number;
   height?: number;
+  required?: boolean;
+}
+
+interface Point {
+  x: number;
+  y: number;
 }
 
 export const CanvasSignature: React.FC<CanvasSignatureProps> = ({
@@ -16,19 +22,24 @@ export const CanvasSignature: React.FC<CanvasSignatureProps> = ({
   onChange,
   value,
   initialDataUrl,
-  label = 'Desenhe a sua assinatura com o dedo, caneta ou mouse',
-  width = 500,
-  height = 180,
+  label = 'Desenhe a sua assinatura com o dedo, caneta touch ou mouse',
+  height = 190,
+  required = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
-  const [history, setHistory] = useState<ImageData[]>([]);
+  const [strokeCount, setStrokeCount] = useState(0);
 
+  // References for drawing calculations & smooth bezier curves
   const isDrawingRef = useRef(false);
-  const historyRef = useRef<ImageData[]>([]);
-  const isTouchActiveRef = useRef(false);
+  const lastPointRef = useRef<Point | null>(null);
+  const strokePointsRef = useRef<Point[]>([]);
+  const strokeHistoryRef = useRef<ImageData[]>([]);
+  const dprRef = useRef(1);
+  const logicalSizeRef = useRef({ width: 500, height });
+  const totalStrokeLengthRef = useRef(0);
 
   const currentInitial = value || initialDataUrl;
 
@@ -37,312 +48,421 @@ export const CanvasSignature: React.FC<CanvasSignatureProps> = ({
     if (onSave) onSave(dataUrl);
   }, [onChange, onSave]);
 
-  const drawGuidanceLine = useCallback((ctx: CanvasRenderingContext2D, cWidth: number, cHeight: number) => {
+  // Draw calibrated guidance line & baseline watermark
+  const drawGuidanceBase = useCallback((ctx: CanvasRenderingContext2D, width: number, h: number) => {
+    ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, cWidth, cHeight);
+    ctx.fillRect(0, 0, width, h);
+
+    // Baseline where signature rests
+    const lineY = h - 38;
     ctx.beginPath();
-    ctx.moveTo(20, cHeight - 30);
-    ctx.lineTo(cWidth - 20, cHeight - 30);
-    ctx.strokeStyle = '#cbd5e1';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
+    ctx.moveTo(32, lineY);
+    ctx.lineTo(width - 32, lineY);
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 2.5;
+
+    // Elegant subtle signature "X" indicator
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('✕', 14, lineY + 5);
+
+    ctx.restore();
   }, []);
 
-  const saveCanvasState = useCallback(() => {
+  // Configure high-DPI scaling and calibrate canvas coordinate space
+  const setupCanvasCalibration = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    setHistory(prev => {
-      const next = [...prev, imageData];
-      historyRef.current = next;
-      return next;
-    });
-  }, []);
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
-  const handleSaveAndNotify = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dataUrl = canvas.toDataURL('image/png');
-    notifyChange(dataUrl);
-  }, [notifyChange]);
-
-  // Initialize canvas
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    ctx.strokeStyle = '#0f172a'; // Deep slate
-    ctx.lineWidth = 2.5;
+    const rect = container.getBoundingClientRect();
+    const width = Math.max(rect.width || 320, 280);
+    const dpr = Math.min(window.devicePixelRatio || 2, 3);
+
+    dprRef.current = dpr;
+    logicalSizeRef.current = { width, height };
+
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    // Scale drawing context so all coordinate math is 1:1 with CSS pixels
+    ctx.scale(dpr, dpr);
+    ctx.strokeStyle = '#0f172a'; // High contrast deep slate ink
+    ctx.lineWidth = 2.8;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     if (currentInitial && currentInitial.startsWith('data:image')) {
       const img = new Image();
       img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
         setHasSignature(true);
+        totalStrokeLengthRef.current = 100;
       };
       img.src = currentInitial;
     } else {
-      drawGuidanceLine(ctx, canvas.width, canvas.height);
+      drawGuidanceBase(ctx, width, height);
+      setHasSignature(false);
+      totalStrokeLengthRef.current = 0;
     }
-  }, [width, height, currentInitial, drawGuidanceLine]);
+  }, [height, currentInitial, drawGuidanceBase]);
 
-  // Coordinate calculations
-  const getCoordinatesFromTouch = (touch: Touch, canvas: HTMLCanvasElement) => {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / (rect.width || 1);
-    const scaleY = canvas.height / (rect.height || 1);
-    return {
-      x: (touch.clientX - rect.left) * scaleX,
-      y: (touch.clientY - rect.top) * scaleY,
-    };
-  };
-
-  const getCoordinatesFromPointer = (
-    e: React.PointerEvent<HTMLCanvasElement> | PointerEvent | MouseEvent,
-    canvas: HTMLCanvasElement
-  ) => {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / (rect.width || 1);
-    const scaleY = canvas.height / (rect.height || 1);
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-    };
-  };
-
-  // Robust Native Touch Event Handlers for Mobile (touchstart, touchmove, touchend, touchcancel)
+  // Handle resize / orientation change with calibration
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    setupCanvasCalibration();
 
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-
-      isTouchActiveRef.current = true;
-      saveCanvasState();
-      isDrawingRef.current = true;
-      setIsDrawing(true);
-      setHasSignature(true);
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const { x, y } = getCoordinatesFromTouch(e.touches[0], canvas);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x, y);
-      ctx.stroke();
+    const handleResize = () => {
+      // Debounce slight resize
+      setupCanvasCalibration();
     };
 
-    const onTouchMove = (e: TouchEvent) => {
-      if (!isDrawingRef.current || e.touches.length === 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const { x, y } = getCoordinatesFromTouch(e.touches[0], canvas);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (isDrawingRef.current) {
-        e.preventDefault();
-        e.stopPropagation();
-        isDrawingRef.current = false;
-        setIsDrawing(false);
-        handleSaveAndNotify();
-      }
-      setTimeout(() => {
-        isTouchActiveRef.current = false;
-      }, 100);
-    };
-
-    const onTouchCancel = (e: TouchEvent) => {
-      if (isDrawingRef.current) {
-        isDrawingRef.current = false;
-        setIsDrawing(false);
-        handleSaveAndNotify();
-      }
-      setTimeout(() => {
-        isTouchActiveRef.current = false;
-      }, 100);
-    };
-
-    // Attach with { passive: false } to allow e.preventDefault() and prevent scrolling
-    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
-    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
-    canvas.addEventListener('touchend', onTouchEnd, { passive: false });
-    canvas.addEventListener('touchcancel', onTouchCancel, { passive: false });
-
+    window.addEventListener('resize', handleResize);
     return () => {
-      canvas.removeEventListener('touchstart', onTouchStart);
-      canvas.removeEventListener('touchmove', onTouchMove);
-      canvas.removeEventListener('touchend', onTouchEnd);
-      canvas.removeEventListener('touchcancel', onTouchCancel);
+      window.removeEventListener('resize', handleResize);
     };
-  }, [saveCanvasState, handleSaveAndNotify]);
+  }, [setupCanvasCalibration]);
 
-  // Pointer / Mouse events for desktop browsers
-  const startPointerDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    // If a touch interaction is already active via native touchstart, ignore duplicate pointerdown
-    if (isTouchActiveRef.current || e.pointerType === 'touch') return;
-    if (e.button !== 0) return;
-
-    saveCanvasState();
-    isDrawingRef.current = true;
-    setIsDrawing(true);
-    setHasSignature(true);
-
+  // Snapshot canvas state for undo functionality
+  const saveStateForUndo = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    if (canvas.setPointerCapture) {
+    try {
+      const snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      strokeHistoryRef.current.push(snapshot);
+      if (strokeHistoryRef.current.length > 20) {
+        strokeHistoryRef.current.shift();
+      }
+      setStrokeCount(strokeHistoryRef.current.length);
+    } catch (e) {
+      // Canvas may be tainted in rare cases
+    }
+  }, []);
+
+  const exportAndNotify = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Verify if there is an actual signature
+    if (totalStrokeLengthRef.current > 30 || strokePointsRef.current.length > 8) {
+      const dataUrl = canvas.toDataURL('image/png');
+      setHasSignature(true);
+      notifyChange(dataUrl);
+    } else if (totalStrokeLengthRef.current === 0) {
+      setHasSignature(false);
+      notifyChange('');
+    }
+  }, [notifyChange]);
+
+  // Precision coordinate extraction with offset calibration
+  const getPointerPos = (clientX: number, clientY: number): Point => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+  };
+
+  // Start stroke
+  const startDrawing = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    saveStateForUndo();
+
+    isDrawingRef.current = true;
+    setIsDrawing(true);
+
+    const pos = getPointerPos(clientX, clientY);
+    lastPointRef.current = pos;
+    strokePointsRef.current = [pos];
+
+    // Configure ink properties
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2.8;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Draw immediate dot for single tap
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 1.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+  };
+
+  // Smooth Bézier curve stroke progression
+  const continueDrawing = (clientX: number, clientY: number) => {
+    if (!isDrawingRef.current || !lastPointRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const currentPos = getPointerPos(clientX, clientY);
+    const lastPos = lastPointRef.current;
+
+    // Calculate distance traveled to measure calibration & ensure true signature
+    const dx = currentPos.x - lastPos.x;
+    const dy = currentPos.y - lastPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Filter sub-pixel jitter
+    if (dist < 1.2) return;
+
+    totalStrokeLengthRef.current += dist;
+
+    // Quadratic Bézier curve through midpoints for ultra-smooth cursive strokes
+    const midX = (lastPos.x + currentPos.x) / 2;
+    const midY = (lastPos.y + currentPos.y) / 2;
+
+    ctx.beginPath();
+    ctx.moveTo(lastPos.x, lastPos.y);
+    ctx.quadraticCurveTo(lastPos.x, lastPos.y, midX, midY);
+    ctx.stroke();
+
+    lastPointRef.current = currentPos;
+    strokePointsRef.current.push(currentPos);
+
+    if (totalStrokeLengthRef.current > 30) {
+      setHasSignature(true);
+    }
+  };
+
+  const endDrawing = () => {
+    if (isDrawingRef.current) {
+      isDrawingRef.current = false;
+      setIsDrawing(false);
+      lastPointRef.current = null;
+      exportAndNotify();
+    }
+  };
+
+  // Attach native non-passive touch listeners to eliminate mobile scrolling interference
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length > 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const touch = e.touches[0];
+      startDrawing(touch.clientX, touch.clientY);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDrawingRef.current || e.touches.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const touch = e.touches[0];
+      continueDrawing(touch.clientX, touch.clientY);
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      endDrawing();
+    };
+
+    const handleTouchCancel = (e: TouchEvent) => {
+      e.preventDefault();
+      endDrawing();
+    };
+
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchCancel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchcancel', handleTouchCancel);
+    };
+  }, [exportAndNotify]);
+
+  // Pointer event handlers for desktop & stylus (Apple Pencil, Surface Pen, Wacom)
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // If it's a touch event, it's already handled by native touch listener
+    if (e.pointerType === 'touch') return;
+    if (e.button !== 0) return;
+
+    const canvas = canvasRef.current;
+    if (canvas && canvas.setPointerCapture) {
       try {
         canvas.setPointerCapture(e.pointerId);
       } catch (err) {}
     }
 
-    const { x, y } = getCoordinatesFromPointer(e, canvas);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x, y);
-    ctx.stroke();
+    startDrawing(e.clientX, e.clientY);
   };
 
-  const drawPointer = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (isTouchActiveRef.current || e.pointerType === 'touch') return;
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch') return;
     if (!isDrawingRef.current) return;
+    continueDrawing(e.clientX, e.clientY);
+  };
 
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch') return;
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const { x, y } = getCoordinatesFromPointer(e, canvas);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
-
-  const stopPointerDrawing = (e?: React.PointerEvent<HTMLCanvasElement>) => {
-    if (isTouchActiveRef.current || (e && e.pointerType === 'touch')) return;
-    if (isDrawingRef.current) {
-      isDrawingRef.current = false;
-      setIsDrawing(false);
-
-      const canvas = canvasRef.current;
-      if (canvas && e && canvas.releasePointerCapture) {
-        try {
-          canvas.releasePointerCapture(e.pointerId);
-        } catch (err) {}
-      }
-      handleSaveAndNotify();
+    if (canvas && canvas.releasePointerCapture) {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch (err) {}
     }
+    endDrawing();
   };
 
+  // Clear signature canvas
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    drawGuidanceLine(ctx, canvas.width, canvas.height);
+    const { width, height: h } = logicalSizeRef.current;
+    drawGuidanceBase(ctx, width, h);
+
     setHasSignature(false);
-    setHistory([]);
-    historyRef.current = [];
+    totalStrokeLengthRef.current = 0;
+    strokePointsRef.current = [];
+    strokeHistoryRef.current = [];
+    setStrokeCount(0);
     notifyChange('');
   };
 
-  const undo = () => {
-    if (history.length === 0) return;
+  // Undo last stroke
+  const undoLastStroke = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const previousState = history[history.length - 1];
-    ctx.putImageData(previousState, 0, 0);
-    const newHistory = history.slice(0, -1);
-    setHistory(newHistory);
-    historyRef.current = newHistory;
-
-    if (newHistory.length === 0) {
-      setHasSignature(false);
+    if (strokeHistoryRef.current.length === 0) {
+      clearCanvas();
+      return;
     }
-    handleSaveAndNotify();
-  };
 
-  const handleSave = () => {
-    handleSaveAndNotify();
+    const previousSnapshot = strokeHistoryRef.current.pop();
+    setStrokeCount(strokeHistoryRef.current.length);
+
+    if (previousSnapshot) {
+      ctx.putImageData(previousSnapshot, 0, 0);
+      if (strokeHistoryRef.current.length === 0) {
+        setHasSignature(false);
+        totalStrokeLengthRef.current = 0;
+        notifyChange('');
+      } else {
+        const dataUrl = canvas.toDataURL('image/png');
+        notifyChange(dataUrl);
+      }
+    }
   };
 
   return (
-    <div ref={containerRef} className="w-full flex flex-col items-center select-none">
-      <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl bg-white p-1.5 shadow-inner overflow-hidden w-full max-w-lg">
+    <div ref={containerRef} className="w-full flex flex-col items-center select-none notranslate" translate="no">
+      <div
+        className={`relative border-2 rounded-2xl bg-white p-1 shadow-xs transition-all w-full overflow-hidden ${
+          hasSignature
+            ? 'border-emerald-500/80 ring-2 ring-emerald-500/15'
+            : required
+            ? 'border-amber-400 dark:border-amber-600/70 bg-amber-50/10'
+            : 'border-slate-300 dark:border-slate-700'
+        }`}
+      >
         <canvas
           ref={canvasRef}
-          width={width}
-          height={height}
-          onPointerDown={startPointerDrawing}
-          onPointerMove={drawPointer}
-          onPointerUp={stopPointerDrawing}
-          onPointerCancel={stopPointerDrawing}
-          onPointerLeave={stopPointerDrawing}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerLeave={handlePointerUp}
           className="cursor-crosshair bg-white rounded-xl block w-full touch-none"
-          style={{ touchAction: 'none' }}
+          style={{
+            touchAction: 'none',
+            WebkitUserSelect: 'none',
+            userSelect: 'none',
+          }}
         />
-        {!hasSignature && (
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center text-slate-400 gap-2 font-medium text-xs px-4 text-center">
-            <PenTool className="w-4 h-4 shrink-0 text-teal-600" />
-            <span>{label}</span>
+
+        {/* Guidance Watermark / Calibrated Label */}
+        {!hasSignature && !isDrawing && (
+          <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center text-slate-400 gap-1.5 px-4 text-center">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <PenTool className="w-4 h-4 text-teal-600 animate-pulse" />
+              <span>{label}</span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium">
+              Calibrado para toque nos celulares e canetas digitais • Mantenha o traço contínuo
+            </span>
           </div>
         )}
+
+        {/* Live Calibration Status Tag */}
+        <div className="absolute top-2 right-2 pointer-events-none flex items-center gap-1">
+          {hasSignature ? (
+            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold flex items-center gap-1 shadow-2xs">
+              <Check className="w-3 h-3" /> Assinatura Calibrada
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-medium">
+              Aguardando Assinatura
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between w-full max-w-lg mt-3 gap-2">
-        <div className="flex gap-2">
+      {/* Signature Toolbar */}
+      <div className="flex items-center justify-between w-full mt-2.5 gap-2">
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={undo}
-            disabled={history.length === 0}
-            className="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 flex items-center gap-1 transition shadow-2xs cursor-pointer"
+            onClick={undoLastStroke}
+            disabled={strokeCount === 0}
+            className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1.5 transition cursor-pointer"
+            title="Desfazer último traço"
           >
             <RotateCcw className="w-3.5 h-3.5" /> Desfazer
           </button>
           <button
             type="button"
             onClick={clearCanvas}
-            className="px-3 py-2 text-xs font-semibold rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30 flex items-center gap-1 transition shadow-2xs cursor-pointer"
+            className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30 flex items-center gap-1.5 transition cursor-pointer"
+            title="Limpar e assinar novamente"
           >
-            <Eraser className="w-3.5 h-3.5" /> Limpar
+            <Eraser className="w-3.5 h-3.5" /> Limpar Assinatura
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!hasSignature}
-          className="px-4 py-2 text-xs font-black rounded-xl bg-teal-600 hover:bg-teal-700 text-white disabled:opacity-30 flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-        >
-          <Check className="w-3.5 h-3.5" /> Assinatura Pronta
-        </button>
+        <div className="flex items-center gap-2">
+          {hasSignature ? (
+            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" /> Válida para prontuário
+            </span>
+          ) : (
+            <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+              * Assinatura obrigatória
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

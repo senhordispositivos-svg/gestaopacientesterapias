@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  FileSignature,
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
@@ -11,17 +10,22 @@ import {
   Calendar,
   Briefcase,
   HeartPulse,
-  Activity,
   Sparkles,
-  Eraser,
   Send,
   Loader2,
   Search,
   Check,
+  FileText,
+  Heart,
+  ClipboardList,
+  Clock,
+  ShieldAlert,
+  HelpCircle,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { formatCPF, validateCPF, formatPhone, formatCEP } from '../../utils/cpf';
-import { Anamnesis, Patient } from '../../types';
+import { Anamnesis, Patient, MassotherapyEvaluation } from '../../types';
+import { CanvasSignature } from '../common/CanvasSignature';
 
 interface PublicAnamnesisPageProps {
   token?: string;
@@ -36,6 +40,7 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   // Clinic & Professional Data
   const [clinicData, setClinicData] = useState<{
@@ -46,10 +51,10 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
     city?: string;
     state?: string;
   }>({
-    name: 'Clínica de Fisioterapia & Terapias Integradas',
-    tradeName: 'Clínica de Fisioterapia & Terapias Integradas',
+    name: 'Clínica de Massoterapia & Terapias Integrativas',
+    tradeName: 'Clínica de Massoterapia & Terapias Integrativas',
   });
-  const [professionalName, setProfessionalName] = useState('Equipe Terapêutica');
+  const [professionalName, setProfessionalName] = useState('Equipe Clínica');
 
   // Step 1: Personal Data
   const [patientId, setPatientId] = useState<string>('');
@@ -72,57 +77,40 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
   const [state, setState] = useState('');
   const [isSearchingCep, setIsSearchingCep] = useState(false);
 
-  // Step 2: Health History
-  const [healthHistory, setHealthHistory] = useState({
-    hipertensao: false,
-    hipotensao: false,
-    diabetes: false,
-    cardiopatia: false,
-    varizes: false,
-    trombose: false,
-    protese: false,
-    artrite: false,
-    fibromialgia: false,
-    osteoporose: false,
-    epilepsia: false,
-    cancerEmTratamento: false,
-    historicoCancer: false,
-    alergias: false,
-    fumante: false,
-    ansiedade: false,
-    depressao: false,
-    doencaPeleContagiosa: false,
-    menstruacaoNormal: true,
+  // Step 2, 3, 4: Evaluation State (Starts undefined to enforce explicit Sim/Não response)
+  const [evaluation, setEvaluation] = useState<MassotherapyEvaluation>({
+    hasCurrentMedicalCondition: undefined,
+    currentMedicalConditionDescription: '',
+    hasRecentSurgeries: undefined,
+    recentSurgeriesDescription: '',
+    hasKnownAllergies: undefined,
+    knownAllergiesDescription: '',
+    isPregnantOrBreastfeeding: undefined,
+    hasHadMassageBefore: undefined,
+    massageFrequency: '',
+    massageType: '',
+    massageResults: '',
+    massageGoals: '',
+    specificBodyAreasToFocus: '',
+    pressurePreference: 'Moderada',
+    pressurePreferenceOther: '',
+    isSmoker: undefined,
+    smokingDailyQuantity: '',
+    drinksAlcohol: undefined,
+    alcoholFrequencyQuantity: '',
+    regularPhysicalActivity: undefined,
+    physicalActivityTypeFrequency: '',
+    diet: '',
+    sleepQuality: 'Normal',
+    sleepOtherDescription: '',
+    additionalObservations: '',
   });
 
-  const [hasSurgery, setHasSurgery] = useState(false);
-  const [surgeryDetails, setSurgeryDetails] = useState('');
-  const [hasMedications, setHasMedications] = useState(false);
-  const [medicationDetails, setMedicationDetails] = useState('');
-  const [allergyDetails, setAllergyDetails] = useState('');
-
-  // Step 3: Therapy Preferences & Evaluation
-  const [treatments, setTreatments] = useState({
-    fisioterapia: false,
-    tratamentoMedico: false,
-    medicamentos: false,
-    outroTratamento: false,
-  });
-  const [habits, setHabits] = useState({
-    jaRealizouMassoterapia: false,
-    dormeBem: true,
-    atividadeFisica: false,
-    bebidaAlcoolica: false,
-  });
-  const [pressurePreference, setPressurePreference] = useState<'LEVE' | 'MODERADA' | 'FORTE'>('MODERADA');
-  const [mainComplaint, setMainComplaint] = useState('');
-  const [focusAreas, setFocusAreas] = useState('');
-
-  // Step 4: Terms & Digital Signature
+  // Step 5: Terms & Digital Signature
   const [termAccepted, setTermAccepted] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [hasSignature, setHasSignature] = useState(false);
+  const [signatureUrl, setSignatureUrl] = useState('');
+
+  const topFormRef = useRef<HTMLDivElement | null>(null);
 
   // Age calculation
   const calculatedAge = React.useMemo(() => {
@@ -153,165 +141,190 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
         if (data) {
           if (data.tenant) {
             setClinicData({
-              name: data.tenant.tradeName || data.tenant.name || 'Clínica de Fisioterapia & Terapias',
+              name: data.tenant.tradeName || data.tenant.name || 'Clínica de Massoterapia',
               tradeName: data.tenant.tradeName || data.tenant.name,
               logoUrl: data.tenant.logoUrl,
               phone: data.tenant.phone,
               city: data.tenant.city,
               state: data.tenant.state,
             });
+            if (data.tenant.city) setCity(prev => prev || data.tenant.city || '');
+            if (data.tenant.state) setState(prev => prev || data.tenant.state || '');
           }
-          if (data.professionalName) {
-            setProfessionalName(data.professionalName);
+
+          if (data.professional) {
+            setProfessionalName(data.professional.name || 'Osaias Brito');
           }
+
           if (data.patient) {
-            if (data.patient.id) setPatientId(data.patient.id);
-            if (data.patient.name) setName(data.patient.name);
-            if (data.patient.cpf) setCpf(formatCPF(data.patient.cpf));
-            if (data.patient.phone) setPhone(formatPhone(data.patient.phone));
-            if (data.patient.email) setEmail(data.patient.email);
-            if (data.patient.birthDate) setBirthDate(data.patient.birthDate);
-            if (data.patient.gender) setGender(data.patient.gender);
-            if (data.patient.profession) setProfession(data.patient.profession);
-            if (data.patient.cep) setCep(formatCEP(data.patient.cep));
-            if (data.patient.street) setStreet(data.patient.street);
-            if (data.patient.number) setNumber(data.patient.number);
-            if (data.patient.complement) setComplement(data.patient.complement);
-            if (data.patient.neighborhood) setNeighborhood(data.patient.neighborhood);
+            setPatientId(data.patient.id || '');
+            setName(data.patient.name || '');
+            setCpf(data.patient.cpf || '');
+            setRg(data.patient.rg || '');
+            setBirthDate(data.patient.birthDate || '');
+            setGender(data.patient.gender || 'Feminino');
+            setProfession(data.patient.profession || '');
+            setPhone(data.patient.phone || data.patient.whatsapp || '');
+            setEmail(data.patient.email || '');
+
+            setCep(data.patient.cep || '');
+            setStreet(data.patient.street || '');
+            setNumber(data.patient.number || '');
+            setComplement(data.patient.complement || '');
+            setNeighborhood(data.patient.neighborhood || '');
             if (data.patient.city) setCity(data.patient.city);
             if (data.patient.state) setState(data.patient.state);
           }
+
+          // If anamnesis already exists, preload answers
+          if (data.anamnesis && data.anamnesis.evaluation) {
+            setEvaluation(prev => ({
+              ...prev,
+              ...data.anamnesis?.evaluation,
+            }));
+            if (data.anamnesis.patientSignatureUrl) {
+              setSignatureUrl(data.anamnesis.patientSignatureUrl);
+            }
+            if (data.anamnesis.responsibilityTermAccepted) {
+              setTermAccepted(true);
+            }
+          }
         }
       } catch (err) {
-        console.warn('Erro ao carregar dados da ficha:', err);
+        console.error('Erro ao carregar dados do link de anamnese:', err);
+        setErrorMessage('Não foi possível carregar os dados. Verifique sua conexão ou tente novamente.');
       } finally {
         setLoading(false);
       }
     }
+
     loadData();
   }, [token]);
 
-  // Handle CEP Lookup
+  // CEP Search
   const handleCepBlur = async () => {
-    const clean = cep.replace(/\D/g, '');
-    if (clean.length === 8) {
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length === 8) {
       setIsSearchingCep(true);
       try {
-        const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
-        const json = await res.json();
-        if (!json.erro) {
-          setStreet(json.logradouro || '');
-          setNeighborhood(json.bairro || '');
-          setCity(json.localidade || '');
-          setState(json.uf || '');
+        const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        const address = await res.json();
+        if (address && !address.erro) {
+          setStreet(address.logradouro || street);
+          setNeighborhood(address.bairro || neighborhood);
+          setCity(address.localidade || city);
+          setState(address.uf || state);
         }
       } catch (e) {
-        console.warn('Erro na busca de CEP:', e);
+        console.warn('Erro ao buscar CEP:', e);
       } finally {
         setIsSearchingCep(false);
       }
     }
   };
 
-  // Canvas Drawing logic
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  // Mandatory fields checklist
+  const pendingErrors: string[] = [];
 
-    // Set canvas resolution
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * 2;
-    canvas.height = rect.height * 2;
-    ctx.scale(2, 2);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#0f172a';
-  }, [loading, isSubmitted]);
+  if (!name.trim()) pendingErrors.push('Nome Completo');
+  if (!phone.trim()) pendingErrors.push('WhatsApp / Celular');
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if ('touches' in e && e.cancelable) {
-      e.preventDefault();
-    }
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  if (evaluation.hasCurrentMedicalCondition === undefined) {
+    pendingErrors.push('Condição médica atual (Responda Sim ou Não)');
+  } else if (evaluation.hasCurrentMedicalCondition === true && !evaluation.currentMedicalConditionDescription?.trim()) {
+    pendingErrors.push('Descrição da condição médica atual');
+  }
 
-    setIsDrawing(true);
-    const rect = canvas.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+  if (evaluation.hasRecentSurgeries === undefined) {
+    pendingErrors.push('Cirurgias recentes (Responda Sim ou Não)');
+  } else if (evaluation.hasRecentSurgeries === true && !evaluation.recentSurgeriesDescription?.trim()) {
+    pendingErrors.push('Descrição das cirurgias recentes');
+  }
 
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    setHasSignature(true);
-  };
+  if (evaluation.hasKnownAllergies === undefined) {
+    pendingErrors.push('Alergias conhecidas (Responda Sim ou Não)');
+  } else if (evaluation.hasKnownAllergies === true && !evaluation.knownAllergiesDescription?.trim()) {
+    pendingErrors.push('Descrição das alergias conhecidas');
+  }
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-    if ('touches' in e && e.cancelable) {
-      e.preventDefault();
-    }
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  if (evaluation.isPregnantOrBreastfeeding === undefined) {
+    pendingErrors.push('Gestação ou amamentação (Responda Sim ou Não)');
+  }
 
-    const rect = canvas.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+  if (evaluation.hasHadMassageBefore === undefined) {
+    pendingErrors.push('Já fez massagem antes (Responda Sim ou Não)');
+  }
 
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
+  if (!evaluation.massageGoals?.trim()) {
+    pendingErrors.push('Objetivos com a sessão de massagem');
+  }
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
-  };
+  if (!evaluation.specificBodyAreasToFocus?.trim()) {
+    pendingErrors.push('Áreas do corpo que precisam de atenção');
+  }
 
-  const clearSignature = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHasSignature(false);
-  };
+  if (!evaluation.pressurePreference) {
+    pendingErrors.push('Preferência de pressão da massagem');
+  } else if (evaluation.pressurePreference === 'Outra' && !evaluation.pressurePreferenceOther?.trim()) {
+    pendingErrors.push('Especificação da preferência de pressão');
+  }
 
+  if (evaluation.isSmoker === undefined) {
+    pendingErrors.push('Tabagismo (Responda Sim ou Não)');
+  } else if (evaluation.isSmoker === true && !evaluation.smokingDailyQuantity?.trim()) {
+    pendingErrors.push('Quantidade diária de cigarros');
+  }
+
+  if (evaluation.drinksAlcohol === undefined) {
+    pendingErrors.push('Consumo de álcool (Responda Sim ou Não)');
+  } else if (evaluation.drinksAlcohol === true && !evaluation.alcoholFrequencyQuantity?.trim()) {
+    pendingErrors.push('Frequência de bebidas alcoólicas');
+  }
+
+  if (evaluation.regularPhysicalActivity === undefined) {
+    pendingErrors.push('Atividade física regular (Responda Sim ou Não)');
+  } else if (evaluation.regularPhysicalActivity === true && !evaluation.physicalActivityTypeFrequency?.trim()) {
+    pendingErrors.push('Tipo e frequência de atividade física');
+  }
+
+  if (!evaluation.sleepQuality) {
+    pendingErrors.push('Qualidade do sono');
+  } else if (evaluation.sleepQuality === 'Outro' && !evaluation.sleepOtherDescription?.trim()) {
+    pendingErrors.push('Descrição do sono');
+  }
+
+  if (!termAccepted) {
+    pendingErrors.push('Aceite dos Termos e Condições');
+  }
+
+  if (!signatureUrl || signatureUrl.length < 50) {
+    pendingErrors.push('Assinatura digital do cliente');
+  }
+
+  // Handle Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAttemptedSubmit(true);
     setErrorMessage(null);
 
-    // Validation
-    if (!name.trim()) {
-      setErrorMessage('Por favor, informe seu Nome Completo.');
-      return;
-    }
-    if (!phone.trim()) {
-      setErrorMessage('Por favor, informe seu número de WhatsApp / Telefone.');
-      return;
-    }
-    if (cpf.trim() && !validateCPF(cpf)) {
-      setErrorMessage('O CPF informado parece inválido. Por favor, verifique os dígitos.');
-      return;
-    }
-    if (!termAccepted) {
-      setErrorMessage('É necessário aceitar a declaração de veracidade e o termo de consentimento.');
-      return;
-    }
-    if (!hasSignature || !canvasRef.current) {
-      setErrorMessage('Por favor, faça sua assinatura digital no campo indicado antes de enviar.');
+    if (pendingErrors.length > 0) {
+      setErrorMessage(
+        `Preenchimento obrigatório incompleto (${pendingErrors.length} pendência(s)): ${pendingErrors.slice(0, 3).join(', ')}${
+          pendingErrors.length > 3 ? ' e outros...' : '.'
+        } É obrigatório responder Sim ou Não para todas as perguntas e desenhar a assinatura digital.`
+      );
+      topFormRef.current?.scrollIntoView({ behavior: 'smooth' });
       return;
     }
 
-    const signatureUrl = canvasRef.current.toDataURL('image/png');
+    if (cpf.trim()) {
+      const cleanCpf = cpf.replace(/\D/g, '');
+      if (cleanCpf.length === 11 && !validateCPF(cleanCpf)) {
+        setErrorMessage('O CPF informado é inválido. Por favor, verifique os dígitos.');
+        topFormRef.current?.scrollIntoView({ behavior: 'smooth' });
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -324,48 +337,25 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
       const patientData: Partial<Patient> = {
         id: patientId || undefined,
         name: name.trim(),
-        cpf: cpf.trim(),
-        rg: rg.trim(),
-        gender: gender as any,
-        profession: profession.trim(),
+        cpf: cpf.trim() || undefined,
+        rg: rg.trim() || undefined,
         birthDate: birthDate || undefined,
+        gender: (gender as any) || 'Outro',
+        profession: profession.trim() || undefined,
         phone: phone.trim(),
         whatsapp: phone.trim(),
-        email: email.trim(),
-        cep: cep.trim(),
-        street: street.trim(),
-        number: number.trim(),
-        complement: complement.trim(),
-        neighborhood: neighborhood.trim(),
-        city: city.trim(),
-        state: state.trim(),
-      };
-
-      const finalHealthHistory = {
-        ...healthHistory,
-        alergias: healthHistory.alergias || !!allergyDetails.trim(),
+        email: email.trim() || undefined,
+        cep: cep.trim() || undefined,
+        street: street.trim() || undefined,
+        number: number.trim() || undefined,
+        complement: complement.trim() || undefined,
+        neighborhood: neighborhood.trim() || undefined,
+        city: city.trim() || undefined,
+        state: state.trim().toUpperCase() || undefined,
       };
 
       const anamnesisData: Partial<Anamnesis> = {
-        healthHistory: finalHealthHistory,
-        treatments: {
-          ...treatments,
-          medicamentos: hasMedications || !!medicationDetails.trim(),
-        },
-        habits: {
-          ...habits,
-        },
-        evaluation: {
-          massageGoals: mainComplaint.trim(),
-          specificBodyAreasToFocus: focusAreas.trim(),
-          pressurePreference: pressurePreference,
-          hasRecentSurgeries: hasSurgery,
-          recentSurgeriesDescription: hasSurgery ? surgeryDetails.trim() : undefined,
-          hasCurrentMedicalCondition: hasMedications,
-          currentMedicalConditionDescription: hasMedications ? medicationDetails.trim() : undefined,
-          hasKnownAllergies: !!allergyDetails.trim(),
-          knownAllergiesDescription: allergyDetails.trim() || undefined,
-        },
+        evaluation,
         responsibilityTermAccepted: true,
         patientSignatureUrl: signatureUrl,
         city: city || clinicData.city || '',
@@ -398,61 +388,61 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
         <Loader2 className="w-10 h-10 animate-spin text-teal-600 mb-3" />
         <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-          Carregando formulário seguro de cadastro...
+          Carregando ficha de cadastro & avaliação segura...
         </p>
       </div>
     );
   }
 
-  // Success Confirmation Screen
+  // Success Screen
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-center notranslate" translate="no">
-        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 p-8 text-center space-y-6 animate-fade-in notranslate">
-          <div className="w-20 h-20 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-            <CheckCircle2 className="w-12 h-12" />
+      <div className="min-h-screen bg-gradient-to-b from-teal-50 to-slate-100 dark:from-slate-900 dark:to-slate-950 flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 text-center animate-fade-in">
+          <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center mx-auto mb-5 text-emerald-600 dark:text-emerald-400 shadow-sm ring-8 ring-emerald-50 dark:ring-emerald-950/30">
+            <CheckCircle2 className="w-10 h-10" />
           </div>
 
-          <div className="space-y-2">
-            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-              Ficha Enviada com Sucesso!
-            </h1>
-            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              Obrigado, <strong className="text-slate-900 dark:text-white">{name}</strong>. Seus dados de cadastro, histórico de saúde e assinatura digital foram recebidos com segurança pela <strong className="text-teal-600 dark:text-teal-400">{clinicData.name}</strong>.
-            </p>
+          <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 mb-2">
+            Ficha Enviada com Sucesso!
+          </h2>
+
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold mb-4 border border-emerald-200 dark:border-emerald-800">
+            <ShieldCheck className="w-4 h-4" /> Assinatura Digital & Anamnese Registradas
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-left space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
-              <span className="font-semibold text-slate-700 dark:text-slate-300">Status do Prontuário:</span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold text-[10px]">
-                GRAVADO & SINCRONIZADO
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+            Olá, <strong className="text-slate-800 dark:text-slate-200">{name}</strong>! Suas respostas e assinatura foram sincronizadas com o sistema da clínica. Seu atendimento já está autorizado.
+          </p>
+
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 text-left text-xs space-y-2 mb-6">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Clínica:</span>
+              <span className="font-bold text-slate-700 dark:text-slate-300">{clinicData.name}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Responsável:</span>
+              <span className="font-bold text-slate-700 dark:text-slate-300">{professionalName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Data e Hora:</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-300">
+                {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span>Profissional Responsável:</span>
-              <strong className="text-slate-800 dark:text-slate-200">{professionalName}</strong>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Data do Preenchimento:</span>
-              <strong className="text-slate-800 dark:text-slate-200">{new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
-            </div>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-teal-50 dark:bg-teal-950/30 text-teal-800 dark:text-teal-300 text-xs flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 shrink-0 text-teal-600" />
-            <span className="text-left text-[11px] leading-snug">
-              Seu cadastro foi salvo diretamente no prontuário eletrônico. Você já pode fechar esta página.
-            </span>
+          <div className="text-xs text-slate-400">
+            Você já pode fechar esta aba no seu celular ou navegador. Tenha uma excelente sessão! ✨
           </div>
 
           {onBackToApp && (
             <button
               type="button"
               onClick={onBackToApp}
-              className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition notranslate"
+              className="mt-6 w-full py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
             >
-              <span>Voltar ao Painel da Clínica</span>
+              Voltar ao Painel
             </button>
           )}
         </div>
@@ -461,66 +451,62 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-6 sm:py-10 px-4 sm:px-6 lg:px-8 flex flex-col items-center notranslate" translate="no">
-      <div className="max-w-3xl w-full space-y-6">
-        {/* Header with Clinic Branding & Security Badge */}
-        <header className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
-          <div className="flex items-center gap-4">
-            {clinicData.logoUrl ? (
-              <img
-                src={clinicData.logoUrl}
-                alt={clinicData.name}
-                className="w-16 h-16 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-black text-2xl shadow-md">
-                {clinicData.name.charAt(0)}
-              </div>
-            )}
-            <div>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-900/50 mb-1">
-                <ShieldCheck className="w-3 h-3 text-teal-600" />
-                Ambiente Seguro de Auto-Cadastro
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 py-6 sm:py-10 px-3 sm:px-6">
+      <div ref={topFormRef} className="max-w-3xl mx-auto">
+        {/* Header Branding */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 sm:p-7 mb-5 text-center sm:text-left sm:flex sm:items-center sm:justify-between gap-4">
+          <div>
+            <div className="flex items-center justify-center sm:justify-start gap-2 mb-1.5">
+              <span className="px-2.5 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 text-[11px] font-bold border border-teal-200 dark:border-teal-800">
+                Ficha Obrigatória de Anamnese
               </span>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                {clinicData.name}
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Ficha de Cadastro e Avaliação de Saúde (Anamnese)
-              </p>
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[11px] font-bold border border-amber-200 dark:border-amber-800">
+                Assinatura Obrigatória
+              </span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100">
+              {clinicData.name}
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Coleta clínica de saúde, histórico terapêutico e termo de ciência para atendimento com <strong>{professionalName}</strong>.
+            </p>
+          </div>
+
+          <div className="mt-4 sm:mt-0 flex items-center justify-center sm:justify-end">
+            <div className="px-3.5 py-2 rounded-2xl bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800/80 text-teal-800 dark:text-teal-300 text-xs font-semibold flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-teal-600 shrink-0" />
+              <span>Ambiente Criptografado & Seguro</span>
             </div>
           </div>
+        </div>
 
-          <div className="text-xs text-slate-500 dark:text-slate-400 sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800">
-            <p className="font-semibold text-slate-700 dark:text-slate-300">Profissional:</p>
-            <p className="text-teal-600 dark:text-teal-400 font-bold">{professionalName}</p>
-          </div>
-        </header>
-
-        {/* Error Alert if any */}
+        {/* Validation Alert */}
         {errorMessage && (
-          <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-300 text-xs font-semibold flex items-center gap-3 animate-shake">
-            <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
-            <span>{errorMessage}</span>
+          <div className="p-4 mb-5 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-300 dark:border-rose-900 text-rose-800 dark:text-rose-200 text-xs font-semibold flex items-start gap-3 shadow-sm animate-fade-in">
+            <ShieldAlert className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-rose-900 dark:text-rose-100">Pendências encontradas:</p>
+              <p>{errorMessage}</p>
+            </div>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* SECTION 1: Dados Pessoais & Contato */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 dark:border-slate-800 space-y-5">
-            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <User className="w-5 h-5 text-teal-600" />
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* SECTION 1: IDENTIFICAÇÃO DO CLIENTE */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 sm:p-7">
+            <div className="flex items-center gap-2.5 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-600 flex items-center justify-center font-black text-xs">
+                1
+              </div>
               <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                  1. Dados Pessoais & Contato
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Preencha seus dados de identificação para o prontuário clínico.
-                </p>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+                  Identificação do Cliente
+                </h3>
+                <p className="text-[11px] text-slate-400">Seus dados básicos de contato e identificação</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div className="sm:col-span-2">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
                   Nome Completo <span className="text-rose-500">*</span>
@@ -530,69 +516,10 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
                   required
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  placeholder="Seu nome completo"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  CPF
-                </label>
-                <input
-                  type="text"
-                  value={cpf}
-                  onChange={e => setCpf(formatCPF(e.target.value))}
-                  placeholder="000.000.000-00"
-                  maxLength={14}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Data de Nascimento
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    value={birthDate}
-                    onChange={e => setBirthDate(e.target.value)}
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                  />
-                  {calculatedAge !== null && (
-                    <span className="px-2.5 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-300 font-bold text-xs shrink-0 border border-teal-200 dark:border-teal-900">
-                      {calculatedAge} anos
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Sexo / Gênero
-                </label>
-                <select
-                  value={gender}
-                  onChange={e => setGender(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                >
-                  <option value="Feminino">Feminino</option>
-                  <option value="Masculino">Masculino</option>
-                  <option value="Outro">Outro / Prefiro não informar</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Profissão / Ocupação
-                </label>
-                <input
-                  type="text"
-                  value={profession}
-                  onChange={e => setProfession(e.target.value)}
-                  placeholder="Ex: Arquiteta, Advogado, Estudante"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  placeholder="Seu nome completo..."
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:outline-none ${
+                    attemptedSubmit && !name.trim() ? 'border-rose-400 ring-2 ring-rose-400/20' : 'border-slate-300 dark:border-slate-700'
+                  }`}
                 />
               </div>
 
@@ -606,108 +533,129 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
                   value={phone}
                   onChange={e => setPhone(formatPhone(e.target.value))}
                   placeholder="(00) 00000-0000"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:outline-none ${
+                    attemptedSubmit && !phone.trim() ? 'border-rose-400 ring-2 ring-rose-400/20' : 'border-slate-300 dark:border-slate-700'
+                  }`}
                 />
               </div>
 
               <div>
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  E-mail
+                  CPF (Opcional para cadastro)
+                </label>
+                <input
+                  type="text"
+                  value={cpf}
+                  onChange={e => setCpf(formatCPF(e.target.value))}
+                  placeholder="000.000.000-00"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Data de Nascimento
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={birthDate}
+                    onChange={e => setBirthDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  />
+                  {calculatedAge !== null && (
+                    <span className="px-2.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold whitespace-nowrap">
+                      {calculatedAge} anos
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Sexo / Gênero
+                </label>
+                <select
+                  value={gender}
+                  onChange={e => setGender(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                >
+                  <option value="Feminino">Feminino</option>
+                  <option value="Masculino">Masculino</option>
+                  <option value="Outro">Outro / Prefiro não dizer</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Profissão / Ocupação
+                </label>
+                <input
+                  type="text"
+                  value={profession}
+                  onChange={e => setProfession(e.target.value)}
+                  placeholder="Ex: Designer, Advogado(a), Autônomo..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  E-mail (Opcional)
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="seuemail@exemplo.com"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                 />
               </div>
-            </div>
 
-            {/* Address Details */}
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                Endereço Residencial
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                    CEP
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={cep}
-                      onChange={e => setCep(formatCEP(e.target.value))}
-                      onBlur={handleCepBlur}
-                      placeholder="00000-000"
-                      maxLength={9}
-                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none pr-8"
-                    />
-                    {isSearchingCep && (
-                      <Loader2 className="w-4 h-4 animate-spin absolute right-2.5 top-2.5 text-teal-600" />
-                    )}
+              {/* Endereço / Localização */}
+              <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      CEP
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={cep}
+                        onChange={e => setCep(formatCEP(e.target.value))}
+                        onBlur={handleCepBlur}
+                        placeholder="00000-000"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                      />
+                      {isSearchingCep && (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin absolute right-2.5 top-2.5 text-teal-600" />
+                      )}
+                    </div>
                   </div>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                    Rua / Logradouro
-                  </label>
-                  <input
-                    type="text"
-                    value={street}
-                    onChange={e => setStreet(e.target.value)}
-                    placeholder="Rua, Avenida, etc."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                    Número
-                  </label>
-                  <input
-                    type="text"
-                    value={number}
-                    onChange={e => setNumber(e.target.value)}
-                    placeholder="123"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                    Bairro
-                  </label>
-                  <input
-                    type="text"
-                    value={neighborhood}
-                    onChange={e => setNeighborhood(e.target.value)}
-                    placeholder="Bairro"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                    Cidade / Estado
-                  </label>
-                  <div className="flex gap-1.5">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      Cidade
+                    </label>
                     <input
                       type="text"
                       value={city}
                       onChange={e => setCity(e.target.value)}
-                      placeholder="Cidade"
-                      className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                      placeholder="Sua cidade"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                     />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                      UF / Estado
+                    </label>
                     <input
                       type="text"
                       value={state}
+                      maxLength={2}
                       onChange={e => setState(e.target.value.toUpperCase())}
                       placeholder="UF"
-                      maxLength={2}
-                      className="w-12 px-2 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-center text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs uppercase bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                     />
                   </div>
                 </div>
@@ -715,292 +663,864 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
             </div>
           </div>
 
-          {/* SECTION 2: Histórico de Saúde & Condições */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 dark:border-slate-800 space-y-5">
-            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <HeartPulse className="w-5 h-5 text-rose-500" />
-              <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                  2. Histórico de Saúde & Condições Clínicas
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Marque se possui ou já teve alguma das condições abaixo para segurança das técnicas aplicadas.
-                </p>
+          {/* SECTION 2: HISTÓRICO MÉDICO & SAÚDE (SIM OU NÃO OBRIGATÓRIOS) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 sm:p-7">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 flex items-center justify-center font-black text-xs">
+                  2
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+                    Histórico Médico & Saúde
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Responda Sim ou Não para todas as perguntas</p>
+                </div>
               </div>
+              <span className="text-[11px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/60 px-2.5 py-0.5 rounded-full border border-rose-200 dark:border-rose-900">
+                * Respostas Obrigatórias
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[
-                { key: 'hipertensao', label: 'Hipertensão (Pressão Alta)' },
-                { key: 'hipotensao', label: 'Hipotensão (Pressão Baixa)' },
-                { key: 'diabetes', label: 'Diabetes' },
-                { key: 'cardiopatia', label: 'Cardiopatia / Marca-passo' },
-                { key: 'varizes', label: 'Varizes' },
-                { key: 'trombose', label: 'Histórico de Trombose' },
-                { key: 'protese', label: 'Próteses / Pinos Metálicos' },
-                { key: 'artrite', label: 'Artrite / Artrose' },
-                { key: 'fibromialgia', label: 'Fibromialgia' },
-                { key: 'osteoporose', label: 'Osteoporose' },
-                { key: 'epilepsia', label: 'Epilepsia / Convulsões' },
-                { key: 'cancerEmTratamento', label: 'Câncer (em tratamento)' },
-                { key: 'historicoCancer', label: 'Histórico de Câncer' },
-                { key: 'ansiedade', label: 'Ansiedade / Estresse Severo' },
-                { key: 'alergias', label: 'Alergias a óleos / cremes' },
-              ].map(item => {
-                const isChecked = (healthHistory as any)[item.key];
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() =>
-                      setHealthHistory(prev => ({
-                        ...prev,
-                        [item.key]: !(prev as any)[item.key],
-                      }))
-                    }
-                    className={`p-3 rounded-2xl border text-left transition flex items-center justify-between gap-2 ${
-                      isChecked
-                        ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-900/60 text-rose-900 dark:text-rose-200 shadow-sm'
-                        : 'bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    <span className="text-xs font-semibold">{item.label}</span>
-                    <span
-                      className={`w-5 h-5 rounded-lg flex items-center justify-center text-xs shrink-0 font-bold transition ${
-                        isChecked
-                          ? 'bg-rose-600 text-white'
-                          : 'border border-slate-300 dark:border-slate-600 text-transparent'
-                      }`}
-                    >
-                      ✓
+            <div className="space-y-3.5">
+              {/* Condição médica atual */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  attemptedSubmit && evaluation.hasCurrentMedicalCondition === undefined
+                    ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Possui alguma condição médica atual? <span className="text-rose-500">*</span>
                     </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Additional details for surgeries and medications */}
-            <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hasSurgery}
-                    onChange={e => setHasSurgery(e.target.checked)}
-                    className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500"
-                  />
-                  Realizou alguma cirurgia recente ou possui cicatriz importante?
-                </label>
-                {hasSurgery && (
-                  <input
-                    type="text"
-                    value={surgeryDetails}
-                    onChange={e => setSurgeryDetails(e.target.value)}
-                    placeholder="Especifique qual cirurgia e há quanto tempo..."
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                  />
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hasMedications}
-                    onChange={e => setHasMedications(e.target.checked)}
-                    className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500"
-                  />
-                  Faz uso de medicamentos de forma contínua?
-                </label>
-                {hasMedications && (
-                  <input
-                    type="text"
-                    value={medicationDetails}
-                    onChange={e => setMedicationDetails(e.target.value)}
-                    placeholder="Ex: Anti-hipertensivo, ansiolítico, anticoagulante..."
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 3: Preferências & Queixas Terapêuticas */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 dark:border-slate-800 space-y-5">
-            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <Activity className="w-5 h-5 text-teal-600" />
-              <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                  3. Avaliação & Preferências do Atendimento
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Conte-nos sobre seus objetivos e preferências para personalizarmos seu atendimento.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Qual é o seu principal objetivo ou queixa hoje?
-                </label>
-                <textarea
-                  rows={2}
-                  value={mainComplaint}
-                  onChange={e => setMainComplaint(e.target.value)}
-                  placeholder="Ex: Alívio de dor na lombar, relaxamento por estresse, tensão no pescoço/ombros..."
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Regiões do corpo que gostaria de mais foco ou atenção
-                </label>
-                <input
-                  type="text"
-                  value={focusAreas}
-                  onChange={e => setFocusAreas(e.target.value)}
-                  placeholder="Ex: Costas, pescoço, pernas, pés, braços"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-2">
-                  Qual intensidade de pressão você prefere na massagem / terapia?
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { id: 'LEVE', label: 'Suave / Leve', desc: 'Relaxamento sutil' },
-                    { id: 'MODERADA', label: 'Moderada', desc: 'Equilíbrio e alívio' },
-                    { id: 'FORTE', label: 'Firme / Profunda', desc: 'Liberação muscular' },
-                  ].map(item => (
+                    {evaluation.hasCurrentMedicalCondition === undefined ? (
+                      <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                        * Selecione Sim ou Não
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        ✓ Respondido ({evaluation.hasCurrentMedicalCondition ? 'Sim' : 'Não'})
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
                     <button
-                      key={item.id}
                       type="button"
-                      onClick={() => setPressurePreference(item.id as any)}
-                      className={`p-3 rounded-2xl border text-center transition ${
-                        pressurePreference === item.id
-                          ? 'bg-teal-50 dark:bg-teal-950/60 border-teal-500 text-teal-900 dark:text-teal-200 shadow-sm font-bold'
-                          : 'bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                      onClick={() =>
+                        setEvaluation(prev => ({
+                          ...prev,
+                          hasCurrentMedicalCondition: false,
+                          currentMedicalConditionDescription: '',
+                        }))
+                      }
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.hasCurrentMedicalCondition === false
+                          ? 'bg-slate-800 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
                       }`}
                     >
-                      <p className="text-xs">{item.label}</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">{item.desc}</p>
+                      Não
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, hasCurrentMedicalCondition: true }))}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.hasCurrentMedicalCondition === true
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-teal-50 hover:text-teal-700'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+                {evaluation.hasCurrentMedicalCondition === true && (
+                  <div className="mt-3">
+                    <label className="text-[11px] font-bold text-teal-800 dark:text-teal-300 block mb-1">
+                      Descreva a condição médica atual <span className="text-rose-500">* Obrigatório</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Se sim, descreva a condição médica..."
+                      value={evaluation.currentMedicalConditionDescription || ''}
+                      onChange={e =>
+                        setEvaluation(prev => ({ ...prev, currentMedicalConditionDescription: e.target.value }))
+                      }
+                      className={`w-full px-3.5 py-2 rounded-xl border text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 ${
+                        attemptedSubmit && !evaluation.currentMedicalConditionDescription?.trim()
+                          ? 'border-rose-400 ring-2 ring-rose-400/20'
+                          : 'border-slate-300 dark:border-slate-700'
+                      }`}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Cirurgias recentes */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  attemptedSubmit && evaluation.hasRecentSurgeries === undefined
+                    ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Já fez cirurgias recentes? <span className="text-rose-500">*</span>
+                    </span>
+                    {evaluation.hasRecentSurgeries === undefined ? (
+                      <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                        * Selecione Sim ou Não
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        ✓ Respondido ({evaluation.hasRecentSurgeries ? 'Sim' : 'Não'})
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEvaluation(prev => ({
+                          ...prev,
+                          hasRecentSurgeries: false,
+                          recentSurgeriesDescription: '',
+                        }))
+                      }
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.hasRecentSurgeries === false
+                          ? 'bg-slate-800 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, hasRecentSurgeries: true }))}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.hasRecentSurgeries === true
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-teal-50 hover:text-teal-700'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+                {evaluation.hasRecentSurgeries === true && (
+                  <div className="mt-3">
+                    <label className="text-[11px] font-bold text-teal-800 dark:text-teal-300 block mb-1">
+                      Quais cirurgias e quando realizou? <span className="text-rose-500">* Obrigatório</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Se sim, quais e quando?"
+                      value={evaluation.recentSurgeriesDescription || ''}
+                      onChange={e =>
+                        setEvaluation(prev => ({ ...prev, recentSurgeriesDescription: e.target.value }))
+                      }
+                      className={`w-full px-3.5 py-2 rounded-xl border text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 ${
+                        attemptedSubmit && !evaluation.recentSurgeriesDescription?.trim()
+                          ? 'border-rose-400 ring-2 ring-rose-400/20'
+                          : 'border-slate-300 dark:border-slate-700'
+                      }`}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Alergias conhecidas */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  attemptedSubmit && evaluation.hasKnownAllergies === undefined
+                    ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Tem alergias conhecidas (óleos, cosméticos, medicamentos)? <span className="text-rose-500">*</span>
+                    </span>
+                    {evaluation.hasKnownAllergies === undefined ? (
+                      <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                        * Selecione Sim ou Não
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        ✓ Respondido ({evaluation.hasKnownAllergies ? 'Sim' : 'Não'})
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEvaluation(prev => ({
+                          ...prev,
+                          hasKnownAllergies: false,
+                          knownAllergiesDescription: '',
+                        }))
+                      }
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.hasKnownAllergies === false
+                          ? 'bg-slate-800 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, hasKnownAllergies: true }))}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.hasKnownAllergies === true
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-teal-50 hover:text-teal-700'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+                {evaluation.hasKnownAllergies === true && (
+                  <div className="mt-3">
+                    <label className="text-[11px] font-bold text-teal-800 dark:text-teal-300 block mb-1">
+                      Especifique as alergias <span className="text-rose-500">* Obrigatório</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Se sim, quais?"
+                      value={evaluation.knownAllergiesDescription || ''}
+                      onChange={e =>
+                        setEvaluation(prev => ({ ...prev, knownAllergiesDescription: e.target.value }))
+                      }
+                      className={`w-full px-3.5 py-2 rounded-xl border text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 ${
+                        attemptedSubmit && !evaluation.knownAllergiesDescription?.trim()
+                          ? 'border-rose-400 ring-2 ring-rose-400/20'
+                          : 'border-slate-300 dark:border-slate-700'
+                      }`}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Gravidez / Amamentação */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  attemptedSubmit && evaluation.isPregnantOrBreastfeeding === undefined
+                    ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Está grávida ou em período de amamentação? <span className="text-rose-500">*</span>
+                    </span>
+                    {evaluation.isPregnantOrBreastfeeding === undefined ? (
+                      <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                        * Selecione Sim ou Não
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        ✓ Respondido ({evaluation.isPregnantOrBreastfeeding ? 'Sim' : 'Não'})
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, isPregnantOrBreastfeeding: false }))}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.isPregnantOrBreastfeeding === false
+                          ? 'bg-slate-800 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, isPregnantOrBreastfeeding: true }))}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.isPregnantOrBreastfeeding === true
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-teal-50 hover:text-teal-700'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* SECTION 4: Termo de Responsabilidade & Consentimento */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 dark:border-slate-800 space-y-5">
-            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <FileSignature className="w-5 h-5 text-teal-600" />
+          {/* SECTION 3: HISTÓRICO DE MASSAGEM & OBJETIVOS DA SESSÃO */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 sm:p-7">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 flex items-center justify-center font-black text-xs">
+                  3
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+                    Histórico de Massagem & Objetivos da Sessão
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Suas preferências e foco terapêutico</p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-900">
+                * Campos Obrigatórios
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {/* Já fez massagem antes */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  attemptedSubmit && evaluation.hasHadMassageBefore === undefined
+                    ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Já fez massagem antes? <span className="text-rose-500">*</span>
+                    </span>
+                    {evaluation.hasHadMassageBefore === undefined ? (
+                      <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                        * Selecione Sim ou Não
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        ✓ Respondido ({evaluation.hasHadMassageBefore ? 'Sim' : 'Não'})
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEvaluation(prev => ({
+                          ...prev,
+                          hasHadMassageBefore: false,
+                          massageFrequency: '',
+                          massageType: '',
+                          massageResults: '',
+                        }))
+                      }
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.hasHadMassageBefore === false
+                          ? 'bg-slate-800 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, hasHadMassageBefore: true }))}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        evaluation.hasHadMassageBefore === true
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-teal-50 hover:text-teal-700'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+                {evaluation.hasHadMassageBefore === true && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+                    <input
+                      type="text"
+                      placeholder="Frequência (ex: mensal, quinzenal)"
+                      value={evaluation.massageFrequency || ''}
+                      onChange={e => setEvaluation(prev => ({ ...prev, massageFrequency: e.target.value }))}
+                      className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-900"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Tipo (ex: relaxante, drenagem)"
+                      value={evaluation.massageType || ''}
+                      onChange={e => setEvaluation(prev => ({ ...prev, massageType: e.target.value }))}
+                      className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-900"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Resultados percebidos"
+                      value={evaluation.massageResults || ''}
+                      onChange={e => setEvaluation(prev => ({ ...prev, massageResults: e.target.value }))}
+                      className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-900"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Objetivos e Áreas de Atenção (Obrigatórios) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-1">
+                    Quais são seus objetivos com esta sessão de massagem? <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Alívio de tensão nos ombros, relaxamento, lombalgia..."
+                    value={evaluation.massageGoals || ''}
+                    onChange={e => setEvaluation(prev => ({ ...prev, massageGoals: e.target.value }))}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:outline-none ${
+                      attemptedSubmit && !evaluation.massageGoals?.trim()
+                        ? 'border-rose-400 ring-2 ring-rose-400/20'
+                        : 'border-slate-300 dark:border-slate-700'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-1">
+                    Alguma área específica do corpo precisa de atenção? <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Cervical, escápulas, região lombar, pés..."
+                    value={evaluation.specificBodyAreasToFocus || ''}
+                    onChange={e => setEvaluation(prev => ({ ...prev, specificBodyAreasToFocus: e.target.value }))}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:outline-none ${
+                      attemptedSubmit && !evaluation.specificBodyAreasToFocus?.trim()
+                        ? 'border-rose-400 ring-2 ring-rose-400/20'
+                        : 'border-slate-300 dark:border-slate-700'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Preferência de Pressão */}
               <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                  4. Termo de Consentimento & Assinatura Digital
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Conforme a LGPD e normas de saúde clínica.
-                </p>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 block">
+                  Alguma preferência quanto à pressão da massagem? <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {['Leve', 'Moderada', 'Firme', 'Outra'].map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, pressurePreference: p }))}
+                      className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                        evaluation.pressurePreference === p
+                          ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 shadow-sm ring-1 ring-teal-600'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                {evaluation.pressurePreference === 'Outra' && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Especifique sua preferência de pressão... *"
+                    value={evaluation.pressurePreferenceOther || ''}
+                    onChange={e => setEvaluation(prev => ({ ...prev, pressurePreferenceOther: e.target.value }))}
+                    className={`w-full mt-2 px-3.5 py-2 rounded-xl border text-xs bg-white dark:bg-slate-900 ${
+                      attemptedSubmit && !evaluation.pressurePreferenceOther?.trim()
+                        ? 'border-rose-400 ring-2 ring-rose-400/20'
+                        : 'border-slate-300 dark:border-slate-700'
+                    }`}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 4: ESTILO DE VIDA & HÁBITOS (SIM OU NÃO OBRIGATÓRIOS) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 sm:p-7">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 flex items-center justify-center font-black text-xs">
+                  4
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+                    Estilo de Vida & Hábitos
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Informações sobre sua rotina diária</p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900">
+                * Responda Sim ou Não
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+              {/* Tabagismo */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  attemptedSubmit && evaluation.isSmoker === undefined
+                    ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 block">Tabagismo: <span className="text-rose-500">*</span></span>
+                    {evaluation.isSmoker === undefined && (
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Pendente</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEvaluation(prev => ({
+                          ...prev,
+                          isSmoker: false,
+                          smokingDailyQuantity: '',
+                        }))
+                      }
+                      className={`px-3 py-1 rounded-xl text-xs font-bold cursor-pointer ${
+                        evaluation.isSmoker === false
+                          ? 'bg-slate-800 text-white'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, isSmoker: true }))}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold cursor-pointer ${
+                        evaluation.isSmoker === true
+                          ? 'bg-teal-600 text-white'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+                {evaluation.isSmoker === true && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Quantidade diária (ex: 5 cigarros/dia)... *"
+                    value={evaluation.smokingDailyQuantity || ''}
+                    onChange={e => setEvaluation(prev => ({ ...prev, smokingDailyQuantity: e.target.value }))}
+                    className={`w-full mt-2 px-3 py-1.5 rounded-xl border text-xs bg-white dark:bg-slate-900 ${
+                      attemptedSubmit && !evaluation.smokingDailyQuantity?.trim()
+                        ? 'border-rose-400 ring-2 ring-rose-400/20'
+                        : 'border-slate-300 dark:border-slate-700'
+                    }`}
+                  />
+                )}
+              </div>
+
+              {/* Consumo de álcool */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  attemptedSubmit && evaluation.drinksAlcohol === undefined
+                    ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 block">Consumo de álcool: <span className="text-rose-500">*</span></span>
+                    {evaluation.drinksAlcohol === undefined && (
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Pendente</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEvaluation(prev => ({
+                          ...prev,
+                          drinksAlcohol: false,
+                          alcoholFrequencyQuantity: '',
+                        }))
+                      }
+                      className={`px-3 py-1 rounded-xl text-xs font-bold cursor-pointer ${
+                        evaluation.drinksAlcohol === false
+                          ? 'bg-slate-800 text-white'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, drinksAlcohol: true }))}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold cursor-pointer ${
+                        evaluation.drinksAlcohol === true
+                          ? 'bg-teal-600 text-white'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+                {evaluation.drinksAlcohol === true && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Frequência / quantidade (ex: socialmente)... *"
+                    value={evaluation.alcoholFrequencyQuantity || ''}
+                    onChange={e => setEvaluation(prev => ({ ...prev, alcoholFrequencyQuantity: e.target.value }))}
+                    className={`w-full mt-2 px-3 py-1.5 rounded-xl border text-xs bg-white dark:bg-slate-900 ${
+                      attemptedSubmit && !evaluation.alcoholFrequencyQuantity?.trim()
+                        ? 'border-rose-400 ring-2 ring-rose-400/20'
+                        : 'border-slate-300 dark:border-slate-700'
+                    }`}
+                  />
+                )}
+              </div>
+
+              {/* Atividade física regular */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  attemptedSubmit && evaluation.regularPhysicalActivity === undefined
+                    ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 block">Atividade física regular: <span className="text-rose-500">*</span></span>
+                    {evaluation.regularPhysicalActivity === undefined && (
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Pendente</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEvaluation(prev => ({
+                          ...prev,
+                          regularPhysicalActivity: false,
+                          physicalActivityTypeFrequency: '',
+                        }))
+                      }
+                      className={`px-3 py-1 rounded-xl text-xs font-bold cursor-pointer ${
+                        evaluation.regularPhysicalActivity === false
+                          ? 'bg-slate-800 text-white'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, regularPhysicalActivity: true }))}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold cursor-pointer ${
+                        evaluation.regularPhysicalActivity === true
+                          ? 'bg-teal-600 text-white'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+                {evaluation.regularPhysicalActivity === true && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Tipo e frequência semanal (ex: musculação 3x/semana)... *"
+                    value={evaluation.physicalActivityTypeFrequency || ''}
+                    onChange={e =>
+                      setEvaluation(prev => ({ ...prev, physicalActivityTypeFrequency: e.target.value }))
+                    }
+                    className={`w-full mt-2 px-3 py-1.5 rounded-xl border text-xs bg-white dark:bg-slate-900 ${
+                      attemptedSubmit && !evaluation.physicalActivityTypeFrequency?.trim()
+                        ? 'border-rose-400 ring-2 ring-rose-400/20'
+                        : 'border-slate-300 dark:border-slate-700'
+                    }`}
+                  />
+                )}
+              </div>
+
+              {/* Qualidade do sono */}
+              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
+                <span className="font-bold text-slate-800 dark:text-slate-200 block mb-1.5">
+                  Qualidade do Sono: <span className="text-rose-500">*</span>
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {['Normal', 'Insônia', 'Outro'].map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, sleepQuality: s }))}
+                      className={`py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        evaluation.sleepQuality === s
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+                {evaluation.sleepQuality === 'Outro' && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Descreva seu padrão de sono... *"
+                    value={evaluation.sleepOtherDescription || ''}
+                    onChange={e => setEvaluation(prev => ({ ...prev, sleepOtherDescription: e.target.value }))}
+                    className={`w-full mt-2 px-3 py-1.5 rounded-xl border text-xs bg-white dark:bg-slate-900 ${
+                      attemptedSubmit && !evaluation.sleepOtherDescription?.trim()
+                        ? 'border-rose-400 ring-2 ring-rose-400/20'
+                        : 'border-slate-300 dark:border-slate-700'
+                    }`}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 5: TERMOS E CONDIÇÕES (OBRIGATÓRIO) */}
+          <div
+            className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border p-5 sm:p-7 transition-all ${
+              attemptedSubmit && !termAccepted
+                ? 'border-rose-400 ring-2 ring-rose-400/20 bg-rose-50/10'
+                : 'border-amber-200 dark:border-amber-900/50'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-700 flex items-center justify-center font-black text-xs">
+                5
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wide">
+                  Termos e Condições — Declaração e Ciência
+                </h3>
+                <p className="text-[11px] text-slate-400">Leia e confirme seu consentimento informado</p>
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 space-y-2 leading-relaxed max-h-40 overflow-y-auto">
-              <p className="font-bold text-slate-900 dark:text-white">
-                DECLARAÇÃO DE VERACIDADE E AUTORIZAÇÃO DE ATENDIMENTO
+            <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300 bg-amber-50/40 dark:bg-slate-800/60 p-4 rounded-2xl border border-amber-100 dark:border-amber-900/30 leading-relaxed max-h-48 overflow-y-auto mb-4">
+              <p>
+                <strong>Cláusula 01:</strong> Declaro que as informações prestadas nesta ficha de avaliação de saúde são
+                verdadeiras, corretas e de minha inteira responsabilidade, não tendo omitido nenhum fato relevante sobre meu
+                estado de saúde físico ou histórico clínico.
               </p>
               <p>
-                Declaro, para os devidos fins legais e clínicos, que todas as informações prestadas neste formulário de cadastro e anamnese são verdadeiras, não tendo omitido qualquer enfermidade, alergia ou condição de saúde relevante.
+                <strong>Cláusula 02:</strong> Estou ciente de que as sessões e procedimentos de massoterapia têm caráter
+                preventivo, integrativo e de bem-estar, não substituindo consultas, diagnósticos ou tratamentos médicos
+                convencionais.
               </p>
               <p>
-                Autorizo a realização das sessões de fisioterapia/massoterapia e procedimentos complementares adequados à minha avaliação clínica pela equipe da <strong>{clinicData.name}</strong>.
+                <strong>Cláusula 03:</strong> Comprometo-me a informar prontamente ao profissional qualquer alteração futura em meu
+                estado de saúde, gravidez, prescrição de medicamentos ou sensibilidade durante as manobras terapêuticas.
               </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Os dados aqui coletados serão tratados com sigilo profissional e utilizados exclusivamente para acompanhamento e segurança do seu tratamento.
+              <p>
+                <strong>Cláusula 04:</strong> Autorizo a realização do plano de atendimento acordado com a equipe e o registro
+                dessas informações no prontuário eletrônico confidencial da clínica.
               </p>
             </div>
 
-            <label className="flex items-start gap-3 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer pt-2">
+            <label className="flex items-start gap-3 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer select-none">
               <input
                 type="checkbox"
                 required
                 checked={termAccepted}
                 onChange={e => setTermAccepted(e.target.checked)}
-                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 mt-0.5"
+                className="w-5 h-5 rounded-lg text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700 mt-0.5"
               />
               <span>
-                Li, compreendi e concordo com os termos acima, confirmando a veracidade de todas as informações fornecidas. <span className="text-rose-500">*</span>
+                Li, compreendi e concordo integralmente com os termos e declarações de saúde acima descritos. <span className="text-rose-500">* (Obrigatório)</span>
               </span>
             </label>
+          </div>
 
-            {/* Signature Pad */}
-            <div className="space-y-2 pt-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  Assine no campo abaixo com o dedo (no celular) ou mouse (no PC) <span className="text-rose-500">*</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={clearSignature}
-                  className="text-xs text-rose-600 dark:text-rose-400 font-semibold hover:underline flex items-center gap-1"
-                >
-                  <Eraser className="w-3.5 h-3.5" />
-                  Limpar Assinatura
-                </button>
+          {/* SECTION 6: ASSINATURA DIGITAL DO CLIENTE (OBRIGATÓRIA E CALIBRADA) */}
+          <div
+            className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border p-5 sm:p-7 transition-all ${
+              attemptedSubmit && (!signatureUrl || signatureUrl.length < 50)
+                ? 'border-rose-400 ring-2 ring-rose-400/20 bg-rose-50/10'
+                : 'border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-600 flex items-center justify-center font-black text-xs">
+                  6
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+                    Assinatura Digital do Cliente
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Assine com o dedo no celular ou mouse no computador</p>
+                </div>
               </div>
+              <span className="text-[11px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/60 px-2.5 py-0.5 rounded-full border border-rose-200 dark:border-rose-900">
+                * Assinatura Obrigatória
+              </span>
+            </div>
 
-              <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl bg-white overflow-hidden shadow-inner touch-none">
-                <canvas
-                  ref={canvasRef}
-                  onMouseDown={startDrawing}
-                  onMouseMove={draw}
-                  onMouseUp={stopDrawing}
-                  onMouseLeave={stopDrawing}
-                  onTouchStart={startDrawing}
-                  onTouchMove={draw}
-                  onTouchEnd={stopDrawing}
-                  className="w-full h-44 cursor-crosshair block"
-                />
-                {!hasSignature && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-slate-400 text-xs gap-1">
-                    <FileSignature className="w-6 h-6 opacity-40" />
-                    <span>Faça sua assinatura aqui</span>
-                  </div>
-                )}
-              </div>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
+              Desenhe sua assinatura no quadro abaixo. O sistema possui <strong>calibragem de precisão</strong> para tela sensível ao toque, permitindo traços suaves e contínuos:
+            </p>
+
+            <CanvasSignature
+              value={signatureUrl}
+              onChange={setSignatureUrl}
+              label="Assine com o dedo ou caneta digital no quadro abaixo:"
+              required={!signatureUrl}
+              height={190}
+            />
+
+            <div className="flex items-center justify-between text-[11px] text-slate-400 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <span>Local: {city || clinicData.city || 'Clínica'} - {state || clinicData.state || 'UF'}</span>
+              <span>Data: {new Date().toLocaleDateString('pt-BR')}</span>
             </div>
           </div>
 
-          {/* SUBMIT BUTTON */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-6 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-            <div className="text-xs text-slate-500 dark:text-slate-400 text-center sm:text-left">
-              <p className="font-semibold text-slate-700 dark:text-slate-300">
-                Pronto para enviar?
-              </p>
-              <p>
-                Ao clicar em enviar, seus dados serão gravados com segurança na clínica.
-              </p>
+          {/* Submission Bar */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {pendingErrors.length === 0 ? (
+                <span className="text-emerald-600 font-bold flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" /> Todos os campos obrigatórios e assinatura estão prontos!
+                </span>
+              ) : (
+                <span className="text-amber-600 font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4" /> {pendingErrors.length} item(ns) pendente(s) antes de enviar
+                </span>
+              )}
             </div>
 
             <button
               type="submit"
               disabled={submitting}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-teal-600/20 transition disabled:opacity-50 notranslate"
+              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-lg shadow-teal-600/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
             >
               {submitting ? (
-                <span className="flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                  <span>Gravando Ficha no Sistema...</span>
-                </span>
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sincronizando Ficha...
+                </>
               ) : (
-                <span className="flex items-center justify-center gap-2">
-                  <Send className="w-4 h-4 shrink-0" />
-                  <span>Concluir e Enviar Ficha</span>
-                </span>
+                <>
+                  <Send className="w-4 h-4" />
+                  Confirmar & Enviar Ficha de Anamnese
+                </>
               )}
             </button>
           </div>

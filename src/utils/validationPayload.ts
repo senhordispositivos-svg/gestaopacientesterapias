@@ -232,12 +232,14 @@ export function formatAnamnesisWhatsAppMessage(
 
   return `Olá ${greetingName}! 👋
 
-Para personalizarmos seu atendimento e garantirmos máxima segurança e eficiência no seu tratamento na *${effectiveClinic}*, solicitamos que preencha sua *Ficha de Cadastro e Avaliação de Saúde (Anamnese)*.
+Para garantir a sua máxima segurança clínica e personalizarmos seu atendimento na *${effectiveClinic}*, solicitamos o preenchimento *obrigatório* da sua *Ficha de Cadastro & Anamnese de Saúde*.
 
-É rápido, 100% seguro e você pode assinar digitalmente com o dedo diretamente no seu celular através do link exclusivo abaixo:
+⚠️ *Importante:* O preenchimento de todas as perguntas de saúde (respondendo *Sim* ou *Não*) e a *Assinatura Digital* com o dedo no final são *obrigatórios* para liberação e validação do seu atendimento clínico.
 
-📝 *Acesse sua Ficha de Cadastro:*
+É 100% digital, seguro e rápido:
+
+📝 *Acesse sua Ficha Obrigatória de Anamnese:*
 ${url}
 
-Ao finalizar, a clínica receberá seus dados automaticamente no sistema! ✨`;
+Ao finalizar e assinar, seu cadastro será sincronizado diretamente no prontuário eletrônico da clínica! ✨`;
 }
