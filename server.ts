@@ -778,15 +778,30 @@ app.put('/api/tenants/:id', (req, res) => {
     index = db.tenants.length - 1;
   }
 
-  const updatedName = (req.body.name || req.body.tradeName || db.tenants[index].name || 'Clínica').trim();
-  const updatedTradeName = (req.body.tradeName || req.body.name || db.tenants[index].tradeName || updatedName).trim();
+  const current = db.tenants[index];
+  const updatedName = (req.body.name || req.body.tradeName || current.name || 'Clínica').trim();
+  const updatedTradeName = (req.body.tradeName || req.body.name || current.tradeName || updatedName).trim();
 
   db.tenants[index] = {
-    ...db.tenants[index],
+    ...current,
     ...req.body,
     name: updatedName,
     tradeName: updatedTradeName,
-    logoUrl: req.body.logoUrl !== undefined ? req.body.logoUrl : db.tenants[index].logoUrl,
+    corporateName: req.body.corporateName !== undefined ? req.body.corporateName : (current.corporateName || ''),
+    docType: req.body.docType || current.docType || 'CNPJ',
+    documentNumber: req.body.documentNumber !== undefined ? req.body.documentNumber : (current.documentNumber || ''),
+    email: req.body.email !== undefined ? req.body.email : (current.email || ''),
+    phone: req.body.phone !== undefined ? req.body.phone : (current.phone || ''),
+    cep: req.body.cep !== undefined ? req.body.cep : (current.cep || ''),
+    address: req.body.address !== undefined ? req.body.address : (current.address || ''),
+    number: req.body.number !== undefined ? req.body.number : (current.number || ''),
+    complement: req.body.complement !== undefined ? req.body.complement : (current.complement || ''),
+    neighborhood: req.body.neighborhood !== undefined ? req.body.neighborhood : (current.neighborhood || ''),
+    city: req.body.city !== undefined ? req.body.city : (current.city || 'São Paulo'),
+    state: req.body.state !== undefined ? req.body.state : (current.state || 'SP'),
+    logoUrl: req.body.logoUrl !== undefined ? req.body.logoUrl : (current.logoUrl || ''),
+    customHeader: req.body.customHeader !== undefined ? req.body.customHeader : (current.customHeader || ''),
+    primaryColor: req.body.primaryColor || current.primaryColor || '#0d9488',
   };
   saveDatabase();
 
@@ -1156,6 +1171,26 @@ app.post('/api/sync/bidirectional', (req, res) => {
       }
       if (tenant.address && tenant.address !== db.tenants[targetIdx].address) {
         db.tenants[targetIdx].address = tenant.address;
+        hasChanged = true;
+      }
+      if (tenant.cep && tenant.cep !== db.tenants[targetIdx].cep) {
+        db.tenants[targetIdx].cep = tenant.cep;
+        hasChanged = true;
+      }
+      if (tenant.number && tenant.number !== db.tenants[targetIdx].number) {
+        db.tenants[targetIdx].number = tenant.number;
+        hasChanged = true;
+      }
+      if (tenant.complement && tenant.complement !== db.tenants[targetIdx].complement) {
+        db.tenants[targetIdx].complement = tenant.complement;
+        hasChanged = true;
+      }
+      if (tenant.neighborhood && tenant.neighborhood !== db.tenants[targetIdx].neighborhood) {
+        db.tenants[targetIdx].neighborhood = tenant.neighborhood;
+        hasChanged = true;
+      }
+      if (tenant.docType && tenant.docType !== db.tenants[targetIdx].docType) {
+        db.tenants[targetIdx].docType = tenant.docType;
         hasChanged = true;
       }
     }

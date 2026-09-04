@@ -75,7 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (updated) {
           setTenant(prev => {
             if (!prev) return updated;
-            // Never overwrite non-empty logo with empty/null from background poll!
+            // Never overwrite non-empty logo or address fields with empty/null from background poll!
             const effectiveLogo = updated.logoUrl || prev.logoUrl || '';
             const effectiveTradeName = updated.tradeName || updated.name || prev.tradeName || prev.name;
             const effectiveName = updated.name || updated.tradeName || prev.name || prev.tradeName;
@@ -86,6 +86,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               logoUrl: effectiveLogo,
               tradeName: effectiveTradeName,
               name: effectiveName,
+              corporateName: updated.corporateName ?? prev.corporateName ?? '',
+              documentNumber: updated.documentNumber ?? prev.documentNumber ?? '',
+              phone: updated.phone ?? prev.phone ?? '',
+              email: updated.email ?? prev.email ?? '',
+              cep: (updated.cep !== null && updated.cep !== undefined && updated.cep !== '') ? updated.cep : (prev.cep || ''),
+              address: (updated.address !== null && updated.address !== undefined && updated.address !== '') ? updated.address : (prev.address || ''),
+              number: (updated.number !== null && updated.number !== undefined && updated.number !== '') ? updated.number : (prev.number || ''),
+              complement: (updated.complement !== null && updated.complement !== undefined && updated.complement !== '') ? updated.complement : (prev.complement || ''),
+              neighborhood: (updated.neighborhood !== null && updated.neighborhood !== undefined && updated.neighborhood !== '') ? updated.neighborhood : (prev.neighborhood || ''),
+              city: (updated.city !== null && updated.city !== undefined && updated.city !== '') ? updated.city : (prev.city || 'São Paulo'),
+              state: (updated.state !== null && updated.state !== undefined && updated.state !== '') ? updated.state : (prev.state || 'SP'),
             };
 
             if (
