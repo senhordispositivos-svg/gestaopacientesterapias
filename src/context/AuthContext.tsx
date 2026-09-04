@@ -14,7 +14,7 @@ interface AuthContextType {
   logout: () => void;
   switchTenant: (tenantId: string) => Promise<void>;
   createClinic: (clinicData: Partial<Tenant>) => Promise<Tenant>;
-  updateTenantConfig: (updates: Partial<Tenant>) => Promise<Tenant | void>;
+  updateTenantConfig: (updates: Partial<Tenant>, targetTenantId?: string) => Promise<Tenant | void>;
   updateUserProfile: (updates: Partial<User>) => Promise<User | void>;
   toggleTheme: () => void;
   refreshTenantData: () => Promise<void>;
@@ -61,7 +61,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const fetchedTenants = await api.getTenants();
       if (fetchedTenants && fetchedTenants.length > 0) {
-        setAllTenants(fetchedTenants);
+        setAllTenants(prev => {
+          if (
+            prev.length === fetchedTenants.length &&
+            JSON.stringify(prev) === JSON.stringify(fetchedTenants)
+          ) {
+            return prev;
+          }
+          return fetchedTenants;
+        });
         const activeId = targetId || tenant?.id || fetchedTenants[0].id;
         const updated = fetchedTenants.find(t => t.id === activeId) || fetchedTenants[0];
         if (updated) {
@@ -89,7 +97,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               prev.phone !== merged.phone ||
               prev.email !== merged.email ||
               prev.corporateName !== merged.corporateName ||
-              prev.documentNumber !== merged.documentNumber
+              prev.documentNumber !== merged.documentNumber ||
+              prev.cep !== merged.cep ||
+              prev.address !== merged.address ||
+              prev.number !== merged.number ||
+              prev.complement !== merged.complement ||
+              prev.neighborhood !== merged.neighborhood ||
+              prev.city !== merged.city ||
+              prev.state !== merged.state
             ) {
               return merged;
             }
@@ -229,15 +244,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateTenantConfig = async (updates: Partial<Tenant>) => {
-    if (!tenant) return;
+  const updateTenantConfig = async (updates: Partial<Tenant>, targetTenantId?: string) => {
+    const targetId = targetTenantId || tenant?.id;
+    if (!targetId) return;
+    const current = allTenants.find(t => t.id === targetId) || tenant;
     const cleanUpdates = {
       ...updates,
-      name: updates.name || updates.tradeName || tenant.name,
-      tradeName: updates.tradeName || updates.name || tenant.tradeName,
+      name: updates.name || updates.tradeName || current?.name || 'Clínica',
+      tradeName: updates.tradeName || updates.name || current?.tradeName || 'Clínica',
     };
-    const updated = await api.updateTenant(tenant.id, cleanUpdates);
-    setTenant(updated);
+    const updated = await api.updateTenant(targetId, cleanUpdates);
+    if (!tenant || tenant.id === targetId) {
+      setTenant(updated);
+    }
     setAllTenants(prev => prev.map(t => (t.id === updated.id ? updated : t)));
     return updated;
   };

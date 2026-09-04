@@ -122,7 +122,7 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
     },
   ];
 
-  const handleTileClick迷 = (tile: HubTileConfig) => {
+  const handleTileClick = (tile: HubTileConfig) => {
     if (tile.id === 'support' || tile.targetView === 'support_modal') {
       setIsSupportModalOpen(true);
     } else {
@@ -136,9 +136,9 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
   return (
     <div
       id="mobile-tablet-reference-screen"
-      className="relative min-h-[calc(100vh-2rem)] md:min-h-[calc(100vh-3.5rem)] flex flex-col justify-between p-3 sm:p-5 md:p-8 select-none text-slate-100 overflow-hidden bg-radial from-[#15283f] via-[#0e1c2e] to-[#070e17] rounded-3xl border border-slate-700/60 shadow-2xl"
+      className="relative min-h-[calc(100vh-2rem)] md:min-h-[calc(100vh-3rem)] flex flex-col justify-between p-2.5 sm:p-4 md:p-5 select-none text-slate-100 overflow-hidden bg-radial from-[#15283f] via-[#0e1c2e] to-[#070e17] rounded-2xl md:rounded-3xl border border-slate-700/60 shadow-2xl"
     >
-      {/* Background Metallic Subtle Shimmer & Fine Grid Lines (as seen in the reference print) */}
+      {/* Background Metallic Subtle Shimmer & Fine Grid Lines */}
       <div className="absolute inset-0 pointer-events-none opacity-20">
         <div
           className="w-full h-full"
@@ -151,10 +151,10 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
       </div>
 
       {/* Top Header matching reference image: Medical Cross + "Clínica de" / "Terapias Integradas" */}
-      <div className="relative z-10 flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-700/50 mb-3 sm:mb-6">
-        <div className="flex items-center gap-3">
+      <div className="relative z-10 flex items-center justify-between pb-2.5 sm:pb-3 border-b border-slate-700/50 mb-2 sm:mb-4">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           {/* Medical Cross Icon / Custom Company Logo in 3D Silver Emboss */}
-          <div className="relative flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-slate-600 via-slate-700 to-slate-900 border border-slate-500/60 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_8px_rgba(0,0,0,0.6)] overflow-hidden">
+          <div className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-slate-600 via-slate-700 to-slate-900 border border-slate-500/60 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_4px_8px_rgba(0,0,0,0.6)] overflow-hidden shrink-0">
             {tenant?.logoUrl ? (
               <img
                 src={tenant.logoUrl}
@@ -163,27 +163,27 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <HeartPulse className="w-6 h-6 text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
+              <HeartPulse className="w-5 h-5 sm:w-6 sm:h-6 text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
             )}
           </div>
 
-          <div>
-            <span className="block text-[11px] sm:text-xs font-medium text-slate-300 tracking-wider">
+          <div className="min-w-0">
+            <span className="block text-[10px] sm:text-[11px] font-medium text-slate-300 tracking-wider">
               Clínica de
             </span>
-            <h1 className="text-sm sm:text-lg md:text-xl font-bold text-white tracking-wide uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+            <h1 className="text-xs sm:text-sm md:text-base font-bold text-white tracking-wide uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] truncate max-w-[220px] sm:max-w-md">
               {tenant?.tradeName || tenant?.name || 'Terapias Integradas'}
             </h1>
           </div>
         </div>
 
         {/* Top right quick switcher & user badge */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {onSwitchToDesktop && (
             <button
               type="button"
               onClick={onSwitchToDesktop}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-600/60 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer shadow-sm"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-600/60 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer shadow-sm"
               title="Modo Computador / Notebook"
             >
               <Laptop className="w-3.5 h-3.5 text-teal-400" />
@@ -191,18 +191,18 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
             </button>
           )}
 
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider hidden sm:inline-block">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-300 uppercase tracking-wider hidden sm:inline-block">
               {user?.name?.split(' ')[0] || 'Conectado'}
             </span>
           </div>
         </div>
       </div>
 
-      {/* 3x3 Tactile 3D Grid (Direct translation of the reference mock-up image) */}
-      <main className="relative z-10 flex-1 flex items-center justify-center my-auto py-2 sm:py-4">
-        <div className="w-full max-w-6xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 sm:gap-4 md:gap-6 lg:gap-7">
+      {/* 3x3 Tactile 3D Grid */}
+      <main className="relative z-10 flex-1 flex items-center justify-center my-auto py-1 sm:py-2">
+        <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5 md:gap-3.5 lg:gap-4">
           {tiles.map((tile) => {
             const IconComponent = tile.icon;
             const isGold = tile.isGoldHighlighted;
@@ -211,23 +211,20 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
               <div
                 key={tile.id}
                 id={`tactile-btn-${tile.id}`}
-                onClick={() => handleTileClick迷(tile)}
+                onClick={() => handleTileClick(tile)}
                 className="group relative cursor-pointer select-none transition-transform duration-150 active:scale-[0.98] transform"
               >
                 {/* 3D Chamfered Outer Beveled Card Frame */}
                 <div
-                  className={`relative flex flex-col justify-between p-3.5 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl border transition-all duration-200 ${
+                  className={`relative flex flex-col justify-between p-2.5 sm:p-3 md:p-3.5 rounded-xl sm:rounded-2xl border transition-all duration-200 min-h-[78px] sm:min-h-[86px] md:min-h-[92px] ${
                     isGold
-                      ? 'metallic-bevel-gold border-amber-400/80 hover:border-amber-300 shadow-[0_12px_32px_rgba(0,0,0,0.85),0_0_20px_rgba(245,158,11,0.25)]'
-                      : 'metallic-bevel-blue border-slate-500/70 hover:border-sky-400/80 shadow-[0_12px_28px_rgba(0,0,0,0.85),0_0_15px_rgba(56,189,248,0.15)]'
+                      ? 'metallic-bevel-gold border-amber-400/80 hover:border-amber-300 shadow-[0_8px_24px_rgba(0,0,0,0.85),0_0_16px_rgba(245,158,11,0.2)]'
+                      : 'metallic-bevel-blue border-slate-500/70 hover:border-sky-400/80 shadow-[0_8px_20px_rgba(0,0,0,0.85),0_0_12px_rgba(56,189,248,0.12)]'
                   }`}
-                  style={{
-                    minHeight: '120px',
-                  }}
                 >
                   {/* Subtle Inner Diamond Faceted Highlight Polygon */}
                   <div
-                    className="absolute inset-1.5 rounded-xl sm:rounded-2xl pointer-events-none opacity-40"
+                    className="absolute inset-1 rounded-lg sm:rounded-xl pointer-events-none opacity-40"
                     style={{
                       background: isGold
                         ? 'linear-gradient(135deg, rgba(254, 240, 138, 0.18) 0%, rgba(217, 119, 6, 0.08) 50%, rgba(0, 0, 0, 0.3) 100%)'
@@ -236,36 +233,36 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
                   />
 
                   {/* Corner Accent Facet Cuts */}
-                  <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 rounded-tl-xl pointer-events-none opacity-70 border-white/40" />
-                  <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 rounded-tr-xl pointer-events-none opacity-70 border-white/40" />
-                  <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 rounded-bl-xl pointer-events-none opacity-70 border-white/40" />
-                  <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 rounded-br-xl pointer-events-none opacity-70 border-white/40" />
+                  <div className="absolute top-0 left-0 w-2.5 h-2.5 border-t-2 border-l-2 rounded-tl-lg pointer-events-none opacity-70 border-white/40" />
+                  <div className="absolute top-0 right-0 w-2.5 h-2.5 border-t-2 border-r-2 rounded-tr-lg pointer-events-none opacity-70 border-white/40" />
+                  <div className="absolute bottom-0 left-0 w-2.5 h-2.5 border-b-2 border-l-2 rounded-bl-lg pointer-events-none opacity-70 border-white/40" />
+                  <div className="absolute bottom-0 right-0 w-2.5 h-2.5 border-b-2 border-r-2 rounded-br-lg pointer-events-none opacity-70 border-white/40" />
 
                   {/* Card Center Content: 3D Chrome Icon + Embossed Metallic Title */}
-                  <div className="relative z-10 flex items-center justify-start gap-3 sm:gap-4 my-auto">
+                  <div className="relative z-10 flex items-center justify-start gap-2.5 sm:gap-3 my-auto">
                     {/* Embossed Chrome Icon Relief Frame */}
                     <div
-                      className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 ${
+                      className={`w-9 h-9 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 ${
                         isGold
-                          ? 'bg-gradient-to-br from-amber-500/30 via-amber-700/20 to-slate-900 border border-amber-400/60 shadow-[inset_0_1px_2px_rgba(254,240,138,0.6),0_4px_8px_rgba(0,0,0,0.8)] text-amber-200'
-                          : 'bg-gradient-to-br from-slate-600/40 via-slate-800/40 to-slate-950 border border-slate-400/50 shadow-[inset_0_1px_2px_rgba(255,255,255,0.4),0_4px_8px_rgba(0,0,0,0.8)] text-slate-200 group-hover:text-white'
+                          ? 'bg-gradient-to-br from-amber-500/30 via-amber-700/20 to-slate-900 border border-amber-400/60 shadow-[inset_0_1px_2px_rgba(254,240,138,0.6),0_3px_6px_rgba(0,0,0,0.8)] text-amber-200'
+                          : 'bg-gradient-to-br from-slate-600/40 via-slate-800/40 to-slate-950 border border-slate-400/50 shadow-[inset_0_1px_2px_rgba(255,255,255,0.4),0_3px_6px_rgba(0,0,0,0.8)] text-slate-200 group-hover:text-white'
                       }`}
                     >
                       <IconComponent
-                        className={`w-7 h-7 sm:w-8 sm:h-8 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] ${
+                        className={`w-5 h-5 sm:w-5 sm:h-5 md:w-6 md:h-6 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] ${
                           isGold ? 'text-amber-200' : 'text-slate-100 group-hover:text-sky-200'
                         }`}
                       />
                     </div>
 
-                    {/* Embossed Metallic Typography */}
-                    <div className="flex-1">
+                    {/* Embossed Metallic Typography with balanced scale */}
+                    <div className="flex-1 min-w-0">
                       {Array.isArray(tile.title) ? (
                         <div className="flex flex-col">
                           {tile.title.map((line, idx) => (
                             <span
                               key={idx}
-                              className={`block font-black text-sm sm:text-base md:text-lg tracking-wider uppercase leading-tight ${
+                              className={`block font-black text-xs sm:text-xs md:text-xs lg:text-sm tracking-wide uppercase leading-tight truncate ${
                                 isGold ? 'chrome-text-gold' : 'chrome-text-silver'
                               }`}
                             >
@@ -275,7 +272,7 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
                         </div>
                       ) : (
                         <span
-                          className={`block font-black text-base sm:text-lg md:text-xl tracking-wider uppercase leading-tight ${
+                          className={`block font-black text-xs sm:text-xs md:text-sm lg:text-base tracking-wide uppercase leading-tight truncate ${
                             isGold ? 'chrome-text-gold' : 'chrome-text-silver'
                           }`}
                         >
@@ -285,10 +282,10 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
                     </div>
                   </div>
 
-                  {/* Brushed Metal Plaque Subplate (Centered underneath, as seen in the print) */}
-                  <div className="relative z-10 w-full mt-2.5 pt-1.5 flex justify-center">
+                  {/* Brushed Metal Plaque Subplate */}
+                  <div className="relative z-10 w-full mt-1.5 pt-1 flex justify-center">
                     <div
-                      className={`px-4 sm:px-5 py-1 rounded-md text-[10px] sm:text-[11px] font-extrabold uppercase tracking-widest border transition-all ${
+                      className={`px-2.5 sm:px-3.5 py-0.5 rounded text-[8.5px] sm:text-[9.5px] md:text-[10px] font-extrabold uppercase tracking-wider border transition-all ${
                         isGold
                           ? 'metal-subplate-gold border-amber-500/50 text-amber-200'
                           : 'metal-subplate border-slate-600/70 text-slate-300 group-hover:text-white group-hover:border-slate-500'
@@ -305,15 +302,15 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
       </main>
 
       {/* Footer Info / Status Bar */}
-      <div className="relative z-10 pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-2">
-        <div className="flex items-center gap-2 text-[11px]">
-          <span className="w-2 h-2 rounded-full bg-teal-400 animate-ping" />
+      <div className="relative z-10 pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between text-slate-400 gap-1.5 text-[10px] sm:text-[11px]">
+        <div className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping" />
           <span className="font-semibold text-slate-300">
-            Painel Tátil Interativo • Sincronização em Tempo Real
+            Painel Tátil Interativo • Tempo Real
           </span>
         </div>
 
-        <div className="flex items-center gap-4 text-[11px]">
+        <div className="flex items-center gap-3">
           <span className="text-slate-400">
             {new Date().toLocaleDateString('pt-BR', {
               weekday: 'short',

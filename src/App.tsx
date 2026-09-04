@@ -353,7 +353,7 @@ export function App() {
         />
 
         {/* Scrollable Viewport */}
-        <main className="flex-1 overflow-y-auto p-3.5 sm:p-5 md:p-6 lg:p-8 space-y-6 pb-24 lg:pb-8">
+        <main className={`flex-1 overflow-y-auto ${activeView === 'hub' ? 'p-2 sm:p-3 md:p-4' : 'p-3 sm:p-4 md:p-5 lg:p-6'} space-y-4 pb-20 lg:pb-6`}>
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
               <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
@@ -362,14 +362,14 @@ export function App() {
             <>
               {/* Back to 3D Hub Quick Bar on Mobile & Tablet */}
               {activeView !== 'hub' && (
-                <div className="lg:hidden flex items-center justify-between bg-slate-900/90 dark:bg-slate-900 border border-slate-700/80 rounded-2xl p-2.5 shadow-lg mb-3 text-xs">
+                <div className="lg:hidden flex items-center justify-between bg-slate-900/90 dark:bg-slate-900 border border-slate-700/80 rounded-xl p-2 shadow-md mb-2.5 text-xs">
                   <button
                     type="button"
                     onClick={() => {
                       setActiveView('hub');
                       setSelectedPatient(null);
                     }}
-                    className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-600/30 to-blue-600/30 border border-teal-500/50 text-teal-300 hover:text-white font-bold transition shadow-sm cursor-pointer"
+                    className="flex items-center space-x-2 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-teal-600/30 to-blue-600/30 border border-teal-500/50 text-teal-300 hover:text-white font-bold transition shadow-sm cursor-pointer"
                   >
                     <ArrowLeft className="w-4 h-4" />
                     <span>Voltar ao Menu Tátil (Hub)</span>

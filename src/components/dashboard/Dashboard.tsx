@@ -68,20 +68,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [isClinicModalOpen, setIsClinicModalOpen] = useState(false);
 
   return (
-    <div className="flex-1 flex flex-col gap-6">
+    <div className="flex-1 flex flex-col gap-4 sm:gap-5">
       {/* Clinic Personalized Welcome Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-slate-700/80 rounded-2xl p-5 md:p-6 text-white shadow-md relative overflow-hidden">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-slate-700/80 rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
         
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div className="space-y-2">
+          <div className="space-y-1.5 sm:space-y-2">
             {/* Interactive Clinic Badge & Quick Edit Button */}
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setIsClinicModalOpen(true)}
                 title="Clique para editar o nome da clínica, endereço, cidade e dados"
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 transition cursor-pointer group shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-[10.5px] sm:text-[11px] font-bold bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 transition cursor-pointer group shadow-2xs"
               >
                 <Building2 className="w-3.5 h-3.5 text-teal-400 group-hover:scale-110 transition shrink-0" />
                 <span className="font-bold">{tenant?.tradeName || tenant?.name || 'Sua Clínica'}</span>
@@ -95,7 +95,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 type="button"
                 onClick={() => setIsClinicModalOpen(true)}
                 title="Editar informações da clínica (Nome, Endereço, Cidade, Telefone, Logomarca)"
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-teal-300 hover:text-white transition cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[9.5px] sm:text-[10px] font-semibold bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-teal-300 hover:text-white transition cursor-pointer"
               >
                 <Pencil className="w-2.5 h-2.5" />
                 <span>Editar Dados da Clínica</span>
@@ -104,7 +104,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             {/* Address summary under badge if available */}
             {tenant?.address && (
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
+              <div className="flex items-center gap-1.5 text-[10.5px] sm:text-[11px] text-slate-300">
                 <MapPin className="w-3.5 h-3.5 text-teal-400 shrink-0" />
                 <span>
                   {tenant.address}{tenant.number ? `, ${tenant.number}` : ''}{tenant.neighborhood ? ` - ${tenant.neighborhood}` : ''}
@@ -113,11 +113,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             )}
 
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
               <span>Olá, {user?.name || 'Profissional'}!</span>
             </h1>
 
-            <p className="text-xs md:text-sm text-slate-300">
+            <p className="text-xs sm:text-sm text-slate-300">
               {isIndividualMode ? (
                 <span className="text-amber-300 font-medium">
                   🔒 Nível Individual: Exibindo apenas os <strong>{totalPatients} pacientes</strong> e sessões sob seus cuidados.
@@ -131,8 +131,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="px-3.5 py-2 bg-slate-800/90 border border-slate-700 rounded-xl text-right">
-              <span className="block text-[10px] text-slate-400 uppercase font-semibold">Nível de Acesso</span>
+            <div className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-slate-800/90 border border-slate-700 rounded-xl text-right">
+              <span className="block text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold">Nível de Acesso</span>
               <span className="text-xs font-bold text-teal-400 flex items-center justify-end gap-1">
                 <Shield className="w-3 h-3" />
                 {user?.role === 'ADMIN' ? 'Administrador Geral' : 'Profissional Clínico'}
@@ -142,7 +142,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <button
                 type="button"
                 onClick={onOpenNewPatient}
-                className="px-4 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-teal-500/20 transition cursor-pointer"
+                className="px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-teal-500/20 transition cursor-pointer"
               >
                 + Cadastrar Paciente
               </button>
@@ -152,18 +152,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Metric Cards Banner Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 shrink-0">
         {/* Card 1: Pacientes Totais */}
         <div
           onClick={() => onNavigateTab('patients')}
-          className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-teal-500 transition group"
+          className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-teal-500 transition group"
         >
-          <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <div className="text-[10px] sm:text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
             <span>{isIndividualMode ? 'Meus Pacientes' : 'Pacientes da Clínica'}</span>
             <Users className="w-4 h-4 text-teal-500" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white">{totalPatients}</div>
-          <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">
+          <div className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">{totalPatients}</div>
+          <div className="text-[10.5px] sm:text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">
             {isIndividualMode ? 'Sob seu acompanhamento' : 'Ativos no sistema'}
           </div>
         </div>
@@ -171,14 +171,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* Card 2: Sessões Hoje */}
         <div
           onClick={() => onNavigateTab('sessions')}
-          className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-teal-500 transition group"
+          className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-teal-500 transition group"
         >
-          <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <div className="text-[10px] sm:text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
             <span>Sessões Hoje</span>
             <CalendarCheck className="w-4 h-4 text-teal-500" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white">{sessionsToday.length}</div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+          <div className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">{sessionsToday.length}</div>
+          <div className="text-[10.5px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-1">
             {sessionsCompletedToday} atendidas / {sessionsPendingToday} agendadas
           </div>
         </div>
@@ -186,27 +186,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* Card 3: Pacotes Ativos */}
         <div
           onClick={() => onNavigateTab('packages')}
-          className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-teal-500 transition group"
+          className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-teal-500 transition group"
         >
-          <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <div className="text-[10px] sm:text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
             <span>Pacotes de Sessões</span>
             <Package className="w-4 h-4 text-teal-500" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white">{activePackages.length}</div>
-          <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium mt-1">Planos em andamento</div>
+          <div className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">{activePackages.length}</div>
+          <div className="text-[10.5px] sm:text-[11px] text-amber-600 dark:text-amber-400 font-medium mt-1">Planos em andamento</div>
         </div>
 
         {/* Card 4: Aniversariantes */}
         <div
           onClick={() => onNavigateTab('birthdays')}
-          className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-teal-500 transition group"
+          className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-teal-500 transition group"
         >
-          <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <div className="text-[10px] sm:text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
             <span>Aniversariantes</span>
             <Cake className="w-4 h-4 text-teal-500" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white">{totalBirthdays}</div>
-          <div className="text-[11px] text-teal-600 dark:text-teal-400 font-medium mt-1">
+          <div className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">{totalBirthdays}</div>
+          <div className="text-[10.5px] sm:text-[11px] text-teal-600 dark:text-teal-400 font-medium mt-1">
             {birthdaysToday.length} hoje • {birthdaysTomorrow.length} amanhã
           </div>
         </div>

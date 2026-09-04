@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from '../common/Modal';
 import { ImageUploadInput } from '../common/ImageUploadInput';
 import { useAuth } from '../../context/AuthContext';
 import { Building2, Sparkles, Check, Globe, MapPin, Phone, Mail, FileText, Palette, Search, Plus, Loader2 } from 'lucide-react';
 import { formatPhone, formatCEP, formatCNPJ } from '../../utils/cpf';
+import { Tenant } from '../../types';
 
 const BRAZILIAN_STATES = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
@@ -45,39 +46,15 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Target tenant being edited
-  const activeEditingTenant = allTenants.find(t => t.id === selectedTenantId) || tenant;
+  // Track the tenant ID loaded into form state so polling/background sync never erases user edits
+  const loadedTenantKeyRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      const targetId = initialClinicId || tenant?.id || '';
-      setSelectedTenantId(targetId);
-      setIsCreatingNew(false);
-    }
-  }, [isOpen, initialClinicId, tenant?.id]);
-
-  useEffect(() => {
-    if (activeEditingTenant && !isCreatingNew) {
-      setTradeName(activeEditingTenant.tradeName || activeEditingTenant.name || '');
-      setCorporateName(activeEditingTenant.corporateName || '');
-      setDocType(activeEditingTenant.docType || 'CNPJ');
-      setDocumentNumber(activeEditingTenant.documentNumber || '');
-      setEmail(activeEditingTenant.email || '');
-      setPhone(activeEditingTenant.phone || '');
-      setCep(activeEditingTenant.cep || '');
-      setAddress(activeEditingTenant.address || '');
-      setNumber(activeEditingTenant.number || '');
-      setComplement(activeEditingTenant.complement || '');
-      setNeighborhood(activeEditingTenant.neighborhood || '');
-      setCity(activeEditingTenant.city || 'São Paulo');
-      setState(activeEditingTenant.state || 'SP');
-      setLogoUrl(activeEditingTenant.logoUrl || '');
-      setCustomHeader(activeEditingTenant.customHeader || '');
-      setPrimaryColor(activeEditingTenant.primaryColor || '#0d9488');
-      setSuccessMessage('');
-    } else if (isCreatingNew) {
+  // Helper to load tenant values into form state
+  const loadTenantIntoForm = (target: Tenant | null | undefined) => {
+    if (!target) {
       setTradeName('');
       setCorporateName('');
+      setDocType('CNPJ');
       setDocumentNumber('');
       setEmail('');
       setPhone('');
@@ -86,14 +63,71 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
       setNumber('');
       setComplement('');
       setNeighborhood('');
-      setCity('São Paulo');
+      setCity('');
       setState('SP');
       setLogoUrl('');
       setCustomHeader('');
       setPrimaryColor('#0d9488');
-      setSuccessMessage('');
+      return;
     }
-  }, [activeEditingTenant, isCreatingNew, isOpen]);
+
+    setTradeName(target.tradeName || target.name || '');
+    setCorporateName(target.corporateName || '');
+    setDocType(target.docType || 'CNPJ');
+    setDocumentNumber(target.documentNumber || '');
+    setEmail(target.email || '');
+    setPhone(target.phone || '');
+    setCep(target.cep || '');
+    setAddress(target.address || '');
+    setNumber(target.number || '');
+    setComplement(target.complement || '');
+    setNeighborhood(target.neighborhood || '');
+    setCity(target.city || '');
+    setState(target.state || 'SP');
+    setLogoUrl(target.logoUrl || '');
+    setCustomHeader(target.customHeader || '');
+    setPrimaryColor(target.primaryColor || '#0d9488');
+  };
+
+  // Initialize form when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      const targetId = initialClinicId || tenant?.id || '';
+      setSelectedTenantId(targetId);
+      setIsCreatingNew(false);
+
+      const targetTenant = allTenants.find(t => t.id === targetId) || tenant;
+      loadTenantIntoForm(targetTenant);
+      loadedTenantKeyRef.current = targetId;
+      setSuccessMessage('');
+    } else {
+      loadedTenantKeyRef.current = null;
+    }
+  }, [isOpen, initialClinicId]);
+
+  const handleSelectClinic = (targetId: string) => {
+    setSelectedTenantId(targetId);
+    setIsCreatingNew(false);
+    const targetTenant = allTenants.find(t => t.id === targetId) || (tenant?.id === targetId ? tenant : null);
+    loadTenantIntoForm(targetTenant);
+    loadedTenantKeyRef.current = targetId;
+    setSuccessMessage('');
+  };
+
+  const handleStartCreateNew = () => {
+    setIsCreatingNew(true);
+    loadTenantIntoForm(null);
+    loadedTenantKeyRef.current = '__NEW__';
+    setSuccessMessage('');
+  };
+
+  const handleCancelCreateNew = () => {
+    setIsCreatingNew(false);
+    const targetTenant = allTenants.find(t => t.id === selectedTenantId) || tenant;
+    loadTenantIntoForm(targetTenant);
+    loadedTenantKeyRef.current = selectedTenantId;
+    setSuccessMessage('');
+  };
 
   // Automatic CEP Search via ViaCEP
   const handleCepSearch = async (targetCep: string) => {
@@ -131,14 +165,16 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
     setSuccessMessage('');
 
     try {
-      const cleanName = tradeName.trim() || corporateName.trim() || 'Minha Clínica';
+      const cleanTradeName = tradeName.trim();
+      const cleanCorporateName = corporateName.trim();
+      const cleanName = cleanTradeName || cleanCorporateName || 'Minha Clínica';
 
       if (isCreatingNew) {
         // Create new clinic unit
         const created = await createClinic({
           name: cleanName,
-          tradeName: cleanName,
-          corporateName: corporateName.trim() || `${cleanName} Ltda`,
+          tradeName: cleanTradeName || cleanName,
+          corporateName: cleanCorporateName || `${cleanName} Ltda`,
           docType,
           documentNumber: documentNumber.trim(),
           email: email.trim(),
@@ -148,7 +184,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
           number: number.trim(),
           complement: complement.trim(),
           neighborhood: neighborhood.trim(),
-          city: city.trim() || 'São Paulo',
+          city: city.trim(),
           state: state.trim() || 'SP',
           logoUrl: logoUrl.trim(),
           customHeader: customHeader.trim() || `${cleanName} - Fisioterapia e Massoterapia Integrativa`,
@@ -158,32 +194,39 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
         await switchTenant(created.id);
         setSelectedTenantId(created.id);
         setIsCreatingNew(false);
+        loadedTenantKeyRef.current = created.id;
         setSuccessMessage('Nova clínica cadastrada e ativada com sucesso!');
       } else {
         // Update existing clinic
-        if (selectedTenantId !== tenant?.id) {
-          await switchTenant(selectedTenantId);
-        }
+        const targetId = selectedTenantId || tenant?.id;
+        if (!targetId) throw new Error('Nenhuma clínica selecionada');
 
-        await updateTenantConfig({
-          tradeName: cleanName,
-          name: cleanName,
-          corporateName: corporateName.trim(),
-          docType,
-          documentNumber: documentNumber.trim(),
-          email: email.trim(),
-          phone: phone.trim(),
-          cep: cep.trim(),
-          address: address.trim(),
-          number: number.trim(),
-          complement: complement.trim(),
-          neighborhood: neighborhood.trim(),
-          city: city.trim() || 'São Paulo',
-          state: state.trim() || 'SP',
-          logoUrl: logoUrl.trim(),
-          customHeader: customHeader.trim() || `${cleanName} - Fisioterapia e Massoterapia Integrativa`,
-          primaryColor,
-        });
+        await updateTenantConfig(
+          {
+            name: cleanName,
+            tradeName: cleanTradeName || cleanName,
+            corporateName: cleanCorporateName,
+            docType,
+            documentNumber: documentNumber.trim(),
+            email: email.trim(),
+            phone: phone.trim(),
+            cep: cep.trim(),
+            address: address.trim(),
+            number: number.trim(),
+            complement: complement.trim(),
+            neighborhood: neighborhood.trim(),
+            city: city.trim(),
+            state: state.trim() || 'SP',
+            logoUrl: logoUrl.trim(),
+            customHeader: customHeader.trim() || `${cleanName} - Fisioterapia e Massoterapia Integrativa`,
+            primaryColor,
+          },
+          targetId
+        );
+
+        if (targetId !== tenant?.id) {
+          await switchTenant(targetId);
+        }
 
         setSuccessMessage('Dados da clínica e endereço atualizados com sucesso!');
       }
@@ -191,7 +234,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
       setTimeout(() => {
         setSuccessMessage('');
         onClose();
-      }, 1200);
+      }, 1000);
     } catch (err) {
       console.error(err);
       alert('Erro ao salvar as configurações da clínica. Tente novamente.');
@@ -223,8 +266,8 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
               <>
                 <select
                   value={selectedTenantId}
-                  onChange={e => setSelectedTenantId(e.target.value)}
-                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-white outline-none focus:border-teal-500"
+                  onChange={e => handleSelectClinic(e.target.value)}
+                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-white outline-none focus:border-teal-500 cursor-pointer"
                 >
                   {allTenants.map(t => (
                     <option key={t.id} value={t.id}>
@@ -235,7 +278,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
 
                 <button
                   type="button"
-                  onClick={() => setIsCreatingNew(true)}
+                  onClick={handleStartCreateNew}
                   className="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0 cursor-pointer"
                   title="Cadastrar uma nova clínica no sistema"
                 >
@@ -250,7 +293,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                 </span>
                 <button
                   type="button"
-                  onClick={() => setIsCreatingNew(false)}
+                  onClick={handleCancelCreateNew}
                   className="px-2 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition cursor-pointer"
                 >
                   Voltar
@@ -344,7 +387,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                 type="text"
                 value={documentNumber}
                 onChange={e => setDocumentNumber(docType === 'CNPJ' ? formatCNPJ(e.target.value) : e.target.value)}
-                placeholder={docType === 'CNPJ' ? '00.000.000/0001-00' : '000.000.000-00'}
+                placeholder={docType === 'CNPJ' ? 'Ex: 00.000.000/0001-00' : 'Ex: 000.000.000-00'}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
               />
             </div>
@@ -369,7 +412,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                   value={cep}
                   onChange={handleCepChange}
                   onBlur={() => handleCepSearch(cep)}
-                  placeholder="00000-000"
+                  placeholder="Ex: 00000-000"
                   className="w-full pl-3 pr-8 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
                 />
                 <button
@@ -409,7 +452,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                 type="text"
                 value={number}
                 onChange={e => setNumber(e.target.value)}
-                placeholder="1000"
+                placeholder="Ex: 120, S/N"
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
               />
             </div>
@@ -422,7 +465,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                 type="text"
                 value={complement}
                 onChange={e => setComplement(e.target.value)}
-                placeholder="Sala 302, Bloco B"
+                placeholder="Ex: Sala 302, Bloco B (opcional)"
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
               />
             </div>
@@ -435,7 +478,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                 type="text"
                 value={neighborhood}
                 onChange={e => setNeighborhood(e.target.value)}
-                placeholder="Bela Vista"
+                placeholder="Ex: Bela Vista, Centro"
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
               />
             </div>
@@ -449,7 +492,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                 required
                 value={city}
                 onChange={e => setCity(e.target.value)}
-                placeholder="São Paulo"
+                placeholder="Ex: São Paulo, Rio de Janeiro"
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
               />
             </div>
@@ -461,7 +504,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
               <select
                 value={state}
                 onChange={e => setState(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
+                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium cursor-pointer"
               >
                 {BRAZILIAN_STATES.map(uf => (
                   <option key={uf} value={uf}>
@@ -489,7 +532,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                 type="text"
                 value={phone}
                 onChange={e => setPhone(formatPhone(e.target.value))}
-                placeholder="(11) 98765-4321"
+                placeholder="Ex: (11) 98765-4321"
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
               />
             </div>
@@ -502,7 +545,7 @@ export const ClinicProfileModal: React.FC<ClinicProfileModalProps> = ({ isOpen, 
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="contato@clinica.com.br"
+                placeholder="Ex: contato@suaclinica.com.br"
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-white focus:border-teal-500 font-medium"
               />
             </div>

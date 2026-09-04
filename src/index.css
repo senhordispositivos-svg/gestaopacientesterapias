@@ -55,6 +55,38 @@
 }
 
 @layer base {
+  :root {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Default desktop font base */
+  html {
+    font-size: 15px;
+  }
+
+  /* Tablets (iPad, Galaxy Tab, Surface: 640px to 1024px) - balances letter sizes and eliminates oversized fonts */
+  @media screen and (min-width: 640px) and (max-width: 1024px) {
+    html {
+      font-size: 13.5px;
+    }
+  }
+
+  /* Mobile phones (< 640px) */
+  @media screen and (max-width: 639px) {
+    html {
+      font-size: 13.5px;
+    }
+  }
+
+  /* Inputs minimum font scale to prevent unwanted iOS Safari zooming while maintaining crispness */
+  input, select, textarea {
+    font-size: max(13px, 1rem);
+  }
+
   @media print {
     body {
       background: #ffffff !important;
