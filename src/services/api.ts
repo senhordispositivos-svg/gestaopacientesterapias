@@ -2300,6 +2300,7 @@ export const api = {
       fileSize: doc.fileSize || 1024,
       fileUrl: doc.fileUrl || '',
       category: doc.category || 'PDF',
+      notes: doc.notes || '',
       uploadedAt: new Date().toISOString(),
     };
     list.unshift(newDoc);

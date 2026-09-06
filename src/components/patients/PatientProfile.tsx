@@ -442,9 +442,14 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
                       <div className="flex items-center gap-2 text-teal-600 dark:text-teal-400 font-bold">
                         <FolderOpen className="w-4 h-4" /> {documents.length} arquivo(s)
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate" title={documents[0]?.fileName}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDocForViewing(documents[0])}
+                        className="text-[11px] text-teal-600 dark:text-teal-400 font-semibold hover:underline truncate block text-left w-full cursor-pointer"
+                        title="Clique para visualizar o último documento"
+                      >
                         Último: {documents[0]?.fileName}
-                      </p>
+                      </button>
                       <div className="flex items-center gap-2 pt-1">
                         <button
                           type="button"
@@ -594,14 +599,15 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
                       {documents.map(doc => (
                         <div
                           key={doc.id}
-                          className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 flex items-start justify-between gap-3 hover:border-teal-400 dark:hover:border-teal-600 transition"
+                          onClick={() => setSelectedDocForViewing(doc)}
+                          className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 flex items-start justify-between gap-3 hover:border-teal-400 dark:hover:border-teal-600 hover:shadow-md transition cursor-pointer group"
                         >
                           <div className="min-w-0 space-y-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
                                 {doc.category}
                               </span>
-                              <p className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                              <p className="font-bold text-xs text-slate-900 dark:text-white truncate group-hover:text-teal-600 transition">
                                 {doc.fileName}
                               </p>
                             </div>
@@ -619,29 +625,36 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
-                              onClick={() => setSelectedDocForViewing(doc)}
-                              className="p-2 rounded-lg bg-white dark:bg-slate-800 text-teal-600 hover:bg-teal-50 dark:hover:bg-slate-700 transition border border-slate-200 dark:border-slate-700 cursor-pointer"
-                              title="Visualizar documento na tela"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDocForViewing(doc);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                              title="Visualizar documento na tela sem baixar"
                             >
-                              <Eye className="w-4 h-4" />
+                              <Eye className="w-3.5 h-3.5" /> Visualizar
                             </button>
                             <a
                               href={doc.fileUrl}
                               download={doc.fileName}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="p-2 rounded-lg bg-white dark:bg-slate-800 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition border border-slate-200 dark:border-slate-700"
-                              title="Baixar arquivo"
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition border border-slate-200 dark:border-slate-700"
+                              title="Baixar cópia do arquivo"
                             >
-                              <Download className="w-4 h-4" />
+                              <Download className="w-3.5 h-3.5" />
                             </a>
                             <button
                               type="button"
-                              onClick={() => handleDeleteDocument(doc.id)}
-                              className="p-2 rounded-lg bg-white dark:bg-slate-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition border border-slate-200 dark:border-slate-700 cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteDocument(doc.id);
+                              }}
+                              className="p-1.5 rounded-lg bg-white dark:bg-slate-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition border border-slate-200 dark:border-slate-700 cursor-pointer"
                               title="Excluir documento"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
@@ -868,15 +881,25 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {documents.map(doc => (
-                  <div key={doc.id} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/50 dark:bg-slate-850 gap-3 hover:border-teal-400 dark:hover:border-teal-600 transition">
-                    <div className="space-y-1 min-w-0 pr-2">
+                  <div
+                    key={doc.id}
+                    onClick={() => setSelectedDocForViewing(doc)}
+                    className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/70 dark:bg-slate-850 gap-3 hover:border-teal-500 dark:hover:border-teal-500 hover:shadow-md transition cursor-pointer group"
+                  >
+                    <div className="space-y-1.5 min-w-0 pr-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
+                        <span className="px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
                           {doc.category}
                         </span>
-                        <p className="font-bold text-xs text-slate-900 dark:text-white truncate">{doc.fileName}</p>
+                        <p className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate group-hover:text-teal-600 transition">
+                          {doc.fileName}
+                        </p>
                       </div>
-                      {doc.notes && <p className="text-[11px] text-slate-500 line-clamp-2">{doc.notes}</p>}
+                      {doc.notes && (
+                        <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
+                          {doc.notes}
+                        </p>
+                      )}
                       <p className="text-[10px] text-slate-400">
                         Enviado por {doc.uploadedByName || 'Profissional'} em {formatDate(doc.uploadedAt)}
                       </p>
@@ -884,29 +907,36 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setSelectedDocForViewing(doc)}
-                        className="p-2 rounded-lg bg-white dark:bg-slate-800 text-teal-600 hover:bg-teal-50 dark:hover:bg-slate-700 transition shadow-xs border border-slate-200 dark:border-slate-700 cursor-pointer"
-                        title="Visualizar documento / exame na tela"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedDocForViewing(doc);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                        title="Visualizar documento na tela sem baixar"
                       >
-                        <Eye className="w-4 h-4" />
+                        <Eye className="w-3.5 h-3.5" /> Visualizar
                       </button>
                       <a
                         href={doc.fileUrl}
                         download={doc.fileName}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-2 rounded-lg bg-white dark:bg-slate-800 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition shadow-xs border border-slate-200 dark:border-slate-700"
-                        title="Baixar arquivo"
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1.5 rounded-xl bg-white dark:bg-slate-800 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition shadow-2xs border border-slate-200 dark:border-slate-700"
+                        title="Baixar cópia do arquivo"
                       >
-                        <Download className="w-4 h-4" />
+                        <Download className="w-3.5 h-3.5" />
                       </a>
                       <button
                         type="button"
-                        onClick={() => handleDeleteDocument(doc.id)}
-                        className="p-2 rounded-lg bg-white dark:bg-slate-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition shadow-xs border border-slate-200 dark:border-slate-700 cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteDocument(doc.id);
+                        }}
+                        className="p-1.5 rounded-xl bg-white dark:bg-slate-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition shadow-2xs border border-slate-200 dark:border-slate-700 cursor-pointer"
                         title="Excluir documento"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>

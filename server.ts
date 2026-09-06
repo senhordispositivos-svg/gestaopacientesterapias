@@ -2722,6 +2722,7 @@ app.post('/api/patients/:patientId/documents', (req, res) => {
     fileSize: req.body.fileSize || 512000,
     fileUrl: req.body.fileUrl || '',
     category: req.body.category || 'PDF',
+    notes: req.body.notes || '',
     uploadedAt: new Date().toISOString(),
   };
   db.documentFiles.unshift(newDoc);
