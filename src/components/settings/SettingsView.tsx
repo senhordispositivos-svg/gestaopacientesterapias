@@ -68,7 +68,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
   const [financialSection, setFinancialSection] = useState('MASSOTERAPIA');
   const [financialAlsoAddToSalary, setFinancialAlsoAddToSalary] = useState(true);
   const [isTestingFinancial, setIsTestingFinancial] = useState(false);
-  const [financialTestResult, setFinancialTestResult] = useState<{ success: boolean; message: string; status?: number } | null>(null);
+  const [financialTestResult, setFinancialTestResult] = useState<{ success: boolean; message: string; status?: number; isNetlifyStaticError?: boolean } | null>(null);
   const [monthlySummary, setMonthlySummary] = useState<any>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [isSyncingPending, setIsSyncingPending] = useState(false);
@@ -207,6 +207,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
     } finally {
       setIsLoadingCep(false);
     }
+  };
+
+  const handleExportSpreadsheetForFinancial = () => {
+    const entries = monthlySummary?.entries || [];
+    if (entries.length === 0) {
+      alert('Nenhum atendimento registrado no caixa para exportar ainda.');
+      return;
+    }
+    const headers = ['Data', 'Cliente', 'Procedimento / Descrição', 'Categoria', 'Valor (R$)', 'Salário Fixo (alsoAddToSalary)', 'Status Sincronização'];
+    const rows = entries.map((e: any) => [
+      e.date || '',
+      `"${(e.patientName || '').replace(/"/g, '""')}"`,
+      `"${(e.description || '').replace(/"/g, '""')}"`,
+      'MASSOTERAPIA',
+      (e.effectiveAmount || 0).toFixed(2).replace('.', ','),
+      e.effectiveAmount > 0 ? 'SIM' : 'NÃO',
+      e.syncedToExternal ? 'Sincronizado' : 'Pendente'
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `atendimentos-massoterapia-${new Date().toISOString().substring(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleSave = async (e?: React.FormEvent) => {
@@ -1009,21 +1036,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
           {/* Test Feedback Message */}
           {financialTestResult && (
             <div
-              className={`p-3 rounded-xl text-xs flex items-start gap-2 border ${
+              className={`p-3.5 rounded-xl text-xs space-y-2 border ${
                 financialTestResult.success
                   ? 'bg-emerald-50 text-emerald-900 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800'
                   : 'bg-rose-50 text-rose-900 border-rose-200 dark:bg-rose-950/40 dark:text-rose-200 dark:border-rose-800'
               }`}
             >
-              {financialTestResult.success ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
-              )}
-              <div className="flex-1">
-                <p className="font-bold">{financialTestResult.success ? 'Sucesso na Comunicação!' : 'Falha na Comunicação'}</p>
-                <p className="text-[11px] mt-0.5">{financialTestResult.message}</p>
+              <div className="flex items-start gap-2">
+                {financialTestResult.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+                )}
+                <div className="flex-1">
+                  <p className="font-bold">{financialTestResult.success ? 'Sucesso na Comunicação!' : 'Diagnóstico da Conexão'}</p>
+                  <p className="text-[11px] mt-0.5 leading-relaxed">{financialTestResult.message}</p>
+                </div>
               </div>
+
+              {/* Netlify Static Solution Helper */}
+              {(!financialTestResult.success && (financialTestResult.isNetlifyStaticError || financialTestResult.message?.includes('Netlify') || financialTestResult.message?.includes('404'))) && (
+                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 space-y-1.5 mt-2">
+                  <p className="font-bold text-[11px] flex items-center gap-1">
+                    <span>💡</span> Entenda a causa e como resolver:
+                  </p>
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                    O <strong>Netlify</strong> é um serviço de hospedagem de páginas estáticas (HTML/CSS/JS) e não executa o servidor Node.js backend. Por isso, a rota <code>/api/integrations/massoterapia</code> no Netlify devolve a página HTML de "Page not found" (404).
+                  </p>
+                  <div className="pt-1 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinancialEndpointUrl('/api/integrations/massoterapia');
+                        setIsDirty(true);
+                      }}
+                      className="px-2.5 py-1 rounded bg-teal-700 hover:bg-teal-800 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      Usar Rota Integrada da Clínica (/api/integrations/massoterapia)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportSpreadsheetForFinancial}
+                      className="px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Download className="w-3 h-3" />
+                      Baixar Planilha Excel/CSV para Importar no Financeiro
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -2534,13 +2534,20 @@ async function syncCashEntryToExternalSystem(
       saveDatabase();
       return { success: true, message: cfg.lastSyncMessage };
     } else {
-      const errText = responseJson?.message || (await response.text().catch(() => response.statusText));
+      const isHtml = response.headers.get('content-type')?.includes('text/html');
+      let errText = '';
+      if (response.status === 404 && (isHtml || targetUrl.includes('netlify.app'))) {
+        errText = `Netlify retornou 404: o endpoint /api/integrations/massoterapia não existe no backend do Netlify (apenas arquivos estáticos).`;
+      } else {
+        const rawErr = responseJson?.message || (await response.text().catch(() => response.statusText));
+        errText = `Erro HTTP ${response.status}: ${String(rawErr).slice(0, 150)}`;
+      }
       entry.syncedToExternal = false;
-      entry.syncError = `Erro HTTP ${response.status}: ${String(errText).slice(0, 150)}`;
+      entry.syncError = errText;
       cfg.lastSyncStatus = 'ERROR';
-      cfg.lastSyncMessage = entry.syncError;
+      cfg.lastSyncMessage = errText;
       saveDatabase();
-      return { success: false, message: entry.syncError };
+      return { success: false, message: errText };
     }
   } catch (err: any) {
     const errorMsg = `Falha na requisição: ${err.message || 'Erro de conexão ou timeout'}`;
@@ -2785,6 +2792,7 @@ app.post('/api/financial/test-connection', async (req, res) => {
     });
     clearTimeout(timeout);
 
+    const isHtml = response.headers.get('content-type')?.includes('text/html');
     const jsonRes = await response.json().catch(() => null);
 
     if (response.ok && (jsonRes ? jsonRes.success !== false : true)) {
@@ -2795,11 +2803,18 @@ app.post('/api/financial/test-connection', async (req, res) => {
         data: jsonRes?.data,
       });
     } else {
-      const txt = jsonRes?.message || (await response.text().catch(() => response.statusText));
+      let customMsg = '';
+      if (response.status === 404 && (isHtml || targetUrl.includes('netlify.app'))) {
+        customMsg = `O endereço informado (${new URL(targetUrl).hostname}) retornou HTTP 404 (Página não encontrada). O Netlify é um serviço de hospedagem estática e não executa o servidor backend Node.js na rota /api/integrations/massoterapia. Para integrar, utilize a URL ativa do backend da sua aplicação financeira (ex: Cloud Run / AI Studio) ou a rota interna integrada da clínica.`;
+      } else {
+        const txt = jsonRes?.message || (await response.text().catch(() => response.statusText));
+        customMsg = `O sistema externo respondeu com status HTTP ${response.status}: ${String(txt).slice(0, 180)}. Verifique o link, e-mail e a senha informada.`;
+      }
       return res.json({
         success: false,
         status: response.status,
-        message: `O sistema externo respondeu com status HTTP ${response.status}: ${String(txt).slice(0, 180)}. Verifique o link, e-mail e a senha informada.`,
+        message: customMsg,
+        isNetlifyStaticError: targetUrl.includes('netlify.app') && response.status === 404,
       });
     }
   } catch (err: any) {

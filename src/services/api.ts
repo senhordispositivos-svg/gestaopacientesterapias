@@ -3271,17 +3271,22 @@ export const api = {
     category?: string;
     section?: string;
     alsoAddToSalary?: boolean;
-  }): Promise<{ success: boolean; message: string; status?: number }> {
-    const serverRes = await tryFetch('/api/financial/test-connection', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-    });
-    if (serverRes) {
-      return serverRes.json();
+  }): Promise<{ success: boolean; message: string; status?: number; isNetlifyStaticError?: boolean }> {
+    try {
+      const serverRes = await fetch('/api/financial/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      const data = await serverRes.json().catch(() => null);
+      if (data && typeof data.success === 'boolean') {
+        return data;
+      }
+    } catch (serverErr) {
+      console.warn('Server test connection fetch error, checking client fallback:', serverErr);
     }
 
-    // Direct client-side ping if backend unreachable
+    // Direct client-side ping if backend server unreachable
     try {
       const email = config.accessEmail || 'osaiasbrito@gmail.com';
       const password = config.accessPassword || 'Ojf6994@#gestaoPessoas';
@@ -3319,9 +3324,13 @@ export const api = {
           : `Sistema externo retornou HTTP ${res.status}`),
       };
     } catch (err: any) {
+      const isNetlify = config.endpointUrl.includes('netlify.app');
       return {
         success: false,
-        message: `Falha ao conectar: ${err.message || 'Erro de rede ou URL inacessível'}.`,
+        message: isNetlify
+          ? 'O endereço netlify.app não possui servidor backend ativo (apenas arquivos estáticos), gerando bloqueio de comunicação (404/CORS). Utilize o endpoint ativo no servidor ou a rota interna da clínica.'
+          : `Falha ao conectar: ${err.message || 'Erro de rede ou bloqueio de CORS na URL externa'}.`,
+        isNetlifyStaticError: isNetlify,
       };
     }
   },
