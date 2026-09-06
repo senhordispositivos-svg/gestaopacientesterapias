@@ -25,6 +25,7 @@ import {
   X,
   Pencil,
   MapPin,
+  DollarSign,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ClinicProfileModal } from './ClinicProfileModal';
@@ -103,6 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const systemItems = [
+    { id: 'financial', label: 'Fluxo de Caixa', icon: DollarSign, roles: ['ADMIN', 'RECEPTIONIST'] },
     { id: 'backup', label: 'Backup & Segurança', icon: Database, roles: ['ADMIN'] },
     { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, roles: ['ADMIN'] },
     { id: 'audit', label: 'Auditoria & LGPD', icon: ShieldCheck, roles: ['ADMIN'] },

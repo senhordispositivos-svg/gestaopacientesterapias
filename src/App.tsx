@@ -23,6 +23,7 @@ import { PublicAnamnesisPage } from './components/public/PublicAnamnesisPage';
 import { SendAnamnesisLinkModal } from './components/whatsapp/SendAnamnesisLinkModal';
 import { PackageDetailModal } from './components/packages/PackageDetailModal';
 import { PackagesTrackerView } from './components/packages/PackagesTrackerView';
+import { FinancialView } from './components/financial/FinancialView';
 import { LoginView } from './components/auth/LoginView';
 import { MobileTabletHub } from './components/MobileTabletHub';
 import { ResolutionScaleModal } from './components/layout/ResolutionScaleModal';
@@ -762,6 +763,11 @@ export function App() {
               {/* Audit Logs */}
               {activeView === 'audit' && <AuditLogView />}
 
+              {/* Financial Cash Flow & Management Integration */}
+              {activeView === 'financial' && (
+                <FinancialView onNavigateToSettings={() => setActiveView('settings')} />
+              )}
+
               {/* Database Backup & Security */}
               {activeView === 'backup' && <BackupManagerView onRefreshAllData={loadData} />}
 
@@ -976,6 +982,21 @@ export function App() {
             setSelectedSessionForAttendance(null);
           }}
           session={selectedSessionForAttendance}
+          onSaveAttendance={async (attendanceData) => {
+            if (!tenant || !selectedSessionForAttendance) return;
+            await api.updateSession(tenant.id, selectedSessionForAttendance.id, {
+              ...selectedSessionForAttendance,
+              status: 'COMPLETED',
+              attendedAt: new Date().toISOString(),
+              bloodPressure: attendanceData.bloodPressure,
+              siNotes: attendanceData.siNotes,
+              procedures: attendanceData.procedures,
+              evolutionText: attendanceData.evolutionText,
+            });
+            await loadData();
+            setIsAttendanceModalOpen(false);
+            setSelectedSessionForAttendance(null);
+          }}
           onSave={async () => {
             await loadData();
             setIsAttendanceModalOpen(false);

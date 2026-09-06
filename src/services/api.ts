@@ -11,6 +11,8 @@ import {
   AuditLog,
   Role,
   DbConnectionTestResult,
+  CashEntry,
+  FinancialIntegrationConfig,
 } from '../types';
 import {
   decodePayload,
@@ -40,6 +42,7 @@ const STORAGE_KEYS = {
   DOCUMENTS: 'clinica_documents',
   SIGNATURES: 'clinica_signatures',
   AUDIT_LOGS: 'clinica_audit_logs',
+  CASH_ENTRIES: 'clinica_cash_entries',
 };
 
 function getLocal<T>(key: string, defaultVal: T): T {
@@ -103,7 +106,57 @@ async function tryFetch(url: string, options?: RequestInit): Promise<Response | 
   }
 }
 
+// Função fornecida para integração direta com a aplicação financeira
+export async function lancarAtendimentoNoFinanceiro(atendimento: {
+  valor: number | string;
+  nomeCliente: string;
+  procedimento?: string;
+  categoria?: string;
+  data?: string;
+  alsoAddToSalary?: boolean;
+}, configOverride?: {
+  url?: string;
+  email?: string;
+  password?: string;
+}) {
+  const URL_FINANCEIRO = configOverride?.url || `${window.location.origin}/api/integrations/massoterapia`;
+
+  const payload = {
+    // 1. Credenciais de acesso
+    email: configOverride?.email || 'osaiasbrito@gmail.com',
+    password: configOverride?.password || 'Ojf6994@#gestaoPessoas',
+
+    // 2. Dados do atendimento de massoterapia
+    amount: typeof atendimento.valor === 'string' ? parseFloat(atendimento.valor.replace(',', '.')) || 0 : atendimento.valor,
+    clientName: atendimento.nomeCliente,
+    description: atendimento.procedimento || 'Atendimento Massoterapia',
+    category: atendimento.categoria || 'MASSOTERAPIA',
+    date: atendimento.data || new Date().toISOString().substring(0, 10),
+
+    // 3. Somar automaticamente ao Salário Mensal Fixo
+    alsoAddToSalary: atendimento.alsoAddToSalary ?? true,
+  };
+
+  try {
+    const response = await fetch(URL_FINANCEIRO, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      console.log('Atendimento lançado no controle financeiro com sucesso!', data);
+    }
+    return data;
+  } catch (error) {
+    console.error('Erro na integração com o financeiro:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
 export const api = {
+  lancarAtendimentoNoFinanceiro,
   // Auth
   async login(email: string, password?: string, tenantId?: string): Promise<{ user: User; tenant: Tenant }> {
     const serverRes = await tryFetch('/api/auth/login', {
@@ -3069,13 +3122,231 @@ export const api = {
             anamneses: getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []).length,
             evolutions: getLocal<ClinicalEvolution[]>(STORAGE_KEYS.EVOLUTIONS, []).length,
             signatures: getLocal<SignatureRecord[]>(STORAGE_KEYS.SIGNATURES, []).length,
-            documents: getLocal<DocumentFile[]>(STORAGE_KEYS.DOCUMENTS, []).length,
+          documents: getLocal<DocumentFile[]>(STORAGE_KEYS.DOCUMENTS, []).length,
             auditLogs: getLocal<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []).length,
+            cashEntries: getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []).length,
           },
           snapshotsCount: 1,
           databaseFileSizeKb: 45,
         },
       },
     };
+  },
+
+  // -------------------------------------------------------------
+  // FINANCIAL INTEGRATION & CASH FLOW API (FLUXO DE CAIXA)
+  // -------------------------------------------------------------
+  async getCashEntries(
+    tenantId: string,
+    params?: { month?: string; type?: string; search?: string }
+  ): Promise<{ entries: CashEntry[]; effectiveSum: number; totalReceived: number; count: number }> {
+    const query = new URLSearchParams();
+    if (params?.month) query.set('month', params.month);
+    if (params?.type) query.set('type', params.type);
+    if (params?.search) query.set('search', params.search);
+
+    const qs = query.toString();
+    const url = `/api/financial/cash-entries${qs ? `?${qs}` : ''}`;
+    const serverRes = await tryFetch(url, {
+      headers: { 'x-tenant-id': tenantId },
+    });
+    if (serverRes) {
+      return serverRes.json();
+    }
+
+    // Local fallback
+    let list = getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []);
+    list = list.filter(e => !tenantId || e.tenantId === tenantId);
+    if (params?.month) {
+      list = list.filter(e => e.month === params.month);
+    }
+    if (params?.type && params.type !== 'ALL') {
+      list = list.filter(e => e.type === params.type);
+    }
+    if (params?.search) {
+      const q = params.search.toLowerCase();
+      list = list.filter(e =>
+        e.patientName?.toLowerCase().includes(q) ||
+        e.description?.toLowerCase().includes(q) ||
+        e.professionalName?.toLowerCase().includes(q)
+      );
+    }
+
+    const effectiveSum = list.reduce((acc, curr) => acc + (Number(curr.effectiveAmount) || 0), 0);
+    const totalReceived = list.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+
+    return {
+      entries: list,
+      effectiveSum,
+      totalReceived,
+      count: list.length,
+    };
+  },
+
+  async createCashEntry(tenantId: string, entryData: Partial<CashEntry>): Promise<CashEntry> {
+    const serverRes = await tryFetch('/api/financial/cash-entries', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-tenant-id': tenantId,
+      },
+      body: JSON.stringify({ ...entryData, tenantId }),
+    });
+    if (serverRes) {
+      return serverRes.json();
+    }
+
+    // Local fallback
+    const list = getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []);
+    const date = entryData.date || new Date().toISOString().split('T')[0];
+    const month = entryData.month || date.slice(0, 7);
+    const newEntry: CashEntry = {
+      id: entryData.id || `cash-${Date.now()}`,
+      tenantId,
+      type: entryData.type || 'SINGLE_SESSION',
+      originId: entryData.originId || `manual-${Date.now()}`,
+      packageId: entryData.packageId,
+      sessionNumber: entryData.sessionNumber,
+      description: entryData.description || 'Lançamento de Caixa',
+      patientId: entryData.patientId || '',
+      patientName: entryData.patientName || 'Paciente',
+      professionalId: entryData.professionalId,
+      professionalName: entryData.professionalName,
+      amount: Number(entryData.amount || 0),
+      effectiveAmount: Number(entryData.effectiveAmount ?? entryData.amount ?? 0),
+      date,
+      month,
+      category: entryData.category || 'Renda Extra',
+      section: entryData.section || 'MASSOTERAPIA',
+      syncedToExternal: false,
+      notes: entryData.notes,
+      createdAt: new Date().toISOString(),
+    };
+    list.unshift(newEntry);
+    setLocal(STORAGE_KEYS.CASH_ENTRIES, list);
+    return newEntry;
+  },
+
+  async getMonthlyFinancialSummary(tenantId: string, month?: string): Promise<any> {
+    const targetMonth = month || new Date().toISOString().slice(0, 7);
+    const serverRes = await tryFetch(`/api/financial/monthly-summary?month=${targetMonth}`, {
+      headers: { 'x-tenant-id': tenantId },
+    });
+    if (serverRes) {
+      return serverRes.json();
+    }
+
+    // Local fallback
+    const list = getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []).filter(
+      e => (!tenantId || e.tenantId === tenantId) && e.month === targetMonth
+    );
+    const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    const tenant = tenants.find(t => t.id === tenantId) || tenants[0];
+    const totalMonthReceived = list.reduce((acc, curr) => acc + (Number(curr.effectiveAmount) || 0), 0);
+
+    return {
+      month: targetMonth,
+      monthFormatted: targetMonth,
+      category: tenant?.financialConfig?.category || 'Renda Extra',
+      section: tenant?.financialConfig?.section || 'MASSOTERAPIA',
+      totalMonthReceived,
+      totalEntriesCount: list.length,
+      singleSessionsCount: list.filter(e => e.type === 'SINGLE_SESSION').length,
+      packagesCount: list.filter(e => e.type === 'PACKAGE').length,
+      packageSessionsZeroCount: list.filter(e => e.type === 'PACKAGE_SESSION' && e.effectiveAmount === 0).length,
+      pendingSyncCount: list.filter(e => e.effectiveAmount > 0 && !e.syncedToExternal).length,
+      integrationConfigured: Boolean(tenant?.financialConfig?.endpointUrl),
+      integrationEnabled: Boolean(tenant?.financialConfig?.enabled),
+      endpointUrl: tenant?.financialConfig?.endpointUrl || '',
+      lastSyncAt: tenant?.financialConfig?.lastSyncAt,
+      lastSyncStatus: tenant?.financialConfig?.lastSyncStatus || 'IDLE',
+      lastSyncMessage: tenant?.financialConfig?.lastSyncMessage,
+    };
+  },
+
+  async testFinancialConnection(config: {
+    endpointUrl: string;
+    accessEmail?: string;
+    accessPassword?: string;
+    category?: string;
+    section?: string;
+    alsoAddToSalary?: boolean;
+  }): Promise<{ success: boolean; message: string; status?: number }> {
+    const serverRes = await tryFetch('/api/financial/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    if (serverRes) {
+      return serverRes.json();
+    }
+
+    // Direct client-side ping if backend unreachable
+    try {
+      const email = config.accessEmail || 'osaiasbrito@gmail.com';
+      const password = config.accessPassword || 'Ojf6994@#gestaoPessoas';
+      const category = config.category || 'MASSOTERAPIA';
+      const date = new Date().toISOString().substring(0, 10);
+
+      const res = await fetch(config.endpointUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(password ? { Authorization: `Bearer ${password}` } : {}),
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          amount: 150.00,
+          clientName: 'Teste de Conexão - Sistema Clínica',
+          description: 'Atendimento Massoterapia (Teste de Validação)',
+          category,
+          date,
+          alsoAddToSalary: config.alsoAddToSalary ?? true,
+          action: 'TESTE_CONEXAO',
+          section: config.section || 'MASSOTERAPIA',
+          timestamp: new Date().toISOString(),
+        }),
+      });
+
+      const resData = await res.json().catch(() => null);
+
+      return {
+        success: res.ok && (resData ? resData.success !== false : true),
+        status: res.status,
+        message: resData?.message || (res.ok
+          ? `Conexão bem sucedida (HTTP ${res.status}) com sistema externo!`
+          : `Sistema externo retornou HTTP ${res.status}`),
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Falha ao conectar: ${err.message || 'Erro de rede ou URL inacessível'}.`,
+      };
+    }
+  },
+
+  async syncCashEntry(tenantId: string, entryId: string): Promise<{ success: boolean; message?: string }> {
+    const serverRes = await tryFetch(`/api/financial/sync-entry/${entryId}`, {
+      method: 'POST',
+      headers: { 'x-tenant-id': tenantId },
+    });
+    if (serverRes) {
+      return serverRes.json();
+    }
+    return { success: false, message: 'Servidor indisponível para sincronização.' };
+  },
+
+  async syncAllPendingCashEntries(
+    tenantId: string
+  ): Promise<{ success: boolean; syncedCount: number; message: string }> {
+    const serverRes = await tryFetch('/api/financial/sync-all-pending', {
+      method: 'POST',
+      headers: { 'x-tenant-id': tenantId },
+    });
+    if (serverRes) {
+      return serverRes.json();
+    }
+    return { success: false, syncedCount: 0, message: 'Servidor indisponível para sincronização em lote.' };
   },
 };

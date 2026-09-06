@@ -34,6 +34,49 @@ export interface Tenant {
     phoneNumberId?: string;
     status: 'CONFIGURED' | 'NOT_CONFIGURED';
   };
+  financialConfig?: FinancialIntegrationConfig;
+  createdAt: string;
+}
+
+export interface FinancialIntegrationConfig {
+  enabled: boolean;
+  endpointUrl: string; // Link para integrar o sistema (URL da API / Webhook)
+  accessEmail?: string; // Email de acesso (ex: osaiasbrito@gmail.com)
+  accessPassword?: string; // Senha de acesso para lançamentos (ex: Ojf6994@#gestaoPessoas)
+  category: string; // Categoria no sistema externo (Padrão: "MASSOTERAPIA" ou "Renda Extra")
+  section: string; // Seção / Subcategoria (Padrão: "MASSOTERAPIA")
+  alsoAddToSalary?: boolean; // Somar automaticamente ao Salário Mensal Fixo (padrão: true)
+  autoSync?: boolean;
+  lastSyncAt?: string;
+  lastSyncStatus?: 'SUCCESS' | 'ERROR' | 'IDLE';
+  lastSyncMessage?: string;
+}
+
+export type CashEntryType = 'SINGLE_SESSION' | 'PACKAGE' | 'PACKAGE_SESSION' | 'MANUAL' | 'MANUAL_ADJUSTMENT';
+
+export interface CashEntry {
+  id: string;
+  tenantId: string;
+  type: CashEntryType;
+  originId?: string;
+  referenceId?: string;
+  packageId?: string;
+  sessionNumber?: number;
+  description: string;
+  patientId?: string;
+  patientName: string;
+  professionalId?: string;
+  professionalName?: string;
+  amount: number;
+  effectiveAmount: number; // 0 para sessões 2+ de pacote para não duplicar no caixa
+  date: string; // YYYY-MM-DD
+  month: string; // YYYY-MM
+  category: string; // "Renda Extra"
+  section: string; // "MASSOTERAPIA"
+  syncedToExternal: boolean;
+  syncedAt?: string;
+  syncError?: string;
+  notes?: string;
   createdAt: string;
 }
 
@@ -373,6 +416,7 @@ export interface DbConnectionTestResult {
         signatures: number;
         documents: number;
         auditLogs: number;
+        cashEntries?: number;
       };
       snapshotsCount: number;
       databaseFileSizeKb?: number;

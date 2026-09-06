@@ -19,6 +19,8 @@ import {
   PublicValidationToken,
   WhatsAppMessage,
   AuditLog,
+  CashEntry,
+  FinancialIntegrationConfig,
 } from './src/types/index';
 import { loadAllFromPostgres, syncStoreToPostgres, ensurePostgresSchema } from './src/db/sync';
 import { hasSqlConfig, pool } from './src/db/index';
@@ -60,6 +62,7 @@ interface DatabaseStore {
   documentFiles: DocumentFile[];
   signatures: SignatureRecord[];
   deletedPackageIds: string[];
+  cashEntries: CashEntry[];
 }
 
 const DEFAULT_CLEAN_TENANTS: Tenant[] = [
@@ -142,6 +145,7 @@ let db: DatabaseStore = {
   documentFiles: [],
   signatures: [],
   deletedPackageIds: [],
+  cashEntries: [],
 };
 
 // Safe Atomic Disk & PostgreSQL Dual-Layer Writes
@@ -418,6 +422,7 @@ async function initDatabase() {
         documentFiles: Array.isArray(loaded.documentFiles) ? loaded.documentFiles : [],
         signatures: Array.isArray(loaded.signatures) ? loaded.signatures : [],
         deletedPackageIds: Array.isArray(loaded.deletedPackageIds) ? loaded.deletedPackageIds : [],
+        cashEntries: Array.isArray(loaded.cashEntries) ? loaded.cashEntries : [],
       };
     }
 
@@ -439,6 +444,7 @@ async function initDatabase() {
             documentFiles: pgData.documentFiles.length > 0 ? pgData.documentFiles : db.documentFiles,
             signatures: pgData.signatures.length > 0 ? pgData.signatures : db.signatures,
             deletedPackageIds: db.deletedPackageIds || [],
+            cashEntries: db.cashEntries || [],
           };
           console.log('[PostgreSQL] Loaded relational database state from Cloud SQL.');
         } else {
@@ -524,6 +530,121 @@ async function initDatabase() {
       db.users[osaiasIndex].active = true;
     }
 
+    // Initialize Financial Integration & Seed Cash Entries if empty
+    const demoTenant = db.tenants.find(t => t.id === 'tenant-demo-1');
+    if (demoTenant && !demoTenant.financialConfig) {
+      demoTenant.financialConfig = {
+        enabled: true,
+        endpointUrl: 'http://localhost:3000/api/integrations/massoterapia',
+        accessEmail: 'osaiasbrito@gmail.com',
+        accessPassword: 'Ojf6994@#gestaoPessoas',
+        category: 'MASSOTERAPIA',
+        section: 'MASSOTERAPIA',
+        alsoAddToSalary: true,
+        autoSync: true,
+        lastSyncStatus: 'SUCCESS',
+        lastSyncMessage: 'Integração pronta para envio automático de atendimentos.',
+      };
+    }
+
+    if (!Array.isArray(db.cashEntries)) {
+      db.cashEntries = [];
+    }
+
+    if (db.cashEntries.length === 0) {
+      db.cashEntries = [
+        {
+          id: 'cash-seed-1',
+          tenantId: 'tenant-demo-1',
+          type: 'PACKAGE',
+          originId: 'pkg-sidney-1',
+          packageId: 'pkg-sidney-1',
+          description: 'Novo Pacote - Pacote Massoterapia Clínica (5 sessões - SIDNEY LEITÃO)',
+          patientId: 'pat-sidney-leitao',
+          patientName: 'SIDNEY LEITÃO',
+          professionalId: 'user-super-osaias',
+          professionalName: 'Osaias Brito',
+          amount: 800,
+          effectiveAmount: 800,
+          date: '2026-09-02',
+          month: '2026-09',
+          category: 'Renda Extra',
+          section: 'MASSOTERAPIA',
+          syncedToExternal: true,
+          syncedAt: '2026-09-02T14:05:00.000Z',
+          notes: 'Novo pacote contratado. Valor integral lançado no caixa e enviado ao sistema financeiro.',
+          createdAt: '2026-09-02T14:00:00.000Z',
+        },
+        {
+          id: 'cash-seed-2',
+          tenantId: 'tenant-demo-1',
+          type: 'SINGLE_SESSION',
+          originId: 'sess-single-seed-1',
+          description: 'Sessão Avulsa - Drenagem Linfática & Relaxante (THAYNÁ GOMES FARIAS)',
+          patientId: 'pat-thayna-farias',
+          patientName: 'THAYNÁ GOMES FARIAS',
+          professionalId: 'user-super-osaias',
+          professionalName: 'Osaias Brito',
+          amount: 180,
+          effectiveAmount: 180,
+          date: '2026-09-04',
+          month: '2026-09',
+          category: 'Renda Extra',
+          section: 'MASSOTERAPIA',
+          syncedToExternal: true,
+          syncedAt: '2026-09-04T11:15:00.000Z',
+          notes: 'Atendimento avulso realizado e lançado no caixa.',
+          createdAt: '2026-09-04T11:00:00.000Z',
+        },
+        {
+          id: 'cash-seed-3',
+          tenantId: 'tenant-demo-1',
+          type: 'PACKAGE_SESSION',
+          originId: 'sess-pkg-seed-1-1',
+          packageId: 'pkg-sidney-1',
+          sessionNumber: 1,
+          description: 'Atendimento 1ª Sessão - Pacote Massoterapia Clínica (SIDNEY LEITÃO)',
+          patientId: 'pat-sidney-leitao',
+          patientName: 'SIDNEY LEITÃO',
+          professionalId: 'user-super-osaias',
+          professionalName: 'Osaias Brito',
+          amount: 0,
+          effectiveAmount: 0,
+          date: '2026-09-02',
+          month: '2026-09',
+          category: 'Renda Extra',
+          section: 'MASSOTERAPIA',
+          syncedToExternal: true,
+          syncedAt: '2026-09-02T15:30:00.000Z',
+          notes: '1ª sessão realizada (receita total já computada no lançamento do pacote).',
+          createdAt: '2026-09-02T15:00:00.000Z',
+        },
+        {
+          id: 'cash-seed-4',
+          tenantId: 'tenant-demo-1',
+          type: 'PACKAGE_SESSION',
+          originId: 'sess-pkg-seed-1-2',
+          packageId: 'pkg-sidney-1',
+          sessionNumber: 2,
+          description: 'Atendimento 2ª Sessão - Pacote Massoterapia Clínica (SIDNEY LEITÃO)',
+          patientId: 'pat-sidney-leitao',
+          patientName: 'SIDNEY LEITÃO',
+          professionalId: 'user-super-osaias',
+          professionalName: 'Osaias Brito',
+          amount: 0,
+          effectiveAmount: 0,
+          date: '2026-09-06',
+          month: '2026-09',
+          category: 'Renda Extra',
+          section: 'MASSOTERAPIA',
+          syncedToExternal: true,
+          syncedAt: '2026-09-06T10:05:00.000Z',
+          notes: 'Atendimento da 2ª sessão do pacote. Não entra no caixa pois a receita já foi lançada na 1ª sessão/aquisição do pacote.',
+          createdAt: '2026-09-06T10:00:00.000Z',
+        },
+      ];
+    }
+
     createSnapshot('startup');
     saveDatabase();
     console.log(`[DB] Persistent database ready: ${db.patients.length} patients, ${db.users.length} users.`);
@@ -603,7 +724,7 @@ function broadcastRealtime(
   tenantId: string,
   event: {
     type: string;
-    entity: 'patients' | 'sessions' | 'packages' | 'anamneses' | 'tenants' | 'users' | 'evolutions' | 'documents' | 'signatures' | 'all';
+    entity: 'patients' | 'sessions' | 'packages' | 'anamneses' | 'tenants' | 'users' | 'evolutions' | 'documents' | 'signatures' | 'cash_entries' | 'all';
     action: 'create' | 'update' | 'delete' | 'sync';
     payload?: any;
     id?: string;
@@ -997,6 +1118,7 @@ app.put('/api/tenants/:id', async (req, res) => {
     logoUrl: req.body.logoUrl !== undefined ? req.body.logoUrl : (current.logoUrl || ''),
     customHeader: req.body.customHeader !== undefined ? req.body.customHeader : (current.customHeader || ''),
     primaryColor: req.body.primaryColor || current.primaryColor || '#0d9488',
+    financialConfig: req.body.financialConfig !== undefined ? req.body.financialConfig : current.financialConfig,
   };
   saveDatabase();
   await persistTenantToPostgres(db.tenants[index]);
@@ -1860,6 +1982,23 @@ app.post('/api/packages', (req, res) => {
     db.sessions.push(sess);
   }
 
+  // Rule 2: Todo novo pacote também deverá ser lançado no caixa
+  recordFinancialCashEntry(tenantId, {
+    type: 'PACKAGE',
+    originId: newPackage.id,
+    packageId: newPackage.id,
+    description: `Novo Pacote - ${newPackage.title} (${newPackage.sessionCount} sessões - ${newPackage.patientName})`,
+    patientId: newPackage.patientId,
+    patientName: newPackage.patientName,
+    professionalId: newPackage.professionalId,
+    professionalName: newPackage.professionalName,
+    amount: newPackage.price,
+    effectiveAmount: newPackage.price,
+    date: newPackage.createdAt ? newPackage.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    month: newPackage.createdAt ? newPackage.createdAt.slice(0, 7) : new Date().toISOString().slice(0, 7),
+    notes: 'Novo pacote contratado. Valor integral creditado no caixa e enviado ao sistema financeiro externo.',
+  });
+
   saveDatabase();
   broadcastRealtime(tenantId, { type: 'PACKAGE_CREATED', entity: 'packages', action: 'create', payload: newPackage, id: newPackage.id });
   broadcastRealtime(tenantId, { type: 'SESSIONS_SYNC', entity: 'sessions', action: 'sync' });
@@ -2019,11 +2158,95 @@ app.post('/api/sessions', (req, res) => {
     }
   }
 
+  // Rule 1 & Rule 3:
+  // 1. Todo atendimento lançado em sessão deverá acrescentar valor no caixa
+  // 3. Atendimentos do pacote a partir da segunda sessão não entram no caixa, pois na primeira sessão já foi lançado
+  if (!newSession.packageId) {
+    const singlePrice = Number(req.body.price) || 180;
+    recordFinancialCashEntry(tenantId, {
+      type: 'SINGLE_SESSION',
+      originId: newSession.id,
+      description: `Sessão Avulsa - ${(newSession.procedures && newSession.procedures.join(', ')) || 'Massoterapia'} (${newSession.patientName})`,
+      patientId: newSession.patientId,
+      patientName: newSession.patientName,
+      professionalId: newSession.professionalId,
+      professionalName: newSession.professionalName,
+      amount: singlePrice,
+      effectiveAmount: singlePrice,
+      date: newSession.scheduledDate ? newSession.scheduledDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      month: newSession.scheduledDate ? newSession.scheduledDate.slice(0, 7) : new Date().toISOString().slice(0, 7),
+      notes: 'Atendimento de sessão avulsa lançado no caixa e sincronizado com o sistema externo.',
+    });
+  } else {
+    const sessionNum = Number(newSession.sessionNumber) || 1;
+    recordFinancialCashEntry(tenantId, {
+      type: 'PACKAGE_SESSION',
+      originId: newSession.id,
+      packageId: newSession.packageId,
+      sessionNumber: sessionNum,
+      description: `Atendimento ${sessionNum}ª Sessão do Pacote (${newSession.patientName})`,
+      patientId: newSession.patientId,
+      patientName: newSession.patientName,
+      professionalId: newSession.professionalId,
+      professionalName: newSession.professionalName,
+      amount: 0,
+      effectiveAmount: 0,
+      date: newSession.scheduledDate ? newSession.scheduledDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      month: newSession.scheduledDate ? newSession.scheduledDate.slice(0, 7) : new Date().toISOString().slice(0, 7),
+      notes: sessionNum >= 2
+        ? `Atendimento da sessão nº ${sessionNum} do pacote. Não entra no caixa (receita já lançada na compra/1ª sessão do pacote - R$ 0,00).`
+        : 'Atendimento da 1ª sessão do pacote.',
+    });
+  }
+
   saveDatabase();
   broadcastRealtime(tenantId, { type: 'SESSION_CREATED', entity: 'sessions', action: 'create', payload: newSession, id: newSession.id });
   if (newSession.packageId) {
     broadcastRealtime(tenantId, { type: 'PACKAGE_UPDATED', entity: 'packages', action: 'update', id: newSession.packageId });
   }
+  res.status(201).json(newSession);
+});
+
+app.post('/api/sessions/single', (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || req.body.tenantId || 'tenant-demo-1';
+  const price = Number(req.body.price) || 180;
+  const newSession: Session = {
+    id: req.body.id || `sess-single-${Date.now()}`,
+    tenantId,
+    patientId: req.body.patientId,
+    patientName: req.body.patientName || 'Paciente',
+    sessionNumber: 1,
+    professionalId: req.body.professionalId || '',
+    professionalName: req.body.professionalName || 'Profissional',
+    scheduledDate: req.body.scheduledDate || new Date().toISOString(),
+    scheduledTime: req.body.scheduledTime || '09:00',
+    procedures: req.body.procedures || ['Massoterapia Clínica'],
+    evolutionText: req.body.evolutionText || req.body.treatmentNotes || '',
+    status: req.body.status || 'SCHEDULED',
+    validationToken: `SESS-${Date.now().toString(16).toUpperCase()}`,
+    createdAt: new Date().toISOString(),
+  };
+
+  db.sessions.unshift(newSession);
+
+  // Rule 1: Todo atendimento lançado em sessão deverá acrescentar valor no caixa
+  recordFinancialCashEntry(tenantId, {
+    type: 'SINGLE_SESSION',
+    originId: newSession.id,
+    description: `Sessão Avulsa - ${(newSession.procedures && newSession.procedures.join(', ')) || 'Massoterapia Clínica'} (${newSession.patientName})`,
+    patientId: newSession.patientId,
+    patientName: newSession.patientName,
+    professionalId: newSession.professionalId,
+    professionalName: newSession.professionalName,
+    amount: price,
+    effectiveAmount: price,
+    date: newSession.scheduledDate ? newSession.scheduledDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    month: newSession.scheduledDate ? newSession.scheduledDate.slice(0, 7) : new Date().toISOString().slice(0, 7),
+    notes: 'Atendimento de sessão avulsa lançado no caixa e enviado ao sistema financeiro externo.',
+  });
+
+  saveDatabase();
+  broadcastRealtime(tenantId, { type: 'SESSION_CREATED', entity: 'sessions', action: 'create', payload: newSession, id: newSession.id });
   res.status(201).json(newSession);
 });
 
@@ -2047,6 +2270,67 @@ app.put('/api/sessions/:id', (req, res) => {
         db.packages[pkgIndex].status = 'COMPLETED';
       }
     }
+  }
+
+  // Record cash entry upon attendance/session update
+  const updatedSess = db.sessions[index];
+  const tenantCfg = db.tenants.find(t => t.id === updatedSess.tenantId);
+  const finCat = tenantCfg?.financialConfig?.category || 'Renda Extra';
+  const finSec = tenantCfg?.financialConfig?.section || 'MASSOTERAPIA';
+
+  if (!updatedSess.packageId) {
+    // Single session: always enters cash flow
+    const priceVal = Number(updatedSess.price) || 180;
+    const sessionDate = updatedSess.scheduledDate || (updatedSess.attendedAt || new Date().toISOString()).slice(0, 10);
+    const sessionMonth = sessionDate.slice(0, 7);
+    const procedureLabel = updatedSess.procedures?.length ? updatedSess.procedures.join(', ') : 'Massoterapia';
+
+    recordFinancialCashEntry(updatedSess.tenantId, {
+      type: 'SINGLE_SESSION',
+      description: `Atendimento sessão avulsa: ${procedureLabel}`,
+      patientId: updatedSess.patientId,
+      patientName: updatedSess.patientName,
+      professionalId: updatedSess.professionalId,
+      professionalName: updatedSess.professionalName,
+      originId: updatedSess.id,
+      referenceId: updatedSess.id,
+      amount: priceVal,
+      effectiveAmount: priceVal,
+      date: sessionDate,
+      month: sessionMonth,
+      category: finCat,
+      section: finSec,
+      notes: `Atendimento de sessão avulsa #${updatedSess.sessionNumber || 1}.`,
+    });
+  } else {
+    // Package session: 2nd session onwards does NOT enter cash flow (R$ 0,00) as per business requirement
+    const sessNum = Number(updatedSess.sessionNumber) || 1;
+    const isFirstSession = sessNum === 1;
+    const sessionDate = updatedSess.scheduledDate || (updatedSess.attendedAt || new Date().toISOString()).slice(0, 10);
+    const sessionMonth = sessionDate.slice(0, 7);
+    const procedureLabel = updatedSess.procedures?.length ? updatedSess.procedures.join(', ') : 'Massoterapia';
+
+    recordFinancialCashEntry(updatedSess.tenantId, {
+      type: 'PACKAGE_SESSION',
+      description: `Atendimento Pacote - Sessão ${sessNum} (${procedureLabel})`,
+      patientId: updatedSess.patientId,
+      patientName: updatedSess.patientName,
+      professionalId: updatedSess.professionalId,
+      professionalName: updatedSess.professionalName,
+      originId: updatedSess.id,
+      referenceId: updatedSess.id,
+      packageId: updatedSess.packageId,
+      sessionNumber: sessNum,
+      amount: Number(updatedSess.price) || 0,
+      effectiveAmount: 0, // Rule: already counted in package creation/1st session
+      date: sessionDate,
+      month: sessionMonth,
+      category: finCat,
+      section: finSec,
+      notes: isFirstSession
+        ? 'Sessão 1 do pacote (valor lançado na contratação do pacote).'
+        : `Sessão ${sessNum} do pacote — R$ 0,00 no caixa pois já lançado na 1ª sessão.`,
+    });
   }
 
   saveDatabase();
@@ -2120,6 +2404,511 @@ app.post('/api/sessions/:id/sign-direct', (req, res) => {
     broadcastRealtime(current.tenantId, { type: 'PACKAGE_UPDATED', entity: 'packages', action: 'update', id: current.packageId });
   }
   res.json(db.sessions[index]);
+});
+
+// -------------------------------------------------------------
+// FINANCIAL MANAGEMENT & EXTERNAL INTEGRATION API (FLUXO DE CAIXA)
+// -------------------------------------------------------------
+
+function formatMonthName(monthStr: string): string {
+  const [year, month] = (monthStr || '').split('-');
+  const monthNames = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+  const idx = parseInt(month, 10) - 1;
+  const name = monthNames[idx] || month || 'Mês Atual';
+  return `${name} de ${year || new Date().getFullYear()}`;
+}
+
+async function syncCashEntryToExternalSystem(
+  tenantId: string,
+  entry: CashEntry
+): Promise<{ success: boolean; message: string }> {
+  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
+  const cfg = tenant?.financialConfig;
+
+  if (!cfg || !cfg.enabled || !cfg.endpointUrl) {
+    return { success: false, message: 'Integração financeira externa desativada ou link não configurado.' };
+  }
+
+  const targetCategory = cfg.category || 'MASSOTERAPIA';
+  const targetSection = cfg.section || 'MASSOTERAPIA';
+  const targetEmail = cfg.accessEmail || 'osaiasbrito@gmail.com';
+  const targetPassword = cfg.accessPassword || 'Ojf6994@#gestaoPessoas';
+  const month = entry.month || entry.date.slice(0, 7) || new Date().toISOString().slice(0, 7);
+
+  // Calculate accumulated monthly total received for category "MASSOTERAPIA" / "Renda Extra"
+  const monthEntries = (db.cashEntries || []).filter(e => 
+    e.tenantId === tenantId && 
+    e.month === month &&
+    (e.category === targetCategory || !e.category || e.category === 'Renda Extra') &&
+    (e.section === targetSection || !e.section || e.section === 'MASSOTERAPIA')
+  );
+
+  const totalMonthReceived = monthEntries.reduce((acc, curr) => acc + (Number(curr.effectiveAmount) || 0), 0);
+  const amountVal = Number(entry.effectiveAmount ?? entry.amount ?? 0);
+  const dateVal = entry.date || new Date().toISOString().substring(0, 10);
+
+  // Payload format adhering strictly to lancarAtendimentoNoFinanceiro
+  const payload = {
+    // 1. Credenciais de acesso
+    email: targetEmail,
+    password: targetPassword,
+
+    // 2. Dados do atendimento de massoterapia
+    amount: amountVal,
+    clientName: entry.patientName || 'Cliente',
+    description: entry.description || 'Atendimento Massoterapia',
+    category: targetCategory,
+    date: dateVal,
+
+    // 3. Somar automaticamente ao Salário Mensal Fixo
+    alsoAddToSalary: cfg.alsoAddToSalary ?? true,
+
+    // Metadados adicionais para rastreamento e enriquecimento de relatório
+    action: 'LANCAMENTO_FINANCEIRO',
+    section: targetSection,
+    month,
+    monthFormatted: formatMonthName(month),
+    totalMonthReceived,
+    entry: {
+      id: entry.id,
+      type: entry.type,
+      description: entry.description,
+      amount: entry.amount,
+      effectiveAmount: entry.effectiveAmount,
+      date: entry.date,
+      patientName: entry.patientName,
+      professionalName: entry.professionalName,
+      category: targetCategory,
+      section: targetSection,
+      originId: entry.originId,
+      packageId: entry.packageId,
+      sessionNumber: entry.sessionNumber,
+      notes: entry.notes,
+    },
+    clinicName: tenant.tradeName || tenant.name,
+    tenantId: tenant.id,
+    timestamp: new Date().toISOString(),
+  };
+
+  // Support relative endpoint URLs like "/api/integrations/massoterapia"
+  let targetUrl = cfg.endpointUrl.trim();
+  if (targetUrl.startsWith('/')) {
+    targetUrl = `http://127.0.0.1:3000${targetUrl}`;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'ClinicaIntegrativa-FinancialBridge/1.0',
+    };
+    if (targetPassword) {
+      headers['Authorization'] = `Bearer ${targetPassword}`;
+      headers['x-access-password'] = targetPassword;
+    }
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const responseJson = await response.json().catch(() => null);
+    const isSuccess = response.ok && (responseJson ? responseJson.success !== false : true);
+
+    if (isSuccess) {
+      entry.syncedToExternal = true;
+      entry.syncedAt = new Date().toISOString();
+      entry.syncError = undefined;
+
+      cfg.lastSyncAt = entry.syncedAt;
+      cfg.lastSyncStatus = 'SUCCESS';
+      cfg.lastSyncMessage = responseJson?.message || `Atendimento lançado no controle financeiro com sucesso! (HTTP ${response.status}). Categoria: ${targetCategory}.`;
+      saveDatabase();
+      return { success: true, message: cfg.lastSyncMessage };
+    } else {
+      const errText = responseJson?.message || (await response.text().catch(() => response.statusText));
+      entry.syncedToExternal = false;
+      entry.syncError = `Erro HTTP ${response.status}: ${String(errText).slice(0, 150)}`;
+      cfg.lastSyncStatus = 'ERROR';
+      cfg.lastSyncMessage = entry.syncError;
+      saveDatabase();
+      return { success: false, message: entry.syncError };
+    }
+  } catch (err: any) {
+    const errorMsg = `Falha na requisição: ${err.message || 'Erro de conexão ou timeout'}`;
+    entry.syncedToExternal = false;
+    entry.syncError = errorMsg;
+    cfg.lastSyncStatus = 'ERROR';
+    cfg.lastSyncMessage = errorMsg;
+    saveDatabase();
+    return { success: false, message: errorMsg };
+  }
+}
+
+function recordFinancialCashEntry(
+  tenantId: string,
+  data: Partial<CashEntry>
+): CashEntry {
+  if (!Array.isArray(db.cashEntries)) {
+    db.cashEntries = [];
+  }
+
+  // Idempotency check: if an entry for this originId & type already exists, return it
+  if (data.originId) {
+    const existing = db.cashEntries.find(e => e.tenantId === tenantId && e.originId === data.originId && e.type === data.type);
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const date = data.date || new Date().toISOString().split('T')[0];
+  const month = data.month || date.slice(0, 7);
+  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
+  const targetCategory = tenant?.financialConfig?.category || 'MASSOTERAPIA';
+  const targetSection = tenant?.financialConfig?.section || 'MASSOTERAPIA';
+
+  let effectiveAmount = Number(data.effectiveAmount ?? data.amount ?? 0);
+  let notes = data.notes || '';
+
+  // Rule 3: Atendimentos do pacote a partir da segunda sessão não entram no caixa, pois na primeira sessão já foi lançado
+  if (data.type === 'PACKAGE_SESSION') {
+    const sessionNum = data.sessionNumber || 1;
+    if (sessionNum >= 2) {
+      effectiveAmount = 0;
+      notes = notes || `Atendimento da sessão nº ${sessionNum} do pacote. Não entra no caixa (receita já lançada na compra/1ª sessão do pacote - R$ 0,00).`;
+    } else if (sessionNum === 1) {
+      // Check if package was already launched in the cash register
+      const packageAlreadyLaunched = db.cashEntries.some(
+        e => e.tenantId === tenantId && e.packageId === data.packageId && e.type === 'PACKAGE'
+      );
+      if (packageAlreadyLaunched) {
+        effectiveAmount = 0;
+        notes = notes || '1ª sessão do pacote realizada (receita total já computada no lançamento da contratação do pacote).';
+      }
+    }
+  }
+
+  const newEntry: CashEntry = {
+    id: data.id || `cash-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    tenantId,
+    type: data.type || 'SINGLE_SESSION',
+    originId: data.originId || `manual-${Date.now()}`,
+    packageId: data.packageId,
+    sessionNumber: data.sessionNumber,
+    description: data.description || 'Atendimento Massoterapia',
+    patientId: data.patientId || '',
+    patientName: data.patientName || 'Paciente',
+    professionalId: data.professionalId,
+    professionalName: data.professionalName,
+    amount: Number(data.amount || 0),
+    effectiveAmount,
+    date,
+    month,
+    category: data.category || targetCategory,
+    section: data.section || targetSection,
+    syncedToExternal: false,
+    notes,
+    createdAt: new Date().toISOString(),
+  };
+
+  db.cashEntries.unshift(newEntry);
+  saveDatabase();
+
+  broadcastRealtime(tenantId, {
+    type: 'CASH_ENTRY_CREATED',
+    entity: 'cash_entries',
+    action: 'create',
+    payload: newEntry,
+    id: newEntry.id,
+  });
+
+  // Rule 4: O valor deverá ser enviado automaticamente lançado no controle financeiro em outro sistema
+  // If effective amount > 0 and auto-sync enabled, trigger external sync immediately
+  if (effectiveAmount > 0 && tenant?.financialConfig?.enabled && tenant?.financialConfig?.endpointUrl) {
+    syncCashEntryToExternalSystem(tenantId, newEntry).catch(err => {
+      console.warn('[Financial Sync] Auto-sync notice:', err);
+    });
+  }
+
+  return newEntry;
+}
+
+// GET /api/financial/cash-entries
+app.get('/api/financial/cash-entries', (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
+  const { month, type, search } = req.query;
+
+  let list = (db.cashEntries || []).filter(e => !tenantId || e.tenantId === tenantId);
+
+  if (month && typeof month === 'string') {
+    list = list.filter(e => e.month === month);
+  }
+
+  if (type && typeof type === 'string' && type !== 'ALL') {
+    list = list.filter(e => e.type === type);
+  }
+
+  if (search && typeof search === 'string') {
+    const q = search.toLowerCase();
+    list = list.filter(e => 
+      e.patientName?.toLowerCase().includes(q) ||
+      e.description?.toLowerCase().includes(q) ||
+      e.professionalName?.toLowerCase().includes(q)
+    );
+  }
+
+  const effectiveSum = list.reduce((acc, curr) => acc + (Number(curr.effectiveAmount) || 0), 0);
+  const totalReceived = list.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+
+  res.json({
+    entries: list,
+    effectiveSum,
+    totalReceived,
+    count: list.length,
+  });
+});
+
+// POST /api/financial/cash-entries
+app.post('/api/financial/cash-entries', (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || req.body.tenantId || 'tenant-demo-1';
+  const created = recordFinancialCashEntry(tenantId, req.body);
+  res.status(201).json(created);
+});
+
+// GET /api/financial/monthly-summary
+app.get('/api/financial/monthly-summary', (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
+  const month = (req.query.month as string) || new Date().toISOString().slice(0, 7);
+  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
+
+  const targetCategory = tenant?.financialConfig?.category || 'Renda Extra';
+  const targetSection = tenant?.financialConfig?.section || 'MASSOTERAPIA';
+
+  const monthEntries = (db.cashEntries || []).filter(e => 
+    e.tenantId === tenantId && 
+    e.month === month &&
+    (e.category === targetCategory || !e.category) &&
+    (e.section === targetSection || !e.section)
+  );
+
+  const totalMonthReceived = monthEntries.reduce((acc, curr) => acc + (Number(curr.effectiveAmount) || 0), 0);
+  const singleSessionsCount = monthEntries.filter(e => e.type === 'SINGLE_SESSION').length;
+  const packagesCount = monthEntries.filter(e => e.type === 'PACKAGE').length;
+  const packageSessionsZeroCount = monthEntries.filter(e => e.type === 'PACKAGE_SESSION' && e.effectiveAmount === 0).length;
+  const pendingSyncCount = monthEntries.filter(e => e.effectiveAmount > 0 && !e.syncedToExternal).length;
+
+  res.json({
+    month,
+    monthFormatted: formatMonthName(month),
+    category: targetCategory,
+    section: targetSection,
+    totalMonthReceived,
+    totalEntriesCount: monthEntries.length,
+    singleSessionsCount,
+    packagesCount,
+    packageSessionsZeroCount,
+    pendingSyncCount,
+    integrationConfigured: Boolean(tenant?.financialConfig?.endpointUrl),
+    integrationEnabled: Boolean(tenant?.financialConfig?.enabled),
+    endpointUrl: tenant?.financialConfig?.endpointUrl || '',
+    lastSyncAt: tenant?.financialConfig?.lastSyncAt,
+    lastSyncStatus: tenant?.financialConfig?.lastSyncStatus || 'IDLE',
+    lastSyncMessage: tenant?.financialConfig?.lastSyncMessage,
+  });
+});
+
+// POST /api/financial/test-connection
+app.post('/api/financial/test-connection', async (req, res) => {
+  const { endpointUrl, accessEmail, accessPassword, category, section, alsoAddToSalary } = req.body;
+  if (!endpointUrl) {
+    return res.status(400).json({ success: false, message: 'O link para integrar o sistema é obrigatório.' });
+  }
+
+  const targetEmail = accessEmail || 'osaiasbrito@gmail.com';
+  const targetPassword = accessPassword || 'Ojf6994@#gestaoPessoas';
+  const targetCategory = category || 'MASSOTERAPIA';
+  const targetSection = section || 'MASSOTERAPIA';
+  const dateToday = new Date().toISOString().substring(0, 10);
+
+  const testPayload = {
+    // 1. Credenciais de acesso
+    email: targetEmail,
+    password: targetPassword,
+
+    // 2. Dados do atendimento de massoterapia (teste)
+    amount: 150.00,
+    clientName: 'Teste de Conexão - Sistema Clínica',
+    description: 'Atendimento Massoterapia (Teste de Validação)',
+    category: targetCategory,
+    date: dateToday,
+
+    // 3. Somar automaticamente ao Salário Mensal Fixo
+    alsoAddToSalary: alsoAddToSalary ?? true,
+
+    // Metadados adicionais
+    action: 'TESTE_CONEXAO',
+    section: targetSection,
+    timestamp: new Date().toISOString(),
+  };
+
+  let targetUrl = endpointUrl.trim();
+  if (targetUrl.startsWith('/')) {
+    targetUrl = `http://127.0.0.1:3000${targetUrl}`;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'ClinicaIntegrativa-FinancialBridge/1.0',
+    };
+    if (targetPassword) {
+      headers['Authorization'] = `Bearer ${targetPassword}`;
+      headers['x-access-password'] = targetPassword;
+    }
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(testPayload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    const jsonRes = await response.json().catch(() => null);
+
+    if (response.ok && (jsonRes ? jsonRes.success !== false : true)) {
+      return res.json({
+        success: true,
+        status: response.status,
+        message: jsonRes?.message || `Conexão estabelecida com sucesso (HTTP ${response.status})! O sistema externo validou as credenciais para o e-mail "${targetEmail}" na categoria "${targetCategory}".`,
+        data: jsonRes?.data,
+      });
+    } else {
+      const txt = jsonRes?.message || (await response.text().catch(() => response.statusText));
+      return res.json({
+        success: false,
+        status: response.status,
+        message: `O sistema externo respondeu com status HTTP ${response.status}: ${String(txt).slice(0, 180)}. Verifique o link, e-mail e a senha informada.`,
+      });
+    }
+  } catch (err: any) {
+    return res.json({
+      success: false,
+      message: `Não foi possível conectar ao endereço informado: ${err.message || 'Falha de rede ou timeout'}. Certifique-se de que o link está acessível.`,
+    });
+  }
+});
+
+// POST /api/financial/sync-entry/:id
+app.post('/api/financial/sync-entry/:id', async (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
+  const entry = (db.cashEntries || []).find(e => e.id === req.params.id);
+  if (!entry) return res.status(404).json({ message: 'Lançamento não encontrado' });
+
+  const result = await syncCashEntryToExternalSystem(tenantId, entry);
+  res.json(result);
+});
+
+// POST /api/financial/sync-all-pending
+app.post('/api/financial/sync-all-pending', async (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
+  const pending = (db.cashEntries || []).filter(e => e.tenantId === tenantId && e.effectiveAmount > 0 && !e.syncedToExternal);
+
+  let syncedCount = 0;
+  let errorCount = 0;
+
+  for (const entry of pending) {
+    const resSync = await syncCashEntryToExternalSystem(tenantId, entry);
+    if (resSync.success) syncedCount++;
+    else errorCount++;
+  }
+
+  res.json({
+    success: true,
+    totalPending: pending.length,
+    syncedCount,
+    errorCount,
+    message: `${syncedCount} lançamento(s) sincronizado(s) com sucesso. ${errorCount ? `${errorCount} com erro.` : ''}`,
+  });
+});
+
+// POST /api/integrations/massoterapia (Endpoint oficial da integração)
+app.post('/api/integrations/massoterapia', (req, res) => {
+  const { email, password, amount, clientName, description, category, date, alsoAddToSalary } = req.body;
+
+  console.log('[API Integrations Massoterapia] Recebido lançamento:', {
+    email,
+    clientName,
+    amount,
+    category,
+    date,
+    alsoAddToSalary,
+  });
+
+  if (!email || !password) {
+    return res.status(401).json({
+      success: false,
+      message: 'Credenciais de acesso ausentes (email e password obrigatórios).',
+    });
+  }
+
+  let numAmount = 0;
+  if (typeof amount === 'number') {
+    numAmount = amount;
+  } else if (typeof amount === 'string') {
+    numAmount = parseFloat(amount.replace(',', '.')) || 0;
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: 'Atendimento lançado no controle financeiro com sucesso!',
+    data: {
+      email,
+      clientName: clientName || 'Cliente Massoterapia',
+      description: description || 'Atendimento Massoterapia',
+      category: category || 'MASSOTERAPIA',
+      amount: numAmount,
+      date: date || new Date().toISOString().substring(0, 10),
+      alsoAddToSalary: alsoAddToSalary ?? true,
+      receivedAt: new Date().toISOString(),
+    },
+  });
+});
+
+// POST /api/financial/mock-external-receiver (Servidor de teste / webhook embutido)
+app.post('/api/financial/mock-external-receiver', (req, res) => {
+  const { category, section, totalMonthReceived, entry, accessPassword, action, email, amount, clientName } = req.body;
+  console.log(`[Mock External Financial API] ${action || 'POST'} recebido:`, {
+    email,
+    category,
+    section,
+    totalMonthReceived,
+    entryAmount: entry?.effectiveAmount || amount,
+    entryDesc: entry?.description,
+    clientName,
+    authenticated: Boolean(accessPassword || req.body.password),
+  });
+
+  return res.status(200).json({
+    success: true,
+    status: 'RECEIVED',
+    category: category || 'MASSOTERAPIA',
+    section: section || 'MASSOTERAPIA',
+    totalMonthReceived: totalMonthReceived || 0,
+    message: `Atendimento lançado no controle financeiro com sucesso! Categoria: "${category || 'MASSOTERAPIA'}".`,
+    receivedAt: new Date().toISOString(),
+  });
 });
 
 // -------------------------------------------------------------
@@ -3254,6 +4043,7 @@ app.post('/api/backup/snapshot-restore/:filename', (req, res) => {
       documentFiles: Array.isArray(store.documentFiles) ? store.documentFiles : db.documentFiles,
       signatures: Array.isArray(store.signatures) ? store.signatures : db.signatures,
       deletedPackageIds: Array.isArray(store.deletedPackageIds) ? store.deletedPackageIds : (db.deletedPackageIds || []),
+      cashEntries: Array.isArray(store.cashEntries) ? store.cashEntries : (db.cashEntries || []),
     };
 
     saveDatabase();

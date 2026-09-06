@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Building2, Palette, MessageSquare, Check, Sparkles, Save, Headset, Mail, PhoneCall, Code2, Lock, Unlock, ShieldCheck, Database, Download, RefreshCw, Server, Activity, AlertCircle, Loader2, Image as ImageIcon, MapPin, Search, Plus, ExternalLink } from 'lucide-react';
+import { Settings, Building2, Palette, MessageSquare, Check, Sparkles, Save, Headset, Mail, PhoneCall, Code2, Lock, Unlock, ShieldCheck, Database, Download, RefreshCw, Server, Activity, AlertCircle, Loader2, Image as ImageIcon, MapPin, Search, Plus, ExternalLink, DollarSign, Eye, EyeOff, CheckCircle2, ArrowUpRight, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 import { formatCNPJ, formatPhone, formatCEP } from '../../utils/cpf';
 import { ImageUploadInput } from '../common/ImageUploadInput';
 import { DbConnectionTestModal } from '../database/DbConnectionTestModal';
@@ -57,6 +58,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
   const [supportEmail, setSupportEmail] = useState('');
   const [supportPhone, setSupportPhone] = useState('');
 
+  // Financial Integration Config (Sistema de Gestão Financeira)
+  const [financialEnabled, setFinancialEnabled] = useState(true);
+  const [financialEndpointUrl, setFinancialEndpointUrl] = useState('');
+  const [financialAccessEmail, setFinancialAccessEmail] = useState('osaiasbrito@gmail.com');
+  const [financialAccessPassword, setFinancialAccessPassword] = useState('Ojf6994@#gestaoPessoas');
+  const [showFinancialPassword, setShowFinancialPassword] = useState(false);
+  const [financialCategory, setFinancialCategory] = useState('MASSOTERAPIA');
+  const [financialSection, setFinancialSection] = useState('MASSOTERAPIA');
+  const [financialAlsoAddToSalary, setFinancialAlsoAddToSalary] = useState(true);
+  const [isTestingFinancial, setIsTestingFinancial] = useState(false);
+  const [financialTestResult, setFinancialTestResult] = useState<{ success: boolean; message: string; status?: number } | null>(null);
+  const [monthlySummary, setMonthlySummary] = useState<any>(null);
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [isSyncingPending, setIsSyncingPending] = useState(false);
+
   // Super User / Developer Edit Lock Mode
   const [isSuperUserMode, setIsSuperUserMode] = useState(false);
   const [isDbTestModalOpen, setIsDbTestModalOpen] = useState(false);
@@ -97,9 +113,80 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
         setWhatsappStatus(tenant.whatsappConfig?.status || 'NOT_CONFIGURED');
         setSupportEmail(tenant.supportEmail || 'suporte@fisiomassoterapia.com.br');
         setSupportPhone(tenant.supportPhone || '(11) 98765-4321');
+
+        // Financial config
+        setFinancialEnabled(tenant.financialConfig?.enabled ?? true);
+        setFinancialEndpointUrl(tenant.financialConfig?.endpointUrl || `${window.location.origin}/api/integrations/massoterapia`);
+        setFinancialAccessEmail(tenant.financialConfig?.accessEmail || 'osaiasbrito@gmail.com');
+        setFinancialAccessPassword(tenant.financialConfig?.accessPassword || 'Ojf6994@#gestaoPessoas');
+        setFinancialCategory(tenant.financialConfig?.category || 'MASSOTERAPIA');
+        setFinancialSection(tenant.financialConfig?.section || 'MASSOTERAPIA');
+        setFinancialAlsoAddToSalary(tenant.financialConfig?.alsoAddToSalary ?? true);
       }
     }
   }, [tenant, isDirty]);
+
+  // Load live monthly summary from financial system
+  const loadFinancialSummary = async () => {
+    if (!tenant) return;
+    setIsLoadingSummary(true);
+    try {
+      const summary = await api.getMonthlyFinancialSummary(tenant.id);
+      setMonthlySummary(summary);
+    } catch (err) {
+      console.warn('Erro ao carregar resumo financeiro:', err);
+    } finally {
+      setIsLoadingSummary(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tenant) {
+      loadFinancialSummary();
+    }
+  }, [tenant?.id]);
+
+  const handleTestFinancialConnection = async () => {
+    if (!financialEndpointUrl.trim()) {
+      alert('Por favor, informe o link do sistema externo para testar a integração.');
+      return;
+    }
+    setIsTestingFinancial(true);
+    setFinancialTestResult(null);
+    try {
+      const res = await api.testFinancialConnection({
+        endpointUrl: financialEndpointUrl.trim(),
+        accessEmail: financialAccessEmail.trim(),
+        accessPassword: financialAccessPassword.trim(),
+        category: financialCategory.trim() || 'MASSOTERAPIA',
+        section: financialSection.trim() || 'MASSOTERAPIA',
+        alsoAddToSalary: financialAlsoAddToSalary,
+      });
+      setFinancialTestResult(res);
+      await loadFinancialSummary();
+    } catch (err: any) {
+      setFinancialTestResult({
+        success: false,
+        message: `Falha no teste: ${err.message || 'Erro inesperado'}`,
+      });
+    } finally {
+      setIsTestingFinancial(false);
+    }
+  };
+
+  const handleSyncPending = async () => {
+    if (!tenant) return;
+    setIsSyncingPending(true);
+    try {
+      const res = await api.syncAllPendingCashEntries(tenant.id);
+      alert(res.message);
+      await loadFinancialSummary();
+    } catch (err: any) {
+      alert(`Falha ao sincronizar: ${err.message || 'Erro de rede'}`);
+    } finally {
+      setIsSyncingPending(false);
+    }
+  };
 
   const handleSearchCep = async (cepValue: string) => {
     const clean = cepValue.replace(/\D/g, '');
@@ -158,6 +245,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
           token: whatsappToken.trim(),
           phoneNumberId: whatsappPhoneId.trim(),
           status: whatsappToken.trim() ? 'CONFIGURED' : 'NOT_CONFIGURED',
+        },
+        financialConfig: {
+          enabled: financialEnabled,
+          endpointUrl: financialEndpointUrl.trim(),
+          accessEmail: financialAccessEmail.trim(),
+          accessPassword: financialAccessPassword.trim(),
+          category: financialCategory.trim() || 'MASSOTERAPIA',
+          section: financialSection.trim() || 'MASSOTERAPIA',
+          alsoAddToSalary: financialAlsoAddToSalary,
+          autoSync: true,
+          lastSyncAt: tenant.financialConfig?.lastSyncAt,
+          lastSyncStatus: tenant.financialConfig?.lastSyncStatus || 'IDLE',
+          lastSyncMessage: tenant.financialConfig?.lastSyncMessage,
         },
       });
 
@@ -653,11 +753,323 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
           </div>
         </div>
 
-        {/* Section 4: Suporte Técnico & Atendimento ao Usuário (Exclusivo Super Usuário / Desenvolvedor) */}
+        {/* Section 4: Ligação com Sistema de Gestão Financeira (Fluxo de Caixa & Lançamentos Externos) */}
+        <div id="financial-integration-settings" className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/50 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  4. Ligação com Sistema de Gestão Financeira
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                    Fluxo de Caixa
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Lançamento automático de atendimentos e pacotes no caixa e sincronização com seu sistema de gestão.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={financialEnabled}
+                  onChange={e => {
+                    setFinancialEnabled(e.target.checked);
+                    setIsDirty(true);
+                  }}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                />
+                Integração Ativa
+              </label>
+            </div>
+          </div>
+
+          {/* Real-time Summary Card showing Category 'Renda Extra' / Section 'MASSOTERAPIA' */}
+          <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+                Painel do Sistema Externo: Categoria <span className="underline decoration-emerald-500 font-extrabold">{financialCategory}</span> » Sessão <span className="underline decoration-emerald-500 font-extrabold">{financialSection}</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Valor total recebido e computado no mês atual ({monthlySummary?.monthFormatted || 'Mês Vigente'}):
+              </p>
+            </div>
+
+            <div className="flex items-baseline gap-2 bg-white dark:bg-slate-900/80 px-4 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800/50 shadow-2xs">
+              <span className="text-xs font-medium text-slate-500">Total Recebido:</span>
+              <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                {isLoadingSummary ? (
+                  <Loader2 className="w-4 h-4 animate-spin inline" />
+                ) : (
+                  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(monthlySummary?.totalMonthReceived || 0)
+                )}
+              </span>
+            </div>
+          </div>
+
+          {/* Form Fields: Link do Sistema, Credenciais e Parâmetros */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            {/* Field 1: Link para Integrar o Sistema */}
+            <div className="space-y-1 md:col-span-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  Link para integrar o sistema (URL da Aplicação Financeira)
+                  <span className="text-rose-500">*</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFinancialEndpointUrl(`${window.location.origin}/api/integrations/massoterapia`);
+                      setIsDirty(true);
+                    }}
+                    className="text-[10px] text-teal-600 hover:text-teal-700 font-bold underline cursor-pointer"
+                  >
+                    Usar /api/integrations/massoterapia
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFinancialEndpointUrl('http://localhost:3000/api/financial/mock-external-receiver');
+                      setIsDirty(true);
+                    }}
+                    className="text-[10px] text-slate-500 hover:text-slate-700 underline cursor-pointer"
+                  >
+                    Mock Receiver
+                  </button>
+                </div>
+              </div>
+              <input
+                type="url"
+                value={financialEndpointUrl}
+                onChange={e => {
+                  setFinancialEndpointUrl(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder="https://sua-aplicacao-financeira.com/api/integrations/massoterapia"
+                className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-[11px]"
+              />
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Endereço HTTP/HTTPS ou rota da aplicação financeira que receberá os atendimentos.
+              </p>
+            </div>
+
+            {/* Field 2: E-mail de Acesso */}
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                E-mail de acesso
+                <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="email"
+                value={financialAccessEmail}
+                onChange={e => {
+                  setFinancialAccessEmail(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder="osaiasbrito@gmail.com"
+                className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+              />
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                E-mail cadastrado na aplicação financeira para autenticar a chamada.
+              </p>
+            </div>
+
+            {/* Field 3: Senha de Acesso */}
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                Senha de acesso
+                <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showFinancialPassword ? 'text' : 'password'}
+                  value={financialAccessPassword}
+                  onChange={e => {
+                    setFinancialAccessPassword(e.target.value);
+                    setIsDirty(true);
+                  }}
+                  placeholder="Ojf6994@#gestaoPessoas"
+                  className="w-full p-2.5 pr-10 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowFinancialPassword(!showFinancialPassword)}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  {showFinancialPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Senha de autenticação exigida pelo endpoint financeiro.
+              </p>
+            </div>
+
+            {/* Field 4: Categoria */}
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                Categoria no Sistema Financeiro
+              </label>
+              <input
+                type="text"
+                value={financialCategory}
+                onChange={e => {
+                  setFinancialCategory(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder="Ex: MASSOTERAPIA"
+                className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+              />
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Enviado no payload como <code>category: 'MASSOTERAPIA'</code>.
+              </p>
+            </div>
+
+            {/* Field 5: Sessão / Subcategoria */}
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                Sessão / Subcategoria
+              </label>
+              <input
+                type="text"
+                value={financialSection}
+                onChange={e => {
+                  setFinancialSection(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder="Ex: MASSOTERAPIA"
+                className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+              />
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Identificador de agrupamento (ex: MASSOTERAPIA).
+              </p>
+            </div>
+
+            {/* Field 6: Somar ao Salário Mensal Fixo (alsoAddToSalary) */}
+            <div className="md:col-span-2 pt-1">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={financialAlsoAddToSalary}
+                  onChange={e => {
+                    setFinancialAlsoAddToSalary(e.target.checked);
+                    setIsDirty(true);
+                  }}
+                  className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 dark:border-slate-700"
+                />
+                <div>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs">
+                    Somar automaticamente ao Salário Mensal Fixo (<code>alsoAddToSalary: true</code>)
+                  </span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Instrui a aplicação financeira externa a computar e creditar o valor do atendimento diretamente no salário fixo mensal do profissional.
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Business Rules Informational Guide */}
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs space-y-1.5">
+            <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              Regras do Fluxo de Caixa Integrado Ativas:
+            </h4>
+            <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-400 text-[11px]">
+              <li><strong>Sessões Avulsas:</strong> Todo atendimento lançado em sessão acrescenta valor automaticamente ao caixa.</li>
+              <li><strong>Novos Pacotes:</strong> Todo novo pacote contratado é lançado integralmente no caixa.</li>
+              <li><strong>Sessões do Pacote (2ª em diante):</strong> Não entram no caixa (R$ 0,00), pois o valor já foi creditado na compra do pacote.</li>
+              <li><strong>Sincronização Externa:</strong> Cada novo lançamento é transmitido automaticamente para o link cadastrado.</li>
+              <li><strong>Salário Mensal Fixo:</strong> Quando <code>alsoAddToSalary</code> estiver ativo, o valor também é incorporado ao rendimento mensal da outra ponta.</li>
+            </ul>
+          </div>
+
+          {/* Integration Specification & Payload Reference */}
+          <div className="p-3.5 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/50 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-teal-950 dark:text-teal-200 flex items-center gap-1.5">
+                <ExternalLink className="w-4 h-4 text-teal-600" />
+                Função de Integração Oficial Ativa:
+              </h4>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200">
+                POST /api/integrations/massoterapia
+              </span>
+            </div>
+            <p className="text-[11px] text-teal-900 dark:text-teal-300">
+              O sistema utiliza a função <code>lancarAtendimentoNoFinanceiro(atendimento)</code> para disparar requisições autenticadas com <strong>amount</strong>, <strong>clientName</strong>, <strong>description</strong>, <strong>category: MASSOTERAPIA</strong>, <strong>date</strong> e <strong>alsoAddToSalary: true</strong>.
+            </p>
+          </div>
+
+          {/* Test Feedback Message */}
+          {financialTestResult && (
+            <div
+              className={`p-3 rounded-xl text-xs flex items-start gap-2 border ${
+                financialTestResult.success
+                  ? 'bg-emerald-50 text-emerald-900 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800'
+                  : 'bg-rose-50 text-rose-900 border-rose-200 dark:bg-rose-950/40 dark:text-rose-200 dark:border-rose-800'
+              }`}
+            >
+              {financialTestResult.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+              )}
+              <div className="flex-1">
+                <p className="font-bold">{financialTestResult.success ? 'Sucesso na Comunicação!' : 'Falha na Comunicação'}</p>
+                <p className="text-[11px] mt-0.5">{financialTestResult.message}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Buttons: Test Connection & Save */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTestFinancialConnection}
+                disabled={isTestingFinancial || !financialEndpointUrl}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+              >
+                {isTestingFinancial ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />}
+                Testar Link & Senha
+              </button>
+
+              {monthlySummary?.pendingSyncCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSyncPending}
+                  disabled={isSyncingPending}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+                >
+                  {isSyncingPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Sincronizar {monthlySummary.pendingSyncCount} Pendente(s)
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleSave()}
+              disabled={isSaving}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition cursor-pointer"
+            >
+              {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Salvar Configuração da Integração
+            </button>
+          </div>
+        </div>
+
+        {/* Section 5: Suporte Técnico & Atendimento ao Usuário (Exclusivo Super Usuário / Desenvolvedor) */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Headset className="w-4 h-4 text-teal-600" /> 4. Canais de Contato para Suporte Técnico
+              <Headset className="w-4 h-4 text-teal-600" /> 5. Canais de Contato para Suporte Técnico
             </h3>
 
             {/* Toggle Super User / Developer Edit Permission */}
