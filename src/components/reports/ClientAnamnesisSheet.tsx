@@ -1,6 +1,6 @@
 import React from 'react';
-import { Patient, Anamnesis, Tenant, SessionPackage, Session } from '../../types';
-import { Building2, ShieldCheck, CheckSquare, Square, Calendar, User, Phone, Mail, MapPin } from 'lucide-react';
+import { Patient, Anamnesis, Tenant, SessionPackage, Session, DocumentFile } from '../../types';
+import { Building2, ShieldCheck, CheckSquare, Square, Calendar, User, Phone, Mail, MapPin, Paperclip, FileText } from 'lucide-react';
 
 interface ClientAnamnesisSheetProps {
   patient: Patient;
@@ -8,6 +8,7 @@ interface ClientAnamnesisSheetProps {
   tenant?: Tenant | null;
   packages?: SessionPackage[];
   sessions?: Session[];
+  documents?: DocumentFile[];
 }
 
 export const ClientAnamnesisSheet: React.FC<ClientAnamnesisSheetProps> = ({
@@ -16,6 +17,7 @@ export const ClientAnamnesisSheet: React.FC<ClientAnamnesisSheetProps> = ({
   tenant,
   packages = [],
   sessions = [],
+  documents = [],
 }) => {
   const evalData = anamnesis?.evaluation;
   const signatureUrl = anamnesis?.patientSignatureUrl;
@@ -224,18 +226,20 @@ export const ClientAnamnesisSheet: React.FC<ClientAnamnesisSheetProps> = ({
             </p>
           )}
 
-          {/* Pergunta 4: Gravidez */}
-          <div className="flex flex-col sm:flex-row sm:items-baseline justify-between">
-            <span className="font-medium text-slate-800">Está grávida ou em período de amamentação?</span>
-            <div className="flex items-center gap-3 font-semibold mt-1 sm:mt-0">
-              <span className="flex items-center gap-1">
-                {evalData?.isPregnantOrBreastfeeding ? '[ X ] Sim' : '[  ] Sim'}
-              </span>
-              <span className="flex items-center gap-1">
-                {!evalData?.isPregnantOrBreastfeeding ? '[ X ] Não' : '[  ] Não'}
-              </span>
+          {/* Pergunta 4: Gravidez (Apenas para público feminino / outro) */}
+          {patient.gender !== 'Masculino' && (
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between">
+              <span className="font-medium text-slate-800">Está grávida ou em período de amamentação?</span>
+              <div className="flex items-center gap-3 font-semibold mt-1 sm:mt-0">
+                <span className="flex items-center gap-1">
+                  {evalData?.isPregnantOrBreastfeeding ? '[ X ] Sim' : '[  ] Sim'}
+                </span>
+                <span className="flex items-center gap-1">
+                  {!evalData?.isPregnantOrBreastfeeding ? '[ X ] Não' : '[  ] Não'}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </section>
 
@@ -362,6 +366,42 @@ export const ClientAnamnesisSheet: React.FC<ClientAnamnesisSheetProps> = ({
           </div>
         </div>
       </section>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 4.1 ATESTADOS MÉDICOS E LAUDOS DE SAÚDE ANEXADOS (SE HOUVER) */}
+      {/* ------------------------------------------------------------- */}
+      {documents && documents.length > 0 && (
+        <section className="mb-5 break-inside-avoid">
+          <div className="bg-slate-100 print:bg-slate-200 px-3 py-1.5 rounded-t font-bold text-xs uppercase tracking-wider text-slate-800 border-l-4 border-teal-700 mb-2 flex items-center justify-between">
+            <span>Atestados Médicos, Laudos & Exames Anexados ({documents.length})</span>
+            <span className="text-[10px] font-normal text-slate-600">Documentação Clínica Complementar</span>
+          </div>
+
+          <div className="border border-slate-200 rounded p-3 bg-slate-50/50 print:bg-transparent text-xs space-y-2">
+            {documents.map((doc, idx) => (
+              <div
+                key={doc.id || idx}
+                className="flex flex-col sm:flex-row sm:items-center justify-between pb-1.5 mb-1.5 border-b border-slate-200 last:border-0 last:pb-0 last:mb-0 gap-1 text-[11px]"
+              >
+                <div>
+                  <span className="font-bold text-slate-900">
+                    [{doc.category}] {doc.fileName}
+                  </span>
+                  {doc.notes && (
+                    <p className="text-[10px] text-slate-600 italic mt-0.5">
+                      Obs: {doc.notes}
+                    </p>
+                  )}
+                </div>
+                <div className="text-[10px] text-slate-500 whitespace-nowrap">
+                  Anexado em {new Date(doc.uploadedAt).toLocaleDateString('pt-BR')}
+                  {doc.uploadedByName ? ` por ${doc.uploadedByName}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ------------------------------------------------------------- */}
       {/* 5. TERMOS E CONDIÇÕES (MODELO PRINT 2) */}

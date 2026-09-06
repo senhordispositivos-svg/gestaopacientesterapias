@@ -22,6 +22,8 @@ import {
   ChevronRight,
   Edit3,
   Trash2,
+  Paperclip,
+  Eye,
 } from 'lucide-react';
 import {
   Patient,
@@ -37,6 +39,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCPF, formatPhone } from '../../utils/cpf';
 import { formatDate, formatDateTime, calculateAge } from '../../utils/crypto';
 import { DocumentUploadModal } from './DocumentUploadModal';
+import { DocumentViewerModal } from './DocumentViewerModal';
 import { PackageDetailModal } from '../packages/PackageDetailModal';
 import { ClientAnamnesisSheet } from '../reports/ClientAnamnesisSheet';
 
@@ -98,11 +101,26 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
 
   // Modal States
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [selectedDocForViewing, setSelectedDocForViewing] = useState<DocumentFile | null>(null);
   const [selectedPackageDetail, setSelectedPackageDetail] = useState<SessionPackage | null>(null);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [packageToDelete, setPackageToDelete] = useState<SessionPackage | null>(null);
   const [isDeletingPackage, setIsDeletingPackage] = useState(false);
+
+  const handleDeleteDocument = async (docId: string) => {
+    if (!confirm('Deseja realmente remover este arquivo da ficha do paciente?')) return;
+    try {
+      await api.deleteDocument(patient.id, docId);
+      if (tenant) {
+        const updatedDocs = await api.getDocuments(patient.id, tenant.id);
+        setDocuments(updatedDocs);
+      }
+    } catch (err) {
+      console.error('Erro ao excluir documento:', err);
+      alert('Não foi possível excluir o documento.');
+    }
+  };
 
   const handleConfirmDeletePackage = async () => {
     if (!packageToDelete || !tenant) return;
@@ -245,6 +263,15 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
             </button>
           )}
 
+          <button
+            type="button"
+            onClick={() => setIsDocModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            title="Anexar Atestado Médico ou Laudo de Saúde (PDF ou Imagem) à ficha do cliente"
+          >
+            <Paperclip className="w-4 h-4" /> Anexar Atestado / Laudo
+          </button>
+
           {!anamnesis && (
             <button
               type="button"
@@ -345,7 +372,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
         {/* 1. RESUMO */}
         {activeTab === 'RESUMO' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               <div className="space-y-2">
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                   Informações de Contato
@@ -398,6 +425,54 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
                         className="px-3 py-1.5 rounded-lg bg-amber-500 text-white font-bold text-xs"
                       >
                         Preencher Agora
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 4: Atestados e Laudos */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Atestados & Laudos ({documents.length})
+                </h4>
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 space-y-2 text-xs">
+                  {documents.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-teal-600 dark:text-teal-400 font-bold">
+                        <FolderOpen className="w-4 h-4" /> {documents.length} arquivo(s)
+                      </div>
+                      <p className="text-[11px] text-slate-500 truncate" title={documents[0]?.fileName}>
+                        Último: {documents[0]?.fileName}
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('DOCUMENTOS')}
+                          className="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold text-[11px] hover:bg-slate-300 transition"
+                        >
+                          Ver Todos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsDocModalOpen(true)}
+                          className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-[11px] transition"
+                        >
+                          + Anexar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-slate-500">
+                        Nenhum atestado ou laudo anexado à ficha do cliente.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIsDocModalOpen(true)}
+                        className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1 transition"
+                      >
+                        <Paperclip className="w-3.5 h-3.5" /> Anexar Arquivo
                       </button>
                     </div>
                   )}
@@ -468,7 +543,111 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
                     tenant={tenant}
                     packages={packages}
                     sessions={sessions}
+                    documents={documents}
                   />
+                </div>
+
+                {/* Seção de Atestados Médicos & Laudos de Saúde Anexados à Ficha */}
+                <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 flex items-center justify-center shrink-0">
+                        <FolderOpen className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                          Atestados Médicos & Laudos de Saúde Anexados
+                          <span className="px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 text-[10px] font-extrabold">
+                            {documents.length}
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Arquivos em PDF ou imagens anexados pelo profissional para compor a ficha de acompanhamento do cliente.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsDocModalOpen(true)}
+                      className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                    >
+                      <Paperclip className="w-3.5 h-3.5" /> + Anexar Arquivo (PDF / Imagem)
+                    </button>
+                  </div>
+
+                  {documents.length === 0 ? (
+                    <div className="p-5 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-2 bg-slate-50/50 dark:bg-slate-850/40">
+                      <p className="text-xs text-slate-500 font-medium">
+                        Nenhum atestado médico ou laudo anexado a esta ficha ainda.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIsDocModalOpen(true)}
+                        className="text-xs font-bold text-teal-600 dark:text-teal-400 hover:underline cursor-pointer"
+                      >
+                        Clique aqui para anexar atestados ou laudos apresentados pelo cliente
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {documents.map(doc => (
+                        <div
+                          key={doc.id}
+                          className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 flex items-start justify-between gap-3 hover:border-teal-400 dark:hover:border-teal-600 transition"
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
+                                {doc.category}
+                              </span>
+                              <p className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                {doc.fileName}
+                              </p>
+                            </div>
+                            {doc.notes && (
+                              <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2">
+                                {doc.notes}
+                              </p>
+                            )}
+                            <p className="text-[10px] text-slate-400">
+                              Enviado em {formatDate(doc.uploadedAt)}
+                              {doc.uploadedByName ? ` por ${doc.uploadedByName}` : ''}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDocForViewing(doc)}
+                              className="p-2 rounded-lg bg-white dark:bg-slate-800 text-teal-600 hover:bg-teal-50 dark:hover:bg-slate-700 transition border border-slate-200 dark:border-slate-700 cursor-pointer"
+                              title="Visualizar documento na tela"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <a
+                              href={doc.fileUrl}
+                              download={doc.fileName}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 rounded-lg bg-white dark:bg-slate-800 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition border border-slate-200 dark:border-slate-700"
+                              title="Baixar arquivo"
+                            >
+                              <Download className="w-4 h-4" />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDocument(doc.id)}
+                              className="p-2 rounded-lg bg-white dark:bg-slate-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition border border-slate-200 dark:border-slate-700 cursor-pointer"
+                              title="Excluir documento"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -689,25 +868,47 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {documents.map(doc => (
-                  <div key={doc.id} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-850">
+                  <div key={doc.id} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/50 dark:bg-slate-850 gap-3 hover:border-teal-400 dark:hover:border-teal-600 transition">
                     <div className="space-y-1 min-w-0 pr-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
                           {doc.category}
                         </span>
                         <p className="font-bold text-xs text-slate-900 dark:text-white truncate">{doc.fileName}</p>
                       </div>
-                      {doc.notes && <p className="text-[11px] text-slate-500 truncate">{doc.notes}</p>}
-                      <p className="text-[10px] text-slate-400">Enviado por {doc.uploadedByName} em {formatDate(doc.uploadedAt)}</p>
+                      {doc.notes && <p className="text-[11px] text-slate-500 line-clamp-2">{doc.notes}</p>}
+                      <p className="text-[10px] text-slate-400">
+                        Enviado por {doc.uploadedByName || 'Profissional'} em {formatDate(doc.uploadedAt)}
+                      </p>
                     </div>
-                    <a
-                      href={doc.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 rounded-lg bg-white dark:bg-slate-800 text-teal-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition shadow-xs border border-slate-200 dark:border-slate-700 shrink-0"
-                    >
-                      <Download className="w-4 h-4" />
-                    </a>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDocForViewing(doc)}
+                        className="p-2 rounded-lg bg-white dark:bg-slate-800 text-teal-600 hover:bg-teal-50 dark:hover:bg-slate-700 transition shadow-xs border border-slate-200 dark:border-slate-700 cursor-pointer"
+                        title="Visualizar documento / exame na tela"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <a
+                        href={doc.fileUrl}
+                        download={doc.fileName}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 rounded-lg bg-white dark:bg-slate-800 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition shadow-xs border border-slate-200 dark:border-slate-700"
+                        title="Baixar arquivo"
+                      >
+                        <Download className="w-4 h-4" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDocument(doc.id)}
+                        className="p-2 rounded-lg bg-white dark:bg-slate-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition shadow-xs border border-slate-200 dark:border-slate-700 cursor-pointer"
+                        title="Excluir documento"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -767,6 +968,14 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
             setDocuments(docs);
           }
         }}
+      />
+
+      {/* Document Viewer Modal */}
+      <DocumentViewerModal
+        isOpen={!!selectedDocForViewing}
+        onClose={() => setSelectedDocForViewing(null)}
+        document={selectedDocForViewing}
+        patientName={patient.name}
       />
 
       {/* Package Detail & Signoff Modal */}

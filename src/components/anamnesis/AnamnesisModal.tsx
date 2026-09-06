@@ -148,8 +148,10 @@ export const AnamnesisModal: React.FC<AnamnesisModalProps> = ({
     missingFields.push('Descrição das alergias conhecidas');
   }
 
-  if (evaluation.isPregnantOrBreastfeeding === undefined) {
-    missingFields.push('Gestação ou amamentação (Sim ou Não)');
+  if (patient.gender !== 'Masculino') {
+    if (evaluation.isPregnantOrBreastfeeding === undefined) {
+      missingFields.push('Gestação ou amamentação (Sim ou Não)');
+    }
   }
 
   if (evaluation.hasHadMassageBefore === undefined) {
@@ -525,51 +527,53 @@ export const AnamnesisModal: React.FC<AnamnesisModalProps> = ({
               )}
             </div>
 
-            {/* Gravidez / amamentação */}
-            <div
-              className={`p-3.5 rounded-xl border transition-all ${
-                attemptedSubmit && evaluation.isPregnantOrBreastfeeding === undefined
-                  ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
-                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50'
-              }`}
-            >
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
-                    Está grávida ou em período de amamentação? <span className="text-rose-500">*</span>
-                  </span>
-                  {evaluation.isPregnantOrBreastfeeding === undefined && (
-                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                      Pendente de resposta (Selecione Sim ou Não)
+            {/* Gravidez / amamentação (Apenas para público feminino / outro) */}
+            {patient.gender !== 'Masculino' && (
+              <div
+                className={`p-3.5 rounded-xl border transition-all ${
+                  attemptedSubmit && evaluation.isPregnantOrBreastfeeding === undefined
+                    ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-400/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50'
+                }`}
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
+                      Está grávida ou em período de amamentação? <span className="text-rose-500">*</span>
                     </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEvaluation(prev => ({ ...prev, isPregnantOrBreastfeeding: false }))}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      evaluation.isPregnantOrBreastfeeding === false
-                        ? 'bg-slate-800 text-white shadow-xs'
-                        : 'border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    Não
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEvaluation(prev => ({ ...prev, isPregnantOrBreastfeeding: true }))}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      evaluation.isPregnantOrBreastfeeding === true
-                        ? 'bg-teal-600 text-white shadow-xs'
-                        : 'border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-teal-50 hover:text-teal-700'
-                    }`}
-                  >
-                    Sim
-                  </button>
+                    {evaluation.isPregnantOrBreastfeeding === undefined && (
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                        Pendente de resposta (Selecione Sim ou Não)
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, isPregnantOrBreastfeeding: false }))}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        evaluation.isPregnantOrBreastfeeding === false
+                          ? 'bg-slate-800 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEvaluation(prev => ({ ...prev, isPregnantOrBreastfeeding: true }))}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        evaluation.isPregnantOrBreastfeeding === true
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-teal-50 hover:text-teal-700'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 

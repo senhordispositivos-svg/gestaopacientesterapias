@@ -54,16 +54,15 @@ export const CanvasSignature: React.FC<CanvasSignatureProps> = ({
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, h);
 
-    // Baseline where signature rests
+    // Baseline where signature rests (clean solid subtle line)
     const lineY = h - 38;
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(32, lineY);
     ctx.lineTo(width - 32, lineY);
     ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 1;
     ctx.stroke();
-    ctx.setLineDash([]);
 
     // Elegant subtle signature "X" indicator
     ctx.font = 'bold 15px sans-serif';
@@ -71,6 +70,7 @@ export const CanvasSignature: React.FC<CanvasSignatureProps> = ({
     ctx.fillText('✕', 14, lineY + 5);
 
     ctx.restore();
+    ctx.setLineDash([]);
   }, []);
 
   // Configure high-DPI scaling and calibrate canvas coordinate space
@@ -96,6 +96,7 @@ export const CanvasSignature: React.FC<CanvasSignatureProps> = ({
 
     // Scale drawing context so all coordinate math is 1:1 with CSS pixels
     ctx.scale(dpr, dpr);
+    ctx.setLineDash([]);
     ctx.strokeStyle = '#0f172a'; // High contrast deep slate ink
     ctx.lineWidth = 2.8;
     ctx.lineCap = 'round';
@@ -193,20 +194,21 @@ export const CanvasSignature: React.FC<CanvasSignatureProps> = ({
     lastPointRef.current = pos;
     strokePointsRef.current = [pos];
 
-    // Configure ink properties
+    // Configure solid, continuous ink properties
+    ctx.setLineDash([]);
     ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 2.8;
+    ctx.lineWidth = 2.6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     // Draw immediate dot for single tap
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, 1.4, 0, Math.PI * 2);
+    ctx.arc(pos.x, pos.y, 1.3, 0, Math.PI * 2);
     ctx.fillStyle = '#0f172a';
     ctx.fill();
   };
 
-  // Smooth Bézier curve stroke progression
+  // Continuous, unbroken stroke progression (never dashed or dotted)
   const continueDrawing = (clientX: number, clientY: number) => {
     if (!isDrawingRef.current || !lastPointRef.current) return;
     const canvas = canvasRef.current;
@@ -222,18 +224,21 @@ export const CanvasSignature: React.FC<CanvasSignatureProps> = ({
     const dy = currentPos.y - lastPos.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    // Filter sub-pixel jitter
-    if (dist < 1.2) return;
+    // Prevent identical coordinates re-stroke
+    if (dist < 0.5) return;
 
     totalStrokeLengthRef.current += dist;
 
-    // Quadratic Bézier curve through midpoints for ultra-smooth cursive strokes
-    const midX = (lastPos.x + currentPos.x) / 2;
-    const midY = (lastPos.y + currentPos.y) / 2;
+    // Ensure continuous, solid ink without any dash gaps
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2.6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     ctx.beginPath();
     ctx.moveTo(lastPos.x, lastPos.y);
-    ctx.quadraticCurveTo(lastPos.x, lastPos.y, midX, midY);
+    ctx.lineTo(currentPos.x, currentPos.y);
     ctx.stroke();
 
     lastPointRef.current = currentPos;
