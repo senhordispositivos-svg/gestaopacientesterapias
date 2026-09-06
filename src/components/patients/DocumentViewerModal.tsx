@@ -17,6 +17,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { formatDate } from '../../utils/formatters';
+import { PdfCanvasViewer } from './PdfCanvasViewer';
 
 interface DocumentViewerModalProps {
   isOpen: boolean;
@@ -344,24 +345,12 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
                 />
               </div>
             ) : isPdf ? (
-              <div className="w-full h-full rounded-2xl overflow-hidden bg-white shadow-2xl relative flex flex-col">
-                {blobUrl ? (
-                  <object
-                    data={`${blobUrl}#toolbar=1&navpanes=1&scrollbar=1`}
-                    type="application/pdf"
-                    className="w-full h-full flex-1 border-0"
-                  >
-                    <iframe
-                      src={`${blobUrl}#toolbar=1`}
-                      title={doc.fileName}
-                      className="w-full h-full flex-1 border-0"
-                    />
-                  </object>
-                ) : (
-                  <div className="flex-1 flex items-center justify-center text-slate-500 text-xs">
-                    Carregando visualizador de documento...
-                  </div>
-                )}
+              <div className="w-full h-full rounded-2xl overflow-hidden bg-slate-900 shadow-2xl relative flex flex-col">
+                <PdfCanvasViewer
+                  fileUrl={blobUrl || doc.fileUrl}
+                  fileName={doc.fileName}
+                  onOpenNewTab={handleOpenInNewTab}
+                />
               </div>
             ) : (
               <div className="text-center p-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-md space-y-4 shadow-xl">
