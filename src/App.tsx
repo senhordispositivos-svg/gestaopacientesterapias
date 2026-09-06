@@ -721,6 +721,7 @@ export function App() {
               {activeView === 'birthdays' && (
                 <BirthdaysView
                   patients={patients}
+                  tenant={tenant}
                   onSelectPatient={patient => {
                     setSelectedPatient(patient);
                     setActiveView('patients');

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Patient } from '../../types';
+import { Patient, Tenant } from '../../types';
 import { calculateAge, formatDate } from '../../utils/crypto';
 import { copyToClipboard } from '../../utils/clipboard';
+import { useAuth } from '../../context/AuthContext';
 import {
   Cake,
   Gift,
@@ -21,6 +22,7 @@ import {
 
 interface BirthdaysViewProps {
   patients: Patient[];
+  tenant?: Tenant | null;
   onSelectPatient?: (patient: Patient) => void;
   onSendWhatsApp?: (patient: Patient) => void;
 }
@@ -42,8 +44,12 @@ const MONTH_NAMES = [
 
 export const BirthdaysView: React.FC<BirthdaysViewProps> = ({
   patients,
+  tenant: propTenant,
   onSelectPatient,
 }) => {
+  const { tenant: authTenant } = useAuth();
+  const currentTenant = propTenant || authTenant;
+
   const now = new Date();
   const currentMonthIdx = now.getMonth(); // 0-11
   const currentDay = now.getDate();
@@ -124,25 +130,41 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({
 
   // Motivational templates generator
   const getMotivationalTemplates = (pat: Patient) => {
-    const firstName = pat.name.split(' ')[0];
-    const info = getPatientBirthdayInfo(pat);
-    const ageText = info.age > 0 ? `pelos seus ${info.age} anos` : '';
+    const firstName = pat.name.trim().split(' ')[0];
+    const registeredName =
+      currentTenant?.tradeName?.trim() ||
+      currentTenant?.name?.trim() ||
+      'nossa equipe';
+
+    // Format appropriate grammatical preposition for the clinic/company name
+    const lower = registeredName.toLowerCase();
+    const isMasculine =
+      lower.startsWith('espaço') ||
+      lower.startsWith('instituto') ||
+      lower.startsWith('centro') ||
+      lower.startsWith('consultório');
+    const teamIntro = isMasculine
+      ? `Em nome de toda a equipe do ${registeredName}`
+      : `Em nome de toda a equipe da ${registeredName}`;
+    const teamSignature = isMasculine
+      ? `toda a equipe do ${registeredName}`
+      : `toda a equipe da ${registeredName}`;
 
     return [
       {
         id: 'saude',
         title: '🌟 Saúde & Bem-Estar',
-        text: `Olá, ${firstName}! 🎉\n\nEm nome de toda a nossa equipe de Fisioterapia e Massoterapia, desejamos a você um Feliz Aniversário ${ageText}! 🎂✨\n\nQue este novo ciclo traga ainda mais saúde, vitalidade, equilíbrio do corpo e da mente, e momentos inesquecíveis de paz. É uma honra podermos cuidar do seu bem-estar!\n\nAproveite muito o seu dia especial com carinho e renovação! 💆‍♀️🌿`,
+        text: `Olá, ${firstName}! 🎉\n\n${teamIntro}, desejamos a você um Feliz Aniversário repleto de realizações, saúde e momentos inesquecíveis! 🎂✨\n\nQue este novo ciclo traga ainda mais vitalidade, equilíbrio do corpo e da mente, e muita paz. É uma honra podermos cuidar do seu bem-estar!\n\nAproveite muito o seu dia especial com carinho e renovação! 💆‍♀️🌿`,
       },
       {
         id: 'superacao',
         title: '💪 Força & Inspiração',
-        text: `Parabéns pelo seu aniversário, ${firstName}! 🎈✨\n\nQue seu novo ano de vida seja marcado por conquistas extraordinárias, leveza na caminhada, força para superar desafios e muita disposição para viver com plenitude!\n\nConte sempre conosco para manter sua saúde e energia no nível mais alto. Um forte abraço de toda a clínica! 🌸`,
+        text: `Parabéns pelo seu aniversário, ${firstName}! 🎈✨\n\nQue seu novo ano de vida seja marcado por conquistas extraordinárias, leveza na caminhada, força para superar desafios e muita disposição para viver com plenitude!\n\nConte sempre conosco para manter sua saúde e energia no nível mais alto. Um forte abraço de ${teamSignature}! 🌸`,
       },
       {
         id: 'gratidao',
         title: '✨ Gratidão & Luz',
-        text: `Hoje o dia é todo seu, ${firstName}! 🎉🥳\n\nQue alegria celebrar o seu aniversário! Agradecemos muito a sua confiança em nosso trabalho. Desejamos que seu caminho seja repleto de luz, prosperidade, saúde de ferro e infinitos motivos para sorrir.\n\nFeliz Aniversário! 🎂❤️`,
+        text: `Hoje o dia é todo seu, ${firstName}! 🎉🥳\n\nQue alegria celebrar o seu aniversário! Agradecemos muito a sua confiança em nosso trabalho. ${teamIntro}, desejamos que seu caminho seja repleto de luz, prosperidade, saúde de ferro e infinitos motivos para sorrir.\n\nFeliz Aniversário! 🎂❤️`,
       },
     ];
   };
@@ -364,11 +386,9 @@ export const BirthdaysView: React.FC<BirthdaysViewProps> = ({
                       <Cake className="w-3.5 h-3.5" /> Dia {dateStr}
                     </span>
 
-                    {age > 0 && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950 text-pink-700 dark:text-pink-300 text-[10px] font-extrabold">
-                        {age} anos
-                      </span>
-                    )}
+                    <span className="px-2.5 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950 text-pink-700 dark:text-pink-300 text-[10px] font-extrabold flex items-center gap-1">
+                      <Gift className="w-3 h-3 text-pink-600 dark:text-pink-400" /> Aniversariante
+                    </span>
                   </div>
 
                   {isToday ? (
