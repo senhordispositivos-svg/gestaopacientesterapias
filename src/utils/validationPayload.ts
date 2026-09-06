@@ -104,10 +104,15 @@ export function createSessionValidationUrl(
   session: Session,
   pkg?: SessionPackage | null,
   allSessions: Session[] = [],
-  clinicName: string = 'Clínica de Terapias Integradas'
+  clinicName: string = 'Clínica de Terapias Integradas',
+  options?: { short?: boolean }
 ): string {
   const effectiveOrigin = origin || (typeof window !== 'undefined' ? window.location.origin : 'https://clinica.app');
   const targetSessionId = session.id;
+
+  if (options?.short !== false) {
+    return `${effectiveOrigin}/?sessao=${encodeURIComponent(targetSessionId)}`;
+  }
 
   const pkgSessions = allSessions.filter(s => pkg && s.packageId === pkg.id);
   const totalCount = pkg?.sessionCount || Math.max(session.sessionNumber, pkgSessions.length || 4);
@@ -146,7 +151,7 @@ export function createSessionValidationUrl(
   };
 
   const encoded = encodePayload(payload);
-  return `${effectiveOrigin}/?sessao=${encodeURIComponent(targetSessionId)}&d=${encoded}#validar-sessao=${encodeURIComponent(targetSessionId)}`;
+  return `${effectiveOrigin}/?sessao=${encodeURIComponent(targetSessionId)}&d=${encoded}`;
 }
 
 // Helper to generate Package Signoff URL with embedded self-contained payload
@@ -154,9 +159,15 @@ export function createPackageValidationUrl(
   origin: string,
   pkg: SessionPackage,
   allSessions: Session[] = [],
-  clinicName: string = 'Clínica de Terapias Integradas'
+  clinicName: string = 'Clínica de Terapias Integradas',
+  options?: { short?: boolean }
 ): string {
   const effectiveOrigin = origin || (typeof window !== 'undefined' ? window.location.origin : 'https://clinica.app');
+  
+  if (options?.short !== false) {
+    return `${effectiveOrigin}/?pacote=${encodeURIComponent(pkg.id)}`;
+  }
+
   const pkgSessions = allSessions.filter(s => s.packageId === pkg.id);
   const totalCount = pkg.sessionCount || Math.max(pkgSessions.length, 5);
 
@@ -186,18 +197,30 @@ export function createPackageValidationUrl(
   };
 
   const encoded = encodePayload(payload);
-  return `${effectiveOrigin}/?pacote=${encodeURIComponent(pkg.id)}&d=${encoded}#validar-pacote=${encodeURIComponent(pkg.id)}`;
+  return `${effectiveOrigin}/?pacote=${encodeURIComponent(pkg.id)}&d=${encoded}`;
 }
 
-// Helper to generate public Anamnesis / Intake Form URL with embedded self-contained payload
+// Helper to generate public Anamnesis / Intake Form URL with optional clean short format
 export function createAnamnesisValidationUrl(
   origin: string,
   tenant: Partial<Tenant> | null | undefined,
   patient?: Partial<Patient> | null,
-  professional?: Partial<User> | null
+  professional?: Partial<User> | null,
+  options?: { short?: boolean; includePayload?: boolean }
 ): string {
   const effectiveOrigin = origin || (typeof window !== 'undefined' ? window.location.origin : 'https://clinica.app');
-  const token = patient?.id || `anam-auto-${Date.now()}`;
+  
+  // Clean short token (either patient ID or a clean random token)
+  let token = patient?.id;
+  if (!token) {
+    const rand = Math.random().toString(36).substring(2, 8);
+    token = `f-${rand}`;
+  }
+
+  // By default, generate an ultra-clean short URL (fits in 1 line on WhatsApp, ~45-55 chars)
+  if (options?.short !== false && !options?.includePayload) {
+    return `${effectiveOrigin}/?ficha=${encodeURIComponent(token)}`;
+  }
 
   const payload: DecodedAnamnesisPayload = {
     patId: patient?.id || undefined,
@@ -217,7 +240,7 @@ export function createAnamnesisValidationUrl(
   };
 
   const encoded = encodePayload(payload);
-  return `${effectiveOrigin}/?ficha=${encodeURIComponent(token)}&d=${encoded}#ficha=${encodeURIComponent(token)}`;
+  return `${effectiveOrigin}/?ficha=${encodeURIComponent(token)}&d=${encoded}`;
 }
 
 // Helper to generate formatted WhatsApp message for Anamnesis Intake

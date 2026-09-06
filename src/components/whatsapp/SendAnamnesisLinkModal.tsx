@@ -55,6 +55,7 @@ export const SendAnamnesisLinkModal: React.FC<SendAnamnesisLinkModalProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
+  const [useShortLink, setUseShortLink] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
@@ -71,6 +72,7 @@ export const SendAnamnesisLinkModal: React.FC<SendAnamnesisLinkModalProps> = ({
       }
       setSelectedProfId(user?.id || '');
       setShowQrCode(false);
+      setUseShortLink(true);
     }
   }, [isOpen, effectivePatient, user]);
 
@@ -98,11 +100,11 @@ export const SendAnamnesisLinkModal: React.FC<SendAnamnesisLinkModalProps> = ({
 
     const targetProf = effectiveProfessionalsList.find(u => u.id === selectedProfId) || user;
 
-    api.sendAnamnesisWhatsApp(tenant, targetPatient, targetProf).then(res => {
+    api.sendAnamnesisWhatsApp(tenant, targetPatient, targetProf, { short: useShortLink }).then(res => {
       setGeneratedUrl(res.validationUrl);
       setMessageText(res.message);
     });
-  }, [isOpen, mode, selectedPatientId, customName, customPhone, selectedProfId, tenant, user, effectivePatientsList, effectiveProfessionalsList]);
+  }, [isOpen, mode, selectedPatientId, customName, customPhone, selectedProfId, tenant, user, effectivePatientsList, effectiveProfessionalsList, useShortLink]);
 
   const handleCopyLink = async () => {
     if (!generatedUrl) return;
@@ -225,19 +227,43 @@ export const SendAnamnesisLinkModal: React.FC<SendAnamnesisLinkModalProps> = ({
 
         {/* Link Box */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-              <FileSignature className="w-4 h-4 text-teal-600" />
-              Link Exclusivo de Preenchimento
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowQrCode(!showQrCode)}
-              className="text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1"
-            >
-              <QrCode className="w-3.5 h-3.5" />
-              {showQrCode ? 'Ocultar QR Code' : 'Ver QR Code'}
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <FileSignature className="w-4 h-4 text-teal-600" />
+                Link de Envio
+              </label>
+              {useShortLink ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                  Link Curto Otimizado
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                  Link Completo
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setUseShortLink(!useShortLink)}
+                className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline"
+                title="Alternar entre link encurtado e completo"
+              >
+                {useShortLink ? 'Ver link completo' : 'Usar link reduzido'}
+              </button>
+              <span className="text-slate-300 dark:text-slate-600">|</span>
+              <button
+                type="button"
+                onClick={() => setShowQrCode(!showQrCode)}
+                className="text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                {showQrCode ? 'Ocultar QR Code' : 'Ver QR Code'}
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700">
@@ -245,16 +271,27 @@ export const SendAnamnesisLinkModal: React.FC<SendAnamnesisLinkModalProps> = ({
               type="text"
               readOnly
               value={generatedUrl}
-              className="flex-1 bg-transparent text-xs text-slate-600 dark:text-slate-300 font-mono truncate px-2 focus:outline-none"
+              className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 font-mono truncate px-2 focus:outline-none"
             />
+            {generatedUrl && (
+              <a
+                href={generatedUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="p-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 transition shrink-0"
+                title="Testar e abrir link em nova guia"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
             <button
               type="button"
               onClick={handleCopyLink}
-              className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shrink-0 shadow-sm notranslate"
+              className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-xs font-bold text-white flex items-center gap-1.5 transition shrink-0 shadow-sm notranslate"
             >
               {copiedLink ? (
                 <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <Check className="w-3.5 h-3.5 shrink-0" />
                   <span>Copiado!</span>
                 </>
               ) : (
@@ -265,6 +302,11 @@ export const SendAnamnesisLinkModal: React.FC<SendAnamnesisLinkModalProps> = ({
               )}
             </button>
           </div>
+
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+            <span className="font-medium text-emerald-600 dark:text-emerald-400">✓ Link reduzido:</span>
+            <span>Cabe perfeitamente em 1 linha no WhatsApp, sem códigos extensos.</span>
+          </p>
         </div>
 
         {/* QR Code view if toggled */}

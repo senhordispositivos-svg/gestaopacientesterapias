@@ -2419,15 +2419,43 @@ app.post('/api/public/confirm-package/:token', (req, res) => {
 // -------------------------------------------------------------
 // PUBLIC ANAMNESIS & INTAKE FORM API (NO LOGIN REQUIRED)
 // -------------------------------------------------------------
+// In-memory registry for short anamnesis tokens
+const shortAnamnesisTokens = new Map<string, {
+  patient?: Partial<Patient>;
+  tenantId?: string;
+  professionalName?: string;
+  createdAt: string;
+}>();
+
+app.post('/api/public/anamnesis-token', (req, res) => {
+  const { token, patient, tenantId, professionalName } = req.body;
+  if (token) {
+    shortAnamnesisTokens.set(token, {
+      patient: patient || {},
+      tenantId: tenantId || db.tenants[0]?.id || 'tenant-demo-1',
+      professionalName,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  res.json({ success: true, token });
+});
+
 app.get('/api/public/anamnesis/:token', (req, res) => {
   const token = req.params.token;
   const payloadData = (req.query.d || req.query.data) as string;
   const decoded = decodePayloadServer(payloadData || '') || (token.startsWith('eyJ') ? decodePayloadServer(token) : null);
+  const registered = shortAnamnesisTokens.get(token);
 
-  let patientId = decoded?.patId || (token.startsWith('pat-') ? token : null);
-  let tenantId = decoded?.tid || (req.headers['x-tenant-id'] as string) || (db.tenants[0]?.id || 'tenant-demo-1');
+  let patientId = decoded?.patId || registered?.patient?.id || (token.startsWith('pat-') ? token : null);
+  let tenantId = decoded?.tid || registered?.tenantId || (req.headers['x-tenant-id'] as string) || (db.tenants[0]?.id || 'tenant-demo-1');
 
   let patient = patientId ? db.patients.find(p => p.id === patientId) : null;
+  if (!patient && token) {
+    patient = db.patients.find(p => p.id === token);
+  }
+  if (!patient && registered?.patient?.name) {
+    patient = registered.patient as Patient;
+  }
   if (!patient && decoded?.cpf) {
     const cleanCpf = decoded.cpf.replace(/\D/g, '');
     if (cleanCpf) {
@@ -2440,7 +2468,7 @@ app.get('/api/public/anamnesis/:token', (req, res) => {
   }
 
   const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
-  const existingAnamnesis = patient ? db.anamneses.find(a => a.patientId === patient.id) : null;
+  const existingAnamnesis = patient?.id ? db.anamneses.find(a => a.patientId === patient.id) : null;
 
   res.json({
     tenant: tenant ? {
@@ -2482,7 +2510,7 @@ app.get('/api/public/anamnesis/:token', (req, res) => {
       assignedProfessionalName: decoded.profName || '',
     } : null),
     existingAnamnesis: existingAnamnesis || null,
-    professionalName: decoded?.profName || patient?.assignedProfessionalName || 'Equipe Terapêutica',
+    professionalName: decoded?.profName || registered?.professionalName || patient?.assignedProfessionalName || 'Equipe Terapêutica',
   });
 });
 

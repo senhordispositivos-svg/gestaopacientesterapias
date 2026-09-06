@@ -1415,7 +1415,7 @@ export const api = {
     let pkg = sess?.packageId ? packages.find(p => p.id === sess.packageId) : null;
     let ten = tenants.find(t => t.id === (tenantId || sess?.tenantId)) || tenants[0];
 
-    let validationUrl = `${origin}/?sessao=${encodeURIComponent(sessId)}#validar-sessao=${encodeURIComponent(sessId)}`;
+    let validationUrl = `${origin}/?sessao=${encodeURIComponent(sessId)}`;
     if (sess) {
       validationUrl = createSessionValidationUrl(origin, sess, pkg, sessions, ten?.tradeName || ten?.name || 'Clínica');
     }
@@ -1445,7 +1445,7 @@ export const api = {
     let pkg = typeof packageOrId === 'object' && packageOrId !== null && packageOrId.id ? packageOrId : packages.find(p => p.id === pkgId);
     let ten = tenants.find(t => t.id === (tenantId || pkg?.tenantId)) || tenants[0];
 
-    let validationUrl = `${origin}/?pacote=${encodeURIComponent(pkgId)}#validar-pacote=${encodeURIComponent(pkgId)}`;
+    let validationUrl = `${origin}/?pacote=${encodeURIComponent(pkgId)}`;
     if (pkg) {
       validationUrl = createPackageValidationUrl(origin, pkg, sessions, ten?.tradeName || ten?.name || 'Clínica');
     }
@@ -1941,10 +1941,63 @@ export const api = {
   async sendAnamnesisWhatsApp(
     tenant: Partial<Tenant> | null | undefined,
     patient?: Partial<Patient> | null,
-    professional?: Partial<User> | null
+    professional?: Partial<User> | null,
+    options?: { short?: boolean }
   ): Promise<{ validationUrl: string; message: string }> {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://clinica.app';
-    const validationUrl = createAnamnesisValidationUrl(origin, tenant, patient, professional);
+    
+    // Choose clean token
+    let token = patient?.id;
+    if (!token) {
+      const rand = Math.random().toString(36).substring(2, 8);
+      token = `f-${rand}`;
+    }
+
+    // Register token on server
+    try {
+      await tryFetch('/api/public/anamnesis-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          patient: patient ? {
+            id: patient.id || token,
+            name: patient.name,
+            phone: patient.phone || patient.whatsapp,
+            whatsapp: patient.phone || patient.whatsapp,
+            cpf: patient.cpf,
+            birthDate: patient.birthDate,
+          } : undefined,
+          tenantId: tenant?.id,
+          professionalName: professional?.name || patient?.assignedProfessionalName,
+        }),
+      });
+    } catch {
+      // Ignore network errors in offline mode
+    }
+
+    // Cache locally as fallback
+    try {
+      const storedTokens = JSON.parse(localStorage.getItem('fisiopro_anamnesis_tokens') || '{}');
+      storedTokens[token] = {
+        patient: patient || {},
+        tenant: tenant || {},
+        professional: professional || {},
+        createdAt: new Date().toISOString(),
+      };
+      localStorage.setItem('fisiopro_anamnesis_tokens', JSON.stringify(storedTokens));
+    } catch {
+      // Ignore storage errors
+    }
+
+    const validationUrl = createAnamnesisValidationUrl(
+      origin,
+      tenant,
+      patient ? { ...patient, id: token } : { id: token },
+      professional,
+      { short: options?.short !== false }
+    );
+
     const message = formatAnamnesisWhatsAppMessage(
       tenant?.tradeName || tenant?.name || 'Clínica',
       patient?.name || '',
@@ -1961,7 +2014,18 @@ export const api = {
   async getPublicAnamnesisData(token: string, payloadData?: string | null): Promise<any> {
     const cleanToken = decodeURIComponent(token || '').trim();
 
-    // 1. Try payload decoding
+    // 1. Check localStorage registered tokens
+    let localRegistered: any = null;
+    try {
+      const storedTokens = JSON.parse(localStorage.getItem('fisiopro_anamnesis_tokens') || '{}');
+      if (storedTokens[cleanToken]) {
+        localRegistered = storedTokens[cleanToken];
+      }
+    } catch {
+      // Ignore
+    }
+
+    // 2. Try payload decoding
     let decoded: DecodedAnamnesisPayload | null = null;
     if (payloadData) {
       decoded = decodePayload<DecodedAnamnesisPayload>(payloadData);
@@ -1970,7 +2034,7 @@ export const api = {
       decoded = decodePayload<DecodedAnamnesisPayload>(cleanToken);
     }
 
-    // 2. Try Server API if online
+    // 3. Try Server API if online
     const queryParams = payloadData ? `?d=${encodeURIComponent(payloadData)}` : '';
     const serverRes = await tryFetch(`/api/public/anamnesis/${encodeURIComponent(cleanToken || 'new')}${queryParams}`);
     if (serverRes) {
@@ -1982,12 +2046,15 @@ export const api = {
       } catch (e) {}
     }
 
-    // 3. Fallback to LocalStorage / Decoded Payload
+    // 4. Fallback to LocalStorage / Decoded Payload
     const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
     const anamneses = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
     const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
 
     let patient = cleanToken ? patients.find(p => p.id === cleanToken) : null;
+    if (!patient && localRegistered?.patient?.name) {
+      patient = localRegistered.patient as Patient;
+    }
     if (!patient && decoded?.patId) {
       patient = patients.find(p => p.id === decoded?.patId) || null;
     }
@@ -1998,8 +2065,8 @@ export const api = {
       }
     }
 
-    const tenantId = patient?.tenantId || decoded?.tid || tenants[0]?.id || 'tenant-demo-1';
-    const tenant = tenants.find(t => t.id === tenantId) || tenants[0];
+    const tenantId = patient?.tenantId || localRegistered?.tenant?.id || decoded?.tid || tenants[0]?.id || 'tenant-demo-1';
+    const tenant = tenants.find(t => t.id === tenantId) || localRegistered?.tenant || tenants[0];
     const existingAnamnesis = patient ? anamneses.find(a => a.patientId === patient?.id) : null;
 
     return {
