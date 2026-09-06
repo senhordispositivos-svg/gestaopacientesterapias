@@ -183,7 +183,7 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
         className={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all duration-200 ${
           isFullscreen
             ? 'fixed inset-2 sm:inset-3 max-w-none max-h-none h-[calc(100vh-16px)] sm:h-[calc(100vh-24px)] z-50'
-            : 'max-w-5xl max-h-[92vh] h-[88vh]'
+            : 'max-w-6xl max-h-[95vh] h-[92vh]'
         }`}
       >
         {/* Header */}
@@ -330,7 +330,7 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
           )}
 
           {/* Main Visualizer */}
-          <div className="flex-1 w-full h-full overflow-auto flex items-center justify-center p-2 sm:p-4">
+          <div className={`flex-1 w-full h-full ${isPdf ? 'p-0 overflow-hidden' : 'p-2 sm:p-4 overflow-auto'} flex items-center justify-center`}>
             {isImage ? (
               <div className="w-full h-full flex items-center justify-center overflow-auto">
                 <img
@@ -345,7 +345,7 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
                 />
               </div>
             ) : isPdf ? (
-              <div className="w-full h-full rounded-2xl overflow-hidden bg-slate-900 shadow-2xl relative flex flex-col">
+              <div className="w-full h-full overflow-hidden bg-slate-900 relative flex flex-col">
                 <PdfCanvasViewer
                   fileUrl={blobUrl || doc.fileUrl}
                   fileName={doc.fileName}
