@@ -1675,12 +1675,47 @@ app.delete('/api/patients/:id', (req, res) => {
   res.json({ success: true, message: `Paciente ${deletedName} removido com sucesso.` });
 });
 
+// Helper to find all linked IDs for a patient (by ID, CPF, phone, or name)
+function getLinkedPatientIds(patientId: string): string[] {
+  const ids = new Set<string>([patientId]);
+  const patient = db.patients.find(p => p.id === patientId);
+  if (!patient) return Array.from(ids);
+
+  const cleanCpf = patient.cpf ? patient.cpf.replace(/\D/g, '') : '';
+  const cleanPhone = (patient.phone || patient.whatsapp || '').replace(/\D/g, '').slice(-8);
+  const normName = patient.name ? patient.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+
+  for (const p of db.patients) {
+    if (p.id === patientId) continue;
+    let matched = false;
+    if (cleanCpf && p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf) matched = true;
+    if (cleanPhone && (p.phone || p.whatsapp) && (p.phone || p.whatsapp).replace(/\D/g, '').slice(-8) === cleanPhone) matched = true;
+    if (normName.length >= 4) {
+      const pNorm = p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      if (pNorm === normName) matched = true;
+    }
+    if (matched) ids.add(p.id);
+  }
+  return Array.from(ids);
+}
+
 // -------------------------------------------------------------
 // ANAMNESIS API
 // -------------------------------------------------------------
 app.get('/api/patients/:patientId/anamnesis', (req, res) => {
-  const item = db.anamneses.find(a => a.patientId === req.params.patientId);
-  if (!item) return res.status(404).json({ message: 'Anamnese não encontrada' });
+  const linkedIds = getLinkedPatientIds(req.params.patientId);
+  let item = db.anamneses.find(a => linkedIds.includes(a.patientId));
+  
+  if (!item) {
+    return res.status(404).json({ message: 'Anamnese não encontrada' });
+  }
+
+  // Ensure anamnesis is linked directly to current patient ID
+  if (item.patientId !== req.params.patientId) {
+    item.patientId = req.params.patientId;
+    saveDatabase();
+  }
+
   res.json(item);
 });
 
@@ -2526,31 +2561,103 @@ app.post('/api/public/anamnesis-submit', (req, res) => {
   let patientIdx = -1;
   const targetId = patientData?.id || decoded?.patId || (token && token.startsWith('pat-') ? token : null);
 
+  // Check shortAnamnesisTokens map
+  const registeredToken = token ? shortAnamnesisTokens.get(token) : null;
+  const shortPatId = registeredToken?.patient?.id;
+
   if (targetId) {
     patientIdx = db.patients.findIndex(p => p.id === targetId);
   }
+  if (patientIdx === -1 && shortPatId) {
+    patientIdx = db.patients.findIndex(p => p.id === shortPatId);
+  }
 
-  // If not found by ID, search by CPF
-  if (patientIdx === -1 && patientData?.cpf) {
-    const cleanCpf = patientData.cpf.replace(/\D/g, '');
-    if (cleanCpf) {
-      patientIdx = db.patients.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf);
-    }
+  // Search by CPF
+  const cleanSubmittedCpf = (patientData?.cpf || decoded?.cpf || '').replace(/\D/g, '');
+  if (patientIdx === -1 && cleanSubmittedCpf) {
+    patientIdx = db.patients.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === cleanSubmittedCpf);
+  }
+
+  // Search by Phone / WhatsApp (last 8 digits)
+  const cleanSubmittedPhone = (patientData?.phone || patientData?.whatsapp || decoded?.phone || '').replace(/\D/g, '').slice(-8);
+  if (patientIdx === -1 && cleanSubmittedPhone.length >= 8) {
+    patientIdx = db.patients.findIndex(p => {
+      const pPhone = (p.phone || p.whatsapp || '').replace(/\D/g, '').slice(-8);
+      return pPhone === cleanSubmittedPhone;
+    });
+  }
+
+  // Search by Normalized Name
+  const normSubmittedName = (patientData?.name || decoded?.pname || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (patientIdx === -1 && normSubmittedName.length >= 4) {
+    patientIdx = db.patients.findIndex(p => {
+      const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      return pNorm === normSubmittedName;
+    });
   }
 
   let finalPatient: Patient;
 
   if (patientIdx !== -1) {
     // Update existing patient with new intake information and clear any soft deletion
-    delete (db.patients[patientIdx] as any).deletedAt;
-    db.patients[patientIdx] = {
-      ...db.patients[patientIdx],
+    const existing = db.patients[patientIdx];
+    finalPatient = {
+      ...existing,
       ...patientData,
+      id: existing.id,
+      tenantId: existing.tenantId || tenantId,
+      name: patientData?.name || existing.name,
+      cpf: patientData?.cpf || existing.cpf || decoded?.cpf || '',
+      phone: patientData?.phone || existing.phone || decoded?.phone || '',
+      whatsapp: patientData?.whatsapp || patientData?.phone || existing.whatsapp || decoded?.phone || '',
+      birthDate: patientData?.birthDate || existing.birthDate || decoded?.birthDate || '',
+      cep: patientData?.cep || existing.cep || '',
+      street: patientData?.street || existing.street || '',
+      number: patientData?.number || existing.number || '',
+      complement: patientData?.complement || existing.complement || '',
+      neighborhood: patientData?.neighborhood || existing.neighborhood || '',
+      city: patientData?.city || existing.city || decoded?.city || '',
+      state: patientData?.state || existing.state || decoded?.state || '',
       deletedAt: undefined,
       updatedAt: nowIso,
     };
-    delete (db.patients[patientIdx] as any).deletedAt;
-    finalPatient = db.patients[patientIdx];
+    delete (finalPatient as any).deletedAt;
+    db.patients[patientIdx] = finalPatient;
+
+    // Merge any other duplicate patient records into this patient ID
+    const duplicatePatients = db.patients.filter(p => {
+      if (p.id === finalPatient.id) return false;
+      if (cleanSubmittedCpf && p.cpf && p.cpf.replace(/\D/g, '') === cleanSubmittedCpf) return true;
+      if (cleanSubmittedPhone.length >= 8 && (p.phone || p.whatsapp) && (p.phone || p.whatsapp).replace(/\D/g, '').slice(-8) === cleanSubmittedPhone) return true;
+      if (normSubmittedName.length >= 4) {
+        const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        if (pNorm === normSubmittedName) return true;
+      }
+      return false;
+    });
+
+    duplicatePatients.forEach(dup => {
+      // Re-point anamneses
+      db.anamneses.forEach(a => {
+        if (a.patientId === dup.id) a.patientId = finalPatient.id;
+      });
+      // Re-point signatures
+      db.signatures.forEach(s => {
+        if (s.patientId === dup.id) s.patientId = finalPatient.id;
+      });
+      // Re-point documents
+      db.documentFiles.forEach(d => {
+        if (d.patientId === dup.id) d.patientId = finalPatient.id;
+      });
+      // Re-point packages
+      db.packages.forEach(pkg => {
+        if (pkg.patientId === dup.id) pkg.patientId = finalPatient.id;
+      });
+      // Re-point sessions
+      db.sessions.forEach(sess => {
+        if (sess.patientId === dup.id) sess.patientId = finalPatient.id;
+      });
+    });
   } else {
     // Create new patient
     finalPatient = {
@@ -2652,6 +2759,32 @@ app.post('/api/public/anamnesis-submit', (req, res) => {
     });
   }
 
+  // 3.1 Save Attached Medical Certificate / Health Document (PDF or Image)
+  if (req.body.attachedDocument && req.body.attachedDocument.fileUrl) {
+    const doc = req.body.attachedDocument;
+    const newDoc: DocumentFile = {
+      id: `doc-${Date.now()}`,
+      tenantId,
+      patientId: finalPatient.id,
+      uploadedByUserId: 'patient',
+      uploadedByName: finalPatient.name,
+      fileName: doc.fileName || 'Atestado_Medico.pdf',
+      fileType: doc.fileType || 'application/pdf',
+      fileSize: doc.fileSize || 512000,
+      fileUrl: doc.fileUrl,
+      category: doc.category || 'ATESTADO',
+      notes: doc.notes || 'Anexado pelo cliente na Ficha de Anamnese Digital',
+      uploadedAt: nowIso,
+    };
+    db.documentFiles.unshift(newDoc);
+    broadcastRealtime(tenantId, {
+      type: 'DOCUMENTS_SYNC',
+      entity: 'documents',
+      action: 'sync',
+      payload: newDoc,
+    });
+  }
+
   // 4. Log Audit Trail
   logAudit(
     tenantId,
@@ -2734,7 +2867,8 @@ app.post('/api/patients/:patientId/evolutions', (req, res) => {
 
 // Documents
 app.get('/api/patients/:patientId/documents', (req, res) => {
-  const list = db.documentFiles.filter(d => d.patientId === req.params.patientId);
+  const linkedIds = getLinkedPatientIds(req.params.patientId);
+  const list = db.documentFiles.filter(d => linkedIds.includes(d.patientId));
   res.json(list);
 });
 
@@ -2770,7 +2904,57 @@ app.delete('/api/patients/:patientId/documents/:id', (req, res) => {
 
 // Signatures
 app.get('/api/patients/:patientId/signatures', (req, res) => {
-  const list = db.signatures.filter(s => s.patientId === req.params.patientId);
+  const linkedIds = getLinkedPatientIds(req.params.patientId);
+  let list = db.signatures.filter(s => linkedIds.includes(s.patientId));
+
+  // Check if anamnesis has signature not yet in list
+  const patientAnams = db.anamneses.filter(a => linkedIds.includes(a.patientId) && a.patientSignatureUrl);
+  patientAnams.forEach(anam => {
+    const exists = list.some(s => s.referenceId === anam.id || s.signatureUrl === anam.patientSignatureUrl);
+    if (!exists && anam.patientSignatureUrl) {
+      const pat = db.patients.find(p => linkedIds.includes(p.id));
+      const newSig = {
+        id: `sig-anam-${anam.id}`,
+        tenantId: anam.tenantId || (pat?.tenantId) || 'tenant-demo-1',
+        patientId: req.params.patientId,
+        patientName: pat?.name || 'Paciente',
+        documentType: 'ANAMNESIS' as const,
+        referenceId: anam.id,
+        signatureUrl: anam.patientSignatureUrl,
+        signedByName: pat?.name || 'Paciente',
+        signedAt: anam.signedAt || anam.createdAt || new Date().toISOString(),
+        ipAddress: anam.signedByIp || '127.0.0.1',
+        hash: `SIG-ANAM-${(anam.id || '').replace(/\D/g, '').slice(-8) || Date.now().toString(16).toUpperCase()}`,
+      };
+      db.signatures.unshift(newSig as any);
+      list.unshift(newSig as any);
+    }
+  });
+
+  // Check if any completed sessions have signatures not yet in list
+  const patientSessions = db.sessions.filter(s => linkedIds.includes(s.patientId) && s.clientSignatureUrl);
+  patientSessions.forEach(sess => {
+    const exists = list.some(s => s.referenceId === sess.id || s.signatureUrl === sess.clientSignatureUrl);
+    if (!exists && sess.clientSignatureUrl) {
+      const pat = db.patients.find(p => linkedIds.includes(p.id));
+      const newSig = {
+        id: `sig-sess-${sess.id}`,
+        tenantId: sess.tenantId || (pat?.tenantId) || 'tenant-demo-1',
+        patientId: req.params.patientId,
+        patientName: pat?.name || sess.patientName || 'Paciente',
+        documentType: 'SESSION_CONFIRMATION' as const,
+        referenceId: sess.id,
+        signatureUrl: sess.clientSignatureUrl,
+        signedByName: pat?.name || sess.patientName || 'Paciente',
+        signedAt: sess.clientConfirmedAt || sess.attendedAt || sess.scheduledDate || new Date().toISOString(),
+        ipAddress: sess.clientConfirmedIp || '127.0.0.1',
+        hash: `SIG-SESS-${(sess.id || '').replace(/\D/g, '').slice(-8) || Date.now().toString(16).toUpperCase()}`,
+      };
+      db.signatures.unshift(newSig as any);
+      list.unshift(newSig as any);
+    }
+  });
+
   res.json(list);
 });
 

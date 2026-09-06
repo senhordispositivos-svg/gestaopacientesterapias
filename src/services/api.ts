@@ -896,10 +896,47 @@ export const api = {
     const serverRes = await tryFetch(`/api/patients/${patientId}/anamnesis`, {
       headers: { 'x-tenant-id': tenantId },
     });
-    if (serverRes) return serverRes.json();
+    if (serverRes) {
+      try {
+        const data = await serverRes.json();
+        if (data && (data.id || data.healthHistory || data.patientSignatureUrl)) {
+          return data;
+        }
+      } catch (e) {
+        // continue to local lookup
+      }
+    }
 
     const list = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
-    return list.find(a => a.patientId === patientId) || null;
+    let found = list.find(a => a.patientId === patientId);
+    if (!found) {
+      // Smart lookup by patient profile
+      const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+      const targetP = patients.find(p => p.id === patientId);
+      if (targetP) {
+        const cleanCpf = targetP.cpf ? targetP.cpf.replace(/\D/g, '') : '';
+        const cleanPhone = (targetP.phone || targetP.whatsapp || '').replace(/\D/g, '').slice(-8);
+        const normName = targetP.name ? targetP.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+
+        found = list.find(a => {
+          const pat = patients.find(p => p.id === a.patientId);
+          if (!pat) return false;
+          if (cleanCpf && pat.cpf && pat.cpf.replace(/\D/g, '') === cleanCpf) return true;
+          if (cleanPhone && (pat.phone || pat.whatsapp) && (pat.phone || pat.whatsapp).replace(/\D/g, '').slice(-8) === cleanPhone) return true;
+          if (normName.length >= 4) {
+            const pNorm = (pat.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+            if (pNorm === normName) return true;
+          }
+          return false;
+        });
+
+        if (found) {
+          found.patientId = patientId;
+          setLocal(STORAGE_KEYS.ANAMNESIS, list);
+        }
+      }
+    }
+    return found || null;
   },
 
   async saveAnamnesis(patientId: string, tenantId: string, data: Partial<Anamnesis>): Promise<Anamnesis> {
@@ -2098,6 +2135,14 @@ export const api = {
     patientData: Partial<Patient>;
     anamnesisData: Partial<Anamnesis>;
     signatureUrl: string;
+    attachedDocument?: {
+      fileName: string;
+      fileType: string;
+      fileSize: number;
+      fileUrl: string;
+      category?: string;
+      notes?: string;
+    };
     tenantId?: string;
   }): Promise<{ success: boolean; patient: Patient; anamnesis: Anamnesis; message?: string }> {
     const nowIso = new Date().toISOString();
@@ -2237,6 +2282,27 @@ export const api = {
       setLocal(STORAGE_KEYS.SIGNATURES, signatures);
     }
 
+    // Save Attached Document (Medical Certificate / Health Document)
+    if (data.attachedDocument && data.attachedDocument.fileUrl) {
+      const docs = getLocal<DocumentFile[]>(STORAGE_KEYS.DOCUMENTS, []);
+      const newDoc: DocumentFile = {
+        id: `doc-${Date.now()}`,
+        tenantId,
+        patientId: finalPatient.id,
+        uploadedByUserId: 'patient',
+        uploadedByName: finalPatient.name,
+        fileName: data.attachedDocument.fileName || 'Atestado_Medico.pdf',
+        fileType: data.attachedDocument.fileType || 'application/pdf',
+        fileSize: data.attachedDocument.fileSize || 512000,
+        fileUrl: data.attachedDocument.fileUrl,
+        category: (data.attachedDocument.category as any) || 'ATESTADO',
+        notes: data.attachedDocument.notes || 'Anexado pelo cliente na Ficha de Anamnese Digital',
+        uploadedAt: nowIso,
+      };
+      docs.unshift(newDoc);
+      setLocal(STORAGE_KEYS.DOCUMENTS, docs);
+    }
+
     // 1. Dual-Sync: Direct to Supabase Cloud (ensures instant persistence across mobile & desktop on Vercel/Netlify)
     if (supabaseDirectApi.isEnabled()) {
       try {
@@ -2320,9 +2386,40 @@ export const api = {
   // Documents
   async getDocuments(patientId: string, tenantId?: string): Promise<DocumentFile[]> {
     const serverRes = await tryFetch(`/api/patients/${patientId}/documents`);
-    if (serverRes) return serverRes.json();
+    if (serverRes) {
+      try {
+        const json = await serverRes.json();
+        if (Array.isArray(json)) return json;
+      } catch (e) {}
+    }
     const list = getLocal<DocumentFile[]>(STORAGE_KEYS.DOCUMENTS, []);
-    return list.filter(d => d.patientId === patientId);
+    let matched = list.filter(d => d.patientId === patientId);
+
+    if (matched.length === 0) {
+      const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+      const targetP = patients.find(p => p.id === patientId);
+      if (targetP) {
+        const cleanCpf = targetP.cpf ? targetP.cpf.replace(/\D/g, '') : '';
+        const cleanPhone = (targetP.phone || targetP.whatsapp || '').replace(/\D/g, '').slice(-8);
+        const normName = targetP.name ? targetP.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+
+        const linkedPatients = patients.filter(p => {
+          if (p.id === patientId) return false;
+          if (cleanCpf && p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf) return true;
+          if (cleanPhone && (p.phone || p.whatsapp) && (p.phone || p.whatsapp).replace(/\D/g, '').slice(-8) === cleanPhone) return true;
+          if (normName.length >= 4) {
+            const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+            if (pNorm === normName) return true;
+          }
+          return false;
+        });
+
+        const linkedIds = new Set(linkedPatients.map(p => p.id));
+        matched = list.filter(d => linkedIds.has(d.patientId));
+      }
+    }
+
+    return matched;
   },
 
   async uploadDocument(
@@ -2386,9 +2483,58 @@ export const api = {
   // Signatures
   async getSignatures(patientId: string, tenantId?: string): Promise<SignatureRecord[]> {
     const serverRes = await tryFetch(`/api/patients/${patientId}/signatures`);
-    if (serverRes) return serverRes.json();
+    if (serverRes) {
+      try {
+        const json = await serverRes.json();
+        if (Array.isArray(json) && json.length > 0) return json;
+      } catch (e) {}
+    }
+
     const list = getLocal<SignatureRecord[]>(STORAGE_KEYS.SIGNATURES, []);
-    return list.filter(s => s.patientId === patientId);
+    const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+    const targetP = patients.find(p => p.id === patientId);
+
+    const linkedIds = new Set<string>([patientId]);
+    if (targetP) {
+      const cleanCpf = targetP.cpf ? targetP.cpf.replace(/\D/g, '') : '';
+      const cleanPhone = (targetP.phone || targetP.whatsapp || '').replace(/\D/g, '').slice(-8);
+      const normName = targetP.name ? targetP.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+
+      patients.forEach(p => {
+        if (cleanCpf && p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf) linkedIds.add(p.id);
+        if (cleanPhone && (p.phone || p.whatsapp) && (p.phone || p.whatsapp).replace(/\D/g, '').slice(-8) === cleanPhone) linkedIds.add(p.id);
+        if (normName.length >= 4) {
+          const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+          if (pNorm === normName) linkedIds.add(p.id);
+        }
+      });
+    }
+
+    const matched = list.filter(s => linkedIds.has(s.patientId));
+
+    // Also check local anamneses
+    const anamneses = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
+    const patientAnams = anamneses.filter(a => linkedIds.has(a.patientId) && a.patientSignatureUrl);
+    patientAnams.forEach(anam => {
+      const exists = matched.some(s => s.referenceId === anam.id || s.signatureUrl === anam.patientSignatureUrl);
+      if (!exists && anam.patientSignatureUrl) {
+        matched.unshift({
+          id: `sig-anam-${anam.id}`,
+          tenantId: anam.tenantId || targetP?.tenantId || 'tenant-demo-1',
+          patientId,
+          patientName: targetP?.name || 'Paciente',
+          documentType: 'ANAMNESIS',
+          referenceId: anam.id,
+          signatureUrl: anam.patientSignatureUrl,
+          signedByName: targetP?.name || 'Paciente',
+          signedAt: anam.signedAt || anam.createdAt || new Date().toISOString(),
+          ipAddress: anam.signedByIp || '127.0.0.1',
+          hash: `SIG-ANAM-${(anam.id || '').replace(/\D/g, '').slice(-8) || Date.now().toString(16).toUpperCase()}`,
+        });
+      }
+    });
+
+    return matched;
   },
 
   // Audit Logs

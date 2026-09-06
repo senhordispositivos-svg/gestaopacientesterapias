@@ -88,8 +88,9 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
     (mode: 'page' | 'width', pageNum = currentPage, rot = rotation): number => {
       if (!containerRef.current) return 1.0;
       const container = containerRef.current;
-      const availWidth = Math.max(180, container.clientWidth - 40);
-      const availHeight = Math.max(180, container.clientHeight - 40);
+      // Account for container padding and borders
+      const availWidth = Math.max(160, container.clientWidth - 48);
+      const availHeight = Math.max(160, container.clientHeight - 84);
 
       const size = pageSizesRef.current[pageNum] || pageSizesRef.current[1] || { width: 595, height: 842 };
       const isRotated = rot % 180 !== 0;
@@ -100,7 +101,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
         const s = availWidth / actualWidth;
         return Math.max(0.1, Math.min(s, 3.5));
       } else {
-        // Fit entire page in view (both width and height visible without scrolling)
+        // Fit entire page in view (both width and height completely visible without clipping)
         const scaleW = availWidth / actualWidth;
         const scaleH = availHeight / actualHeight;
         const s = Math.min(scaleW, scaleH);
@@ -159,8 +160,8 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
         // Give DOM a frame to layout containerRef, then compute fit
         requestAnimationFrame(() => {
           if (!isCancelled && containerRef.current) {
-            const availW = Math.max(180, containerRef.current.clientWidth - 40);
-            const availH = Math.max(180, containerRef.current.clientHeight - 40);
+            const availW = Math.max(160, containerRef.current.clientWidth - 48);
+            const availH = Math.max(160, containerRef.current.clientHeight - 84);
             const scaleW = availW / vp.width;
             const scaleH = availH / vp.height;
             // Fit entire page so 100% of the document is visible
@@ -566,7 +567,11 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
         )}
 
         {!isLoading && !error && numPages > 0 && (
-          <div className="flex flex-col items-center gap-6 my-auto max-w-full">
+          <div
+            className={`flex flex-col items-center gap-6 max-w-full transition-all ${
+              viewMode === 'single' && fitMode === 'page' ? 'm-auto' : 'my-0 py-4'
+            }`}
+          >
             {viewMode === 'all'
               ? Array.from({ length: numPages }, (_, index) => {
                   const pageNum = index + 1;

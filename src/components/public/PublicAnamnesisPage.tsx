@@ -21,6 +21,11 @@ import {
   Clock,
   ShieldAlert,
   HelpCircle,
+  Paperclip,
+  Upload,
+  X,
+  FileCheck,
+  Eye,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { formatCPF, validateCPF, formatPhone, formatCEP } from '../../utils/cpf';
@@ -41,6 +46,67 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+
+  // Font Size Accessibility Scale (100% = Normal, 115% = Grande, 130% = Muito Grande, 145% = Extragrande)
+  const [fontScale, setFontScale] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('fisiopro_anamnesis_font_scale');
+      return saved ? Number(saved) : 100;
+    } catch {
+      return 100;
+    }
+  });
+
+  const handleFontScaleChange = (newScale: number) => {
+    const clamped = Math.max(90, Math.min(newScale, 150));
+    setFontScale(clamped);
+    try {
+      localStorage.setItem('fisiopro_anamnesis_font_scale', clamped.toString());
+    } catch {}
+  };
+
+  // Attached Document (Atestado Médico / Laudo de Saúde em PDF ou Imagem)
+  const [attachedDoc, setAttachedDoc] = useState<{
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+    fileUrl: string;
+    category: string;
+    notes: string;
+  } | null>(null);
+  const [isProcessingDoc, setIsProcessingDoc] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleDocSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 20 * 1024 * 1024) {
+      alert('O arquivo selecionado é maior que 20MB. Por favor, selecione um arquivo menor.');
+      return;
+    }
+
+    setIsProcessingDoc(true);
+    const reader = new FileReader();
+    reader.onload = evt => {
+      if (evt.target?.result) {
+        setAttachedDoc({
+          fileName: file.name,
+          fileType: file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+          fileSize: file.size,
+          fileUrl: evt.target.result as string,
+          category: 'ATESTADO',
+          notes: 'Anexado pelo cliente na Ficha de Anamnese Digital',
+        });
+      }
+      setIsProcessingDoc(false);
+    };
+    reader.onerror = () => {
+      alert('Erro ao carregar o arquivo. Tente novamente.');
+      setIsProcessingDoc(false);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Clinic & Professional Data
   const [clinicData, setClinicData] = useState<{
@@ -370,6 +436,7 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
         patientData,
         anamnesisData,
         signatureUrl,
+        attachedDocument: attachedDoc || undefined,
       });
 
       if (res && res.success) {
@@ -493,7 +560,62 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Barra de Acessibilidade: Ajuste de Tamanho de Letra para Conforto Visual */}
+        <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-xs border border-slate-200 dark:border-slate-800 p-3 mb-5 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 flex items-center justify-center font-black text-sm shrink-0 border border-teal-200 dark:border-teal-800">
+              A
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight">
+                Tamanho da Letra / Acessibilidade
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Aumente ou diminua as letras para facilitar sua leitura
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 ml-auto">
+            <button
+              type="button"
+              onClick={() => handleFontScaleChange(fontScale - 15)}
+              disabled={fontScale <= 90}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-750 disabled:opacity-40 transition flex items-center gap-1 cursor-pointer"
+              title="Diminuir tamanho da letra"
+            >
+              <span className="text-[11px] font-black">A-</span>
+              <span className="hidden xs:inline text-[11px]">Diminuir</span>
+            </button>
+
+            <span className="px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 font-extrabold text-xs border border-teal-200 dark:border-teal-800 min-w-[56px] text-center">
+              {fontScale}%
+            </span>
+
+            <button
+              type="button"
+              onClick={() => handleFontScaleChange(fontScale + 15)}
+              disabled={fontScale >= 150}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-750 disabled:opacity-40 transition flex items-center gap-1 cursor-pointer"
+              title="Aumentar tamanho da letra"
+            >
+              <span className="text-[13px] font-black">A+</span>
+              <span className="hidden xs:inline text-[11px]">Aumentar</span>
+            </button>
+
+            {fontScale !== 100 && (
+              <button
+                type="button"
+                onClick={() => handleFontScaleChange(100)}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline transition cursor-pointer"
+              >
+                Padrão (100%)
+              </button>
+            )}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5" style={{ fontSize: `${fontScale}%` }}>
           {/* SECTION 1: IDENTIFICAÇÃO DO CLIENTE */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 sm:p-7">
             <div className="flex items-center gap-2.5 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -1404,7 +1526,106 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
             </div>
           </div>
 
-          {/* SECTION 5: TERMOS E CONDIÇÕES (OBRIGATÓRIO) */}
+          {/* SECTION 5: ATESTADO MÉDICO OU LAUDO DE SAÚDE (OPCIONAL) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 sm:p-7">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-600 flex items-center justify-center font-black text-xs">
+                  5
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+                    Atestado Médico ou Laudo de Saúde
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Se você possui atestado, laudo, exame ou recomendação médica, anexe em PDF ou foto
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                Opcional
+              </span>
+            </div>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleDocSelect}
+              accept=".pdf,image/*,application/pdf"
+              className="hidden"
+            />
+
+            {attachedDoc ? (
+              <div className="p-4 rounded-2xl bg-teal-50/70 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                    {attachedDoc.fileName.toLowerCase().endsWith('.pdf') ? 'PDF' : 'IMG'}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate max-w-[240px] sm:max-w-md">
+                        {attachedDoc.fileName}
+                      </p>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold flex items-center gap-1">
+                        <FileCheck className="w-3 h-3" /> Anexado
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Tamanho: {(attachedDoc.fileSize / 1024).toFixed(0)} KB • Categoria: Atestado / Laudo
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Substituir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAttachedDoc(null)}
+                    className="p-1.5 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                    title="Remover anexo"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="p-6 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-teal-500 dark:hover:border-teal-400 bg-slate-50/50 dark:bg-slate-800/30 text-center cursor-pointer transition group"
+              >
+                {isProcessingDoc ? (
+                  <div className="flex flex-col items-center justify-center py-2">
+                    <Loader2 className="w-8 h-8 text-teal-600 animate-spin mb-2" />
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Processando documento anexado...
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 group-hover:scale-110 transition flex items-center justify-center">
+                      <Paperclip className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        Clique aqui para anexar seu Atestado ou Laudo Médico
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Aceita arquivos PDF, fotos ou imagens escaneadas (até 20MB)
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 6: TERMOS E CONDIÇÕES (OBRIGATÓRIO) */}
           <div
             className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border p-5 sm:p-7 transition-all ${
               attemptedSubmit && !termAccepted
@@ -1414,7 +1635,7 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
           >
             <div className="flex items-center gap-2.5 mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-700 flex items-center justify-center font-black text-xs">
-                5
+                6
               </div>
               <div>
                 <h3 className="text-sm font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wide">
@@ -1459,7 +1680,7 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
             </label>
           </div>
 
-          {/* SECTION 6: ASSINATURA DIGITAL DO CLIENTE (OBRIGATÓRIA E CALIBRADA) */}
+          {/* SECTION 7: ASSINATURA DIGITAL DO CLIENTE (OBRIGATÓRIA E CALIBRADA) */}
           <div
             className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border p-5 sm:p-7 transition-all ${
               attemptedSubmit && (!signatureUrl || signatureUrl.length < 50)
@@ -1470,7 +1691,7 @@ export const PublicAnamnesisPage: React.FC<PublicAnamnesisPageProps> = ({
             <div className="flex items-center justify-between flex-wrap gap-2 mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-600 flex items-center justify-center font-black text-xs">
-                  6
+                  7
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">

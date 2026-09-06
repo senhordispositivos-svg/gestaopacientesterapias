@@ -15,6 +15,7 @@ import {
   Minimize2,
   Eye,
   CheckCircle2,
+  Layers,
 } from 'lucide-react';
 import { formatDate } from '../../utils/formatters';
 import { PdfCanvasViewer } from './PdfCanvasViewer';
@@ -36,6 +37,7 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageScale, setImageScale] = useState(1);
   const [imageRotation, setImageRotation] = useState(0);
+  const [pdfEngine, setPdfEngine] = useState<'canvas' | 'native'>('canvas');
 
   // Reset zoom & rotation when doc changes
   useEffect(() => {
@@ -228,6 +230,19 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
 
           {/* Action buttons on header */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Toggle between HD Canvas and Native Browser viewer for PDFs */}
+            {isPdf && (
+              <button
+                type="button"
+                onClick={() => setPdfEngine(prev => (prev === 'canvas' ? 'native' : 'canvas'))}
+                className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                title={pdfEngine === 'canvas' ? 'Alternar para visualizador nativo do navegador' : 'Alternar para visualizador de alta definição'}
+              >
+                <Layers className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                <span className="hidden md:inline">{pdfEngine === 'canvas' ? 'Modo Nativo' : 'Modo HD'}</span>
+              </button>
+            )}
+
             {/* Open in full separate tab without download */}
             <button
               type="button"
@@ -346,11 +361,19 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
               </div>
             ) : isPdf ? (
               <div className="w-full h-full overflow-hidden bg-slate-900 relative flex flex-col">
-                <PdfCanvasViewer
-                  fileUrl={blobUrl || doc.fileUrl}
-                  fileName={doc.fileName}
-                  onOpenNewTab={handleOpenInNewTab}
-                />
+                {pdfEngine === 'native' ? (
+                  <iframe
+                    src={blobUrl || doc.fileUrl}
+                    className="w-full h-full border-0 bg-white"
+                    title={doc.fileName}
+                  />
+                ) : (
+                  <PdfCanvasViewer
+                    fileUrl={blobUrl || doc.fileUrl}
+                    fileName={doc.fileName}
+                    onOpenNewTab={handleOpenInNewTab}
+                  />
+                )}
               </div>
             ) : (
               <div className="text-center p-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-md space-y-4 shadow-xl">
