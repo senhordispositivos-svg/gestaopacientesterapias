@@ -671,8 +671,75 @@ export const api = {
     // Persist updated deleted list
     setLocal(STORAGE_KEYS.DELETED_PATIENTS, Array.from(deletedIds));
 
-    // Sanitized unique patients list
-    const allUnique = Array.from(mergedMap.values()).filter(p => !isDeleted(p));
+    // Sanitized unique patients list with smart deduplication
+    const rawList = Array.from(mergedMap.values()).filter(p => !isDeleted(p));
+    const deduplicatedMap = new Map<string, Patient>();
+
+    rawList.forEach(p => {
+      const cleanCpf = p.cpf ? p.cpf.replace(/\D/g, '') : '';
+      const cleanPhone = (p.phone || p.whatsapp || '').replace(/\D/g, '').slice(-8);
+      const normName = p.name ? p.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+
+      // Check if already in deduplicatedMap by CPF, Phone or full Name
+      let matchedKey: string | null = null;
+      for (const [key, existing] of deduplicatedMap.entries()) {
+        if (existing.id === p.id) {
+          matchedKey = key;
+          break;
+        }
+        if (cleanCpf && existing.cpf && existing.cpf.replace(/\D/g, '') === cleanCpf) {
+          matchedKey = key;
+          break;
+        }
+        if (cleanPhone && (existing.phone || existing.whatsapp) && (existing.phone || existing.whatsapp).replace(/\D/g, '').slice(-8) === cleanPhone) {
+          matchedKey = key;
+          break;
+        }
+        if (normName.length >= 4) {
+          const exNorm = (existing.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+          if (exNorm === normName) {
+            matchedKey = key;
+            break;
+          }
+        }
+      }
+
+      if (matchedKey) {
+        const existing = deduplicatedMap.get(matchedKey)!;
+        // Merge attributes, prefer cloud id or more complete record
+        const preferredId = (p.id.startsWith('pat-1788') || p.id.includes('-')) && !existing.id.startsWith('pat-1788')
+          ? p.id
+          : existing.id;
+
+        const merged: Patient = {
+          ...existing,
+          ...p,
+          id: preferredId,
+          name: p.name || existing.name,
+          phone: p.phone || existing.phone,
+          whatsapp: p.whatsapp || existing.whatsapp || p.phone || existing.phone,
+          email: p.email || existing.email,
+          cpf: p.cpf || existing.cpf,
+          rg: p.rg || existing.rg,
+          gender: p.gender && p.gender !== 'Outro' ? p.gender : existing.gender || 'Outro',
+          profession: p.profession || existing.profession,
+          birthDate: p.birthDate || existing.birthDate,
+          cep: p.cep || existing.cep,
+          street: p.street || existing.street,
+          number: p.number || existing.number,
+          complement: p.complement || existing.complement,
+          neighborhood: p.neighborhood || existing.neighborhood,
+          city: p.city || existing.city,
+          state: p.state || existing.state,
+          notes: p.notes || existing.notes,
+        };
+        deduplicatedMap.set(matchedKey, merged);
+      } else {
+        deduplicatedMap.set(p.id, p);
+      }
+    });
+
+    const allUnique = Array.from(deduplicatedMap.values());
     setLocal(STORAGE_KEYS.PATIENTS, allUnique);
 
     let result = allUnique;
@@ -893,24 +960,114 @@ export const api = {
 
   // Anamnesis
   async getAnamnesis(patientId: string, tenantId: string): Promise<Anamnesis | null> {
+    // 1. Try server endpoint
     const serverRes = await tryFetch(`/api/patients/${patientId}/anamnesis`, {
       headers: { 'x-tenant-id': tenantId },
     });
     if (serverRes) {
       try {
         const data = await serverRes.json();
-        if (data && (data.id || data.healthHistory || data.patientSignatureUrl)) {
+        if (data && (data.id || data.healthHistory || data.patientSignatureUrl || data.evaluation)) {
           return data;
         }
       } catch (e) {
-        // continue to local lookup
+        // continue to cloud/local lookup
       }
     }
 
+    // 2. Query Supabase Cloud directly
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        // Direct query by patientId
+        let cloudAnams = await supabaseDirectApi.getAnamneses(tenantId, patientId);
+        if (cloudAnams && cloudAnams.length > 0) {
+          const matched = cloudAnams[0];
+          const list = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
+          const idx = list.findIndex(a => a.id === matched.id || a.patientId === matched.patientId);
+          if (idx !== -1) {
+            list[idx] = matched;
+          } else {
+            list.unshift(matched);
+          }
+          setLocal(STORAGE_KEYS.ANAMNESIS, list);
+          return matched;
+        }
+
+        // Check linked patient IDs (same CPF, same phone, same name)
+        const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+        const targetP = patients.find(p => p.id === patientId);
+        if (targetP) {
+          const cleanCpf = targetP.cpf ? targetP.cpf.replace(/\D/g, '') : '';
+          const cleanPhone = (targetP.phone || targetP.whatsapp || '').replace(/\D/g, '').slice(-8);
+          const normName = targetP.name ? targetP.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+
+          const linkedPatients = patients.filter(p => {
+            if (p.id === patientId) return false;
+            if (cleanCpf && p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf) return true;
+            if (cleanPhone && (p.phone || p.whatsapp) && (p.phone || p.whatsapp).replace(/\D/g, '').slice(-8) === cleanPhone) return true;
+            if (normName.length >= 4) {
+              const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+              if (pNorm === normName) return true;
+            }
+            return false;
+          });
+
+          for (const lp of linkedPatients) {
+            cloudAnams = await supabaseDirectApi.getAnamneses(tenantId, lp.id);
+            if (cloudAnams && cloudAnams.length > 0) {
+              const matched = { ...cloudAnams[0], patientId };
+              const list = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
+              const idx = list.findIndex(a => a.id === matched.id || a.patientId === patientId);
+              if (idx !== -1) {
+                list[idx] = matched;
+              } else {
+                list.unshift(matched);
+              }
+              setLocal(STORAGE_KEYS.ANAMNESIS, list);
+              return matched;
+            }
+          }
+
+          // Also check all tenant cloud patients by name
+          if (targetP.name) {
+            const allCloudPatients = await supabaseDirectApi.getPatients(tenantId);
+            const matchedCloudPat = allCloudPatients.find(cp => {
+              if (cp.id === patientId) return true;
+              if (targetP.cpf && cp.cpf && cp.cpf.replace(/\D/g, '') === targetP.cpf.replace(/\D/g, '')) return true;
+              const pPhone = (targetP.phone || targetP.whatsapp || '').replace(/\D/g, '').slice(-8);
+              const cpPhone = (cp.phone || cp.whatsapp || '').replace(/\D/g, '').slice(-8);
+              if (pPhone && cpPhone && pPhone === cpPhone) return true;
+              const tNorm = targetP.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+              const cNorm = (cp.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+              return tNorm.length >= 4 && tNorm === cNorm;
+            });
+
+            if (matchedCloudPat) {
+              cloudAnams = await supabaseDirectApi.getAnamneses(tenantId, matchedCloudPat.id);
+              if (cloudAnams && cloudAnams.length > 0) {
+                const matched = { ...cloudAnams[0], patientId };
+                const list = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
+                const idx = list.findIndex(a => a.id === matched.id || a.patientId === patientId);
+                if (idx !== -1) {
+                  list[idx] = matched;
+                } else {
+                  list.unshift(matched);
+                }
+                setLocal(STORAGE_KEYS.ANAMNESIS, list);
+                return matched;
+              }
+            }
+          }
+        }
+      } catch (sbErr) {
+        console.warn('Supabase getAnamnesis notice:', sbErr);
+      }
+    }
+
+    // 3. Smart local storage lookup
     const list = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
     let found = list.find(a => a.patientId === patientId);
     if (!found) {
-      // Smart lookup by patient profile
       const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
       const targetP = patients.find(p => p.id === patientId);
       if (targetP) {
@@ -940,13 +1097,6 @@ export const api = {
   },
 
   async saveAnamnesis(patientId: string, tenantId: string, data: Partial<Anamnesis>): Promise<Anamnesis> {
-    const serverRes = await tryFetch(`/api/patients/${patientId}/anamnesis`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
-      body: JSON.stringify(data),
-    });
-    if (serverRes) return serverRes.json();
-
     const list = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
     const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
     const patientObj = patients.find(p => p.id === patientId);
@@ -954,29 +1104,87 @@ export const api = {
     const tenantObj = tenants.find(t => t.id === tenantId);
 
     const newAnam: Anamnesis = {
-      id: `anam-${Date.now()}`,
+      id: data.id || `anam-${Date.now()}`,
       tenantId,
       patientId,
       healthHistory: data.healthHistory || ({} as any),
       treatments: data.treatments || ({} as any),
       habits: data.habits || ({} as any),
       evaluation: data.evaluation,
-      responsibilityTermAccepted: data.responsibilityTermAccepted !== undefined ? data.responsibilityTermAccepted : true,
+      responsibilityTermAccepted: data.responsibilityTermAccepted !== undefined ? Boolean(data.responsibilityTermAccepted) : true,
       patientSignatureUrl: data.patientSignatureUrl || '',
       city: data.city || patientObj?.city || tenantObj?.city || '',
       state: data.state || patientObj?.state || tenantObj?.state || '',
-      signedAt: new Date().toISOString(),
-      signedByIp: '127.0.0.1',
-      createdAt: new Date().toISOString(),
+      signedAt: data.signedAt || new Date().toISOString(),
+      signedByIp: data.signedByIp || '127.0.0.1',
+      createdAt: data.createdAt || new Date().toISOString(),
     };
 
-    const idx = list.findIndex(a => a.patientId === patientId);
+    // 1. Try server
+    try {
+      await tryFetch(`/api/patients/${patientId}/anamnesis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
+        body: JSON.stringify(newAnam),
+      });
+    } catch (e) {
+      console.warn('Server saveAnamnesis notice:', e);
+    }
+
+    // 2. Save directly to Supabase Cloud
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        await supabaseDirectApi.saveAnamnesis(newAnam);
+        if (newAnam.patientSignatureUrl) {
+          await supabaseDirectApi.createSignature({
+            tenantId,
+            patientId,
+            patientName: patientObj?.name || 'Paciente',
+            documentType: 'ANAMNESIS',
+            referenceId: newAnam.id,
+            signatureUrl: newAnam.patientSignatureUrl,
+            signedByName: patientObj?.name || 'Paciente',
+            signedAt: newAnam.signedAt || new Date().toISOString(),
+            ipAddress: newAnam.signedByIp || '127.0.0.1',
+            hash: `SIG-ANAM-${Date.now().toString(16).toUpperCase()}`,
+          });
+        }
+      } catch (sbErr) {
+        console.warn('Supabase saveAnamnesis notice:', sbErr);
+      }
+    }
+
+    // 3. LocalStorage persistence
+    const idx = list.findIndex(a => a.patientId === patientId || a.id === newAnam.id);
     if (idx !== -1) {
       list[idx] = newAnam;
     } else {
       list.unshift(newAnam);
     }
     setLocal(STORAGE_KEYS.ANAMNESIS, list);
+
+    // Also persist signature in local signatures
+    if (newAnam.patientSignatureUrl) {
+      const sigs = getLocal<SignatureRecord[]>(STORAGE_KEYS.SIGNATURES, []);
+      const existingSig = sigs.find(s => s.referenceId === newAnam.id || s.signatureUrl === newAnam.patientSignatureUrl);
+      if (!existingSig) {
+        sigs.unshift({
+          id: `sig-anam-${Date.now()}`,
+          tenantId,
+          patientId,
+          patientName: patientObj?.name || 'Paciente',
+          documentType: 'ANAMNESIS',
+          referenceId: newAnam.id,
+          signatureUrl: newAnam.patientSignatureUrl,
+          signedByName: patientObj?.name || 'Paciente',
+          signedAt: newAnam.signedAt || new Date().toISOString(),
+          ipAddress: '127.0.0.1',
+          hash: `SIG-ANAM-${Date.now().toString(16).toUpperCase()}`,
+        });
+        setLocal(STORAGE_KEYS.SIGNATURES, sigs);
+      }
+    }
+
     return newAnam;
   },
 
@@ -2378,9 +2586,31 @@ export const api = {
   // Evolutions
   async getEvolutions(patientId: string, tenantId?: string): Promise<ClinicalEvolution[]> {
     const serverRes = await tryFetch(`/api/patients/${patientId}/evolutions`);
-    if (serverRes) return serverRes.json();
+    if (serverRes) {
+      try {
+        const json = await serverRes.json();
+        if (Array.isArray(json) && json.length > 0) return json;
+      } catch (e) {}
+    }
+
     const list = getLocal<ClinicalEvolution[]>(STORAGE_KEYS.EVOLUTIONS, []);
-    return list.filter(e => e.patientId === patientId);
+    const localMatched = list.filter(e => e.patientId === patientId);
+
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        const cloudEvos = await supabaseDirectApi.getEvolutions(tenantId || 'tenant-demo-1', patientId);
+        if (Array.isArray(cloudEvos) && cloudEvos.length > 0) {
+          const map = new Map<string, ClinicalEvolution>();
+          localMatched.forEach(e => map.set(e.id, e));
+          cloudEvos.forEach(e => map.set(e.id, e));
+          return Array.from(map.values());
+        }
+      } catch (sbErr) {
+        console.warn('Supabase getEvolutions notice:', sbErr);
+      }
+    }
+
+    return localMatched;
   },
 
   // Documents
@@ -2389,33 +2619,46 @@ export const api = {
     if (serverRes) {
       try {
         const json = await serverRes.json();
-        if (Array.isArray(json)) return json;
+        if (Array.isArray(json) && json.length > 0) return json;
       } catch (e) {}
     }
     const list = getLocal<DocumentFile[]>(STORAGE_KEYS.DOCUMENTS, []);
     let matched = list.filter(d => d.patientId === patientId);
 
-    if (matched.length === 0) {
-      const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
-      const targetP = patients.find(p => p.id === patientId);
-      if (targetP) {
-        const cleanCpf = targetP.cpf ? targetP.cpf.replace(/\D/g, '') : '';
-        const cleanPhone = (targetP.phone || targetP.whatsapp || '').replace(/\D/g, '').slice(-8);
-        const normName = targetP.name ? targetP.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+    const patients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+    const targetP = patients.find(p => p.id === patientId);
+    const linkedIds = new Set<string>([patientId]);
 
-        const linkedPatients = patients.filter(p => {
-          if (p.id === patientId) return false;
-          if (cleanCpf && p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf) return true;
-          if (cleanPhone && (p.phone || p.whatsapp) && (p.phone || p.whatsapp).replace(/\D/g, '').slice(-8) === cleanPhone) return true;
-          if (normName.length >= 4) {
-            const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-            if (pNorm === normName) return true;
-          }
-          return false;
-        });
+    if (targetP) {
+      const cleanCpf = targetP.cpf ? targetP.cpf.replace(/\D/g, '') : '';
+      const cleanPhone = (targetP.phone || targetP.whatsapp || '').replace(/\D/g, '').slice(-8);
+      const normName = targetP.name ? targetP.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
 
-        const linkedIds = new Set(linkedPatients.map(p => p.id));
-        matched = list.filter(d => linkedIds.has(d.patientId));
+      patients.forEach(p => {
+        if (cleanCpf && p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf) linkedIds.add(p.id);
+        if (cleanPhone && (p.phone || p.whatsapp) && (p.phone || p.whatsapp).replace(/\D/g, '').slice(-8) === cleanPhone) linkedIds.add(p.id);
+        if (normName.length >= 4) {
+          const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+          if (pNorm === normName) linkedIds.add(p.id);
+        }
+      });
+
+      matched = list.filter(d => linkedIds.has(d.patientId));
+    }
+
+    // Query Supabase Cloud Documents
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        for (const lid of linkedIds) {
+          const cloudDocs = await supabaseDirectApi.getDocuments(tenantId || 'tenant-demo-1', lid);
+          cloudDocs.forEach(cd => {
+            if (!matched.some(m => m.id === cd.id)) {
+              matched.unshift({ ...cd, patientId });
+            }
+          });
+        }
+      } catch (sbErr) {
+        console.warn('Supabase getDocuments notice:', sbErr);
       }
     }
 
@@ -2445,16 +2688,8 @@ export const api = {
     const uploadedByUserId = user?.id || doc.uploadedByUserId || 'sys';
     const uploadedByName = user?.name || doc.uploadedByName || 'Usuário';
 
-    const serverRes = await tryFetch(`/api/patients/${patientId}/documents`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...doc, tenantId, uploadedByUserId, uploadedByName }),
-    });
-    if (serverRes) return serverRes.json();
-
-    const list = getLocal<DocumentFile[]>(STORAGE_KEYS.DOCUMENTS, []);
     const newDoc: DocumentFile = {
-      id: `doc-${Date.now()}`,
+      id: doc.id || `doc-${Date.now()}`,
       tenantId,
       patientId,
       uploadedByUserId,
@@ -2467,15 +2702,51 @@ export const api = {
       notes: doc.notes || '',
       uploadedAt: new Date().toISOString(),
     };
+
+    // 1. Try server
+    try {
+      await tryFetch(`/api/patients/${patientId}/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDoc),
+      });
+    } catch (e) {
+      console.warn('Server uploadDocument notice:', e);
+    }
+
+    // 2. Supabase Cloud direct
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        await supabaseDirectApi.uploadDocument(newDoc);
+      } catch (sbErr) {
+        console.warn('Supabase uploadDocument notice:', sbErr);
+      }
+    }
+
+    // 3. Local storage
+    const list = getLocal<DocumentFile[]>(STORAGE_KEYS.DOCUMENTS, []);
     list.unshift(newDoc);
     setLocal(STORAGE_KEYS.DOCUMENTS, list);
     return newDoc;
   },
 
   async deleteDocument(patientId: string, id: string): Promise<void> {
-    await tryFetch(`/api/patients/${patientId}/documents/${id}`, {
-      method: 'DELETE',
-    });
+    try {
+      await tryFetch(`/api/patients/${patientId}/documents/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (e) {
+      console.warn('Server deleteDocument notice:', e);
+    }
+
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        await supabaseDirectApi.deleteDocument(id);
+      } catch (sbErr) {
+        console.warn('Supabase deleteDocument notice:', sbErr);
+      }
+    }
+
     const list = getLocal<DocumentFile[]>(STORAGE_KEYS.DOCUMENTS, []);
     setLocal(STORAGE_KEYS.DOCUMENTS, list.filter(d => d.id !== id));
   },
@@ -2510,7 +2781,7 @@ export const api = {
       });
     }
 
-    const matched = list.filter(s => linkedIds.has(s.patientId));
+    let matched = list.filter(s => linkedIds.has(s.patientId));
 
     // Also check local anamneses
     const anamneses = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
@@ -2533,6 +2804,29 @@ export const api = {
         });
       }
     });
+
+    // Query Supabase Cloud Signatures
+    if (supabaseDirectApi.isEnabled()) {
+      try {
+        for (const lid of linkedIds) {
+          const cloudSigs = await supabaseDirectApi.getSignatures(tenantId || 'tenant-demo-1', lid);
+          cloudSigs.forEach(cs => {
+            const alreadyExists = matched.some(
+              m => m.id === cs.id || (m.signatureUrl && m.signatureUrl === cs.signatureUrl)
+            );
+            if (!alreadyExists) {
+              matched.unshift({
+                ...cs,
+                patientId,
+                patientName: cs.patientName || targetP?.name || 'Paciente',
+              });
+            }
+          });
+        }
+      } catch (sbErr) {
+        console.warn('Supabase getSignatures notice:', sbErr);
+      }
+    }
 
     return matched;
   },

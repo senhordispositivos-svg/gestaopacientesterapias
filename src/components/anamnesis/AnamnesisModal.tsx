@@ -89,7 +89,7 @@ export const AnamnesisModal: React.FC<AnamnesisModalProps> = ({
           ...(data.evaluation || {}),
         });
         setResponsibilityTermAccepted(
-          data.responsibilityTermAccepted !== undefined ? data.responsibilityTermAccepted : true
+          data.responsibilityTermAccepted !== undefined ? Boolean(data.responsibilityTermAccepted) : Boolean(data.patientSignatureUrl)
         );
         setSignatureUrl(data.patientSignatureUrl || '');
         setCity(data.city || patient.city || tenant?.city || '');
@@ -105,9 +105,10 @@ export const AnamnesisModal: React.FC<AnamnesisModalProps> = ({
 
     if (initialData !== undefined) {
       applyAnamnesis(initialData);
-    } else if (tenant?.id && patient.id) {
+    } else if (patient?.id) {
       setIsLoadingExisting(true);
-      api.getAnamnesis(patient.id, tenant.id)
+      const tid = tenant?.id || 'tenant-demo-1';
+      api.getAnamnesis(patient.id, tid)
         .then(existing => {
           if (isMounted) {
             applyAnamnesis(existing);
@@ -249,7 +250,16 @@ export const AnamnesisModal: React.FC<AnamnesisModalProps> = ({
       maxWidth="4xl"
     >
       <div ref={formTopRef} />
-      <form onSubmit={handleSubmit} className="space-y-6 max-h-[78vh] overflow-y-auto pr-1">
+      {isLoadingExisting ? (
+        <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400 animate-fade-in">
+          <div className="w-9 h-9 border-3 border-teal-600 dark:border-teal-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Sincronizando ficha clínica e assinatura digital...
+          </p>
+          <span className="text-xs text-slate-400">Verificando dados enviados pelo cliente no Supabase Cloud</span>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-6 max-h-[78vh] overflow-y-auto pr-1">
         {/* Error Banner if validation fails */}
         {error && (
           <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-300 dark:border-rose-900/60 text-rose-800 dark:text-rose-200 text-xs font-semibold flex items-start gap-3 animate-fade-in shadow-xs">
@@ -1138,6 +1148,7 @@ export const AnamnesisModal: React.FC<AnamnesisModalProps> = ({
           </div>
         </div>
       </form>
+      )}
     </Modal>
   );
 };

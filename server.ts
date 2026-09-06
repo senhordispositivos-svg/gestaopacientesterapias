@@ -1702,10 +1702,54 @@ function getLinkedPatientIds(patientId: string): string[] {
 // -------------------------------------------------------------
 // ANAMNESIS API
 // -------------------------------------------------------------
-app.get('/api/patients/:patientId/anamnesis', (req, res) => {
+app.get('/api/patients/:patientId/anamnesis', async (req, res) => {
   const linkedIds = getLinkedPatientIds(req.params.patientId);
   let item = db.anamneses.find(a => linkedIds.includes(a.patientId));
   
+  if (!item) {
+    // Try querying Supabase Cloud directly
+    try {
+      const supabaseUrl = process.env.SUPABASE_URL || 'https://bvggeztgmorusfkedsbj.supabase.co';
+      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_xhWUFn_vVcVsV1KpLqPBKQ_duFVj-tV';
+      if (supabaseUrl && supabaseAnonKey) {
+        const idList = Array.from(new Set([req.params.patientId, ...linkedIds]));
+        const inFilter = idList.map(id => `"${id}"`).join(',');
+        const sbRes = await fetch(`${supabaseUrl}/rest/v1/anamneses?patient_id=in.(${encodeURIComponent(inFilter)})&order=created_at.desc&limit=1`, {
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${supabaseAnonKey}`,
+          }
+        });
+        if (sbRes.ok) {
+          const rows = await sbRes.json();
+          if (Array.isArray(rows) && rows.length > 0) {
+            const r = rows[0];
+            item = {
+              id: r.id,
+              tenantId: r.tenant_id,
+              patientId: req.params.patientId,
+              healthHistory: typeof r.health_history === 'string' ? JSON.parse(r.health_history) : r.health_history,
+              treatments: typeof r.treatments === 'string' ? JSON.parse(r.treatments) : r.treatments,
+              habits: typeof r.habits === 'string' ? JSON.parse(r.habits) : r.habits,
+              evaluation: typeof r.evaluation === 'string' ? JSON.parse(r.evaluation) : r.evaluation,
+              responsibilityTermAccepted: r.responsibility_term_accepted !== undefined && r.responsibility_term_accepted !== null ? Boolean(r.responsibility_term_accepted) : Boolean(r.patient_signature_url),
+              patientSignatureUrl: r.patient_signature_url || '',
+              city: r.city || '',
+              state: r.state || '',
+              signedAt: r.signed_at || '',
+              signedByIp: r.signed_by_ip || '',
+              createdAt: r.created_at || '',
+            };
+            db.anamneses.push(item);
+            saveDatabase();
+          }
+        }
+      }
+    } catch (sbLookupErr) {
+      console.warn('Supabase fallback lookup in server.ts:', sbLookupErr);
+    }
+  }
+
   if (!item) {
     return res.status(404).json({ message: 'Anamnese não encontrada' });
   }
@@ -2549,7 +2593,7 @@ app.get('/api/public/anamnesis/:token', (req, res) => {
   });
 });
 
-app.post('/api/public/anamnesis-submit', (req, res) => {
+app.post(['/api/public/anamnesis-submit', '/api/public/anamnesis/submit'], (req, res) => {
   const { token, payloadData, patientData, anamnesisData, signatureUrl } = req.body;
   const decoded = decodePayloadServer(payloadData || '') || (token && token.startsWith('eyJ') ? decodePayloadServer(token) : null);
 

@@ -506,31 +506,38 @@ export const supabaseDirectApi = {
 
   // Anamneses
   async getAnamneses(tenantId: string, patientId?: string): Promise<Anamnesis[]> {
-    let query = supabase.from('anamneses').select('*').eq('tenant_id', tenantId);
-    if (patientId) query = query.eq('patient_id', patientId);
+    let query = supabase.from('anamneses').select('*');
+    if (patientId) {
+      query = query.eq('patient_id', patientId);
+    } else {
+      query = query.or(`tenant_id.eq.${tenantId},tenant_id.eq.tenant-demo-1`);
+    }
+    query = query.order('created_at', { ascending: false });
     const { data, error } = await query;
     if (error) throw error;
     return (data || []).map((a: Record<string, unknown>) => ({
       id: a.id as string,
       tenantId: a.tenant_id as string,
       patientId: a.patient_id as string,
-      healthHistory: a.health_history as Anamnesis['healthHistory'],
-      treatments: a.treatments as Anamnesis['treatments'],
-      habits: a.habits as Anamnesis['habits'],
-      evaluation: a.evaluation as Anamnesis['evaluation'],
-      responsibilityTermAccepted: a.responsibility_term_accepted as boolean,
-      patientSignatureUrl: a.patient_signature_url as string,
-      city: a.city as string,
-      state: a.state as string,
-      signedAt: a.signed_at as string,
-      signedByIp: a.signed_by_ip as string,
-      createdAt: a.created_at as string,
+      healthHistory: (typeof a.health_history === 'string' ? JSON.parse(a.health_history as string) : a.health_history) as Anamnesis['healthHistory'],
+      treatments: (typeof a.treatments === 'string' ? JSON.parse(a.treatments as string) : a.treatments) as Anamnesis['treatments'],
+      habits: (typeof a.habits === 'string' ? JSON.parse(a.habits as string) : a.habits) as Anamnesis['habits'],
+      evaluation: (typeof a.evaluation === 'string' ? JSON.parse(a.evaluation as string) : a.evaluation) as Anamnesis['evaluation'],
+      responsibilityTermAccepted: a.responsibility_term_accepted !== undefined && a.responsibility_term_accepted !== null
+        ? Boolean(a.responsibility_term_accepted)
+        : Boolean(a.patient_signature_url),
+      patientSignatureUrl: (a.patient_signature_url as string) || '',
+      city: (a.city as string) || '',
+      state: (a.state as string) || '',
+      signedAt: (a.signed_at as string) || '',
+      signedByIp: (a.signed_by_ip as string) || '',
+      createdAt: (a.created_at as string) || '',
     }));
   },
 
-  async saveAnamnesis(anamnesis: Omit<Anamnesis, 'id' | 'createdAt'> & { id?: string }): Promise<Anamnesis> {
+  async saveAnamnesis(anamnesis: Omit<Anamnesis, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): Promise<Anamnesis> {
     const id = anamnesis.id || `anam-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-    const now = new Date().toISOString();
+    const now = anamnesis.createdAt || new Date().toISOString();
     const row = {
       id,
       tenant_id: anamnesis.tenantId,
@@ -539,7 +546,7 @@ export const supabaseDirectApi = {
       treatments: anamnesis.treatments || null,
       habits: anamnesis.habits || null,
       evaluation: anamnesis.evaluation || null,
-      responsibility_term_accepted: anamnesis.responsibilityTermAccepted || false,
+      responsibility_term_accepted: anamnesis.responsibilityTermAccepted !== undefined ? Boolean(anamnesis.responsibilityTermAccepted) : true,
       patient_signature_url: anamnesis.patientSignatureUrl || null,
       city: anamnesis.city || null,
       state: anamnesis.state || null,
@@ -555,11 +562,14 @@ export const supabaseDirectApi = {
 
   // Evolutions
   async getEvolutions(tenantId: string, patientId: string): Promise<ClinicalEvolution[]> {
-    const { data, error } = await supabase
+    let query = supabase
       .from('evolutions')
       .select('*')
-      .eq('tenant_id', tenantId)
       .eq('patient_id', patientId);
+    if (tenantId) {
+      query = query.or(`tenant_id.eq.${tenantId},tenant_id.eq.tenant-demo-1`);
+    }
+    const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
     return (data || []).map((e: Record<string, unknown>) => ({
       id: e.id as string,
@@ -601,6 +611,32 @@ export const supabaseDirectApi = {
   },
 
   // Signatures
+  async getSignatures(tenantId: string, patientId?: string): Promise<SignatureRecord[]> {
+    let query = supabase.from('signatures').select('*');
+    if (patientId) {
+      query = query.eq('patient_id', patientId);
+    } else {
+      query = query.or(`tenant_id.eq.${tenantId},tenant_id.eq.tenant-demo-1`);
+    }
+    query = query.order('signed_at', { ascending: false });
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map((s: Record<string, unknown>) => ({
+      id: s.id as string,
+      tenantId: s.tenant_id as string,
+      patientId: s.patient_id as string,
+      patientName: (s.patient_name as string) || undefined,
+      documentType: (s.document_type as SignatureRecord['documentType']) || 'ANAMNESIS',
+      documentId: (s.document_id as string) || undefined,
+      referenceId: (s.reference_id as string) || undefined,
+      signatureUrl: (s.signature_url as string) || '',
+      signedByName: (s.signed_by_name as string) || undefined,
+      signedAt: (s.signed_at as string) || '',
+      ipAddress: (s.ip_address as string) || '127.0.0.1',
+      hash: (s.hash as string) || '',
+    }));
+  },
+
   async createSignature(sig: Omit<SignatureRecord, 'id'>): Promise<SignatureRecord> {
     const id = `sig-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
     const row = {
@@ -621,5 +657,62 @@ export const supabaseDirectApi = {
     const { error } = await supabase.from('signatures').insert(row);
     if (error) throw error;
     return { ...sig, id };
+  },
+
+  async deleteSignature(id: string): Promise<void> {
+    const { error } = await supabase.from('signatures').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // Documents
+  async getDocuments(tenantId: string, patientId?: string): Promise<DocumentFile[]> {
+    let query = supabase.from('document_files').select('*');
+    if (patientId) {
+      query = query.eq('patient_id', patientId);
+    } else {
+      query = query.or(`tenant_id.eq.${tenantId},tenant_id.eq.tenant-demo-1`);
+    }
+    query = query.order('uploaded_at', { ascending: false });
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map((d: Record<string, unknown>) => ({
+      id: d.id as string,
+      tenantId: d.tenant_id as string,
+      patientId: d.patient_id as string,
+      uploadedByUserId: (d.uploaded_by_user_id as string) || undefined,
+      uploadedByName: (d.uploaded_by_name as string) || 'Sistema',
+      fileName: (d.file_name as string) || '',
+      fileType: (d.file_type as string) || undefined,
+      fileSize: (d.file_size as number) || undefined,
+      fileUrl: (d.file_url as string) || '',
+      category: (d.category as DocumentFile['category']) || 'OTHER',
+      notes: (d.notes as string) || undefined,
+      uploadedAt: (d.uploaded_at as string) || '',
+    }));
+  },
+
+  async uploadDocument(doc: DocumentFile): Promise<DocumentFile> {
+    const row = {
+      id: doc.id,
+      tenant_id: doc.tenantId,
+      patient_id: doc.patientId,
+      uploaded_by_user_id: doc.uploadedByUserId || null,
+      uploaded_by_name: doc.uploadedByName || 'Sistema',
+      file_name: doc.fileName,
+      file_type: doc.fileType || null,
+      file_size: doc.fileSize || null,
+      file_url: doc.fileUrl,
+      category: doc.category || 'OTHER',
+      notes: doc.notes || null,
+      uploaded_at: doc.uploadedAt || new Date().toISOString(),
+    };
+    const { error } = await supabase.from('document_files').upsert(row);
+    if (error) throw error;
+    return doc;
+  },
+
+  async deleteDocument(id: string): Promise<void> {
+    const { error } = await supabase.from('document_files').delete().eq('id', id);
+    if (error) throw error;
   },
 };
