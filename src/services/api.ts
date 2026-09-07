@@ -1583,11 +1583,12 @@ export const api = {
     const prof = usersList.find(u => u.id === data.professionalId);
 
     const list = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
+    const isCompleted = data.status === 'COMPLETED' || Boolean(data.clientSignatureUrl) || Boolean(data.attendedAt);
     const newSess: Session = {
       id: data.id || `sess-single-${Date.now()}`,
       tenantId,
       isSingleSession: true,
-      price: data.price || 150,
+      price: data.price || 180,
       patientId: data.patientId || '',
       patientName: data.patientName || pat?.name || 'Paciente',
       professionalId: data.professionalId || '',
@@ -1595,13 +1596,44 @@ export const api = {
       sessionNumber: 1,
       scheduledDate: data.scheduledDate || new Date().toISOString().split('T')[0],
       scheduledTime: data.scheduledTime || '10:00',
-      status: 'SCHEDULED',
+      status: data.status || (isCompleted ? 'COMPLETED' : 'SCHEDULED'),
       procedures: data.procedures || ['Massoterapia'],
-      validationToken: `SESS-${Date.now().toString(16).toUpperCase()}`,
+      bloodPressure: data.bloodPressure,
+      evolutionText: data.evolutionText,
+      clientSignatureUrl: data.clientSignatureUrl,
+      clientConfirmedAt: data.clientSignatureUrl ? (data.clientConfirmedAt || new Date().toISOString()) : undefined,
+      attendedAt: isCompleted ? (data.attendedAt || new Date().toISOString()) : undefined,
+      validationToken: data.validationToken || `SESS-${Date.now().toString(16).toUpperCase()}`,
       createdAt: new Date().toISOString(),
     };
     list.unshift(newSess);
     setLocal(STORAGE_KEYS.SESSIONS, list);
+
+    // Also record in local cash entries if offline
+    try {
+      const cashList = getLocal<any[]>(STORAGE_KEYS.CASH_ENTRIES, []);
+      cashList.unshift({
+        id: `cash-${Date.now()}`,
+        tenantId,
+        type: 'SINGLE_SESSION',
+        originId: newSess.id,
+        referenceId: newSess.id,
+        description: 'Atendimento Massoterapia',
+        patientId: newSess.patientId,
+        patientName: newSess.patientName,
+        amount: newSess.price,
+        effectiveAmount: newSess.price,
+        date: newSess.scheduledDate,
+        month: newSess.scheduledDate.slice(0, 7),
+        category: 'MASSOTERAPIA',
+        section: 'MASSOTERAPIA',
+        syncedToExternal: false,
+        notes: `Atendimento avulso (${newSess.procedures?.join(', ') || 'Massoterapia'}).`,
+        createdAt: new Date().toISOString(),
+      });
+      setLocal(STORAGE_KEYS.CASH_ENTRIES, cashList);
+    } catch (_) {}
+
     return newSess;
   },
 

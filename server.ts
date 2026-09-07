@@ -2219,6 +2219,10 @@ app.post('/api/sessions', (req, res) => {
 app.post('/api/sessions/single', (req, res) => {
   const tenantId = (req.headers['x-tenant-id'] as string) || req.body.tenantId || 'tenant-demo-1';
   const price = Number(req.body.price) || 180;
+  const sessionDate = req.body.scheduledDate ? req.body.scheduledDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const sessionMonth = sessionDate.slice(0, 7);
+  const isCompleted = req.body.status === 'COMPLETED' || Boolean(req.body.attendedAt) || Boolean(req.body.clientSignatureUrl);
+
   const newSession: Session = {
     id: req.body.id || `sess-single-${Date.now()}`,
     tenantId,
@@ -2227,22 +2231,52 @@ app.post('/api/sessions/single', (req, res) => {
     sessionNumber: 1,
     professionalId: req.body.professionalId || '',
     professionalName: req.body.professionalName || 'Profissional',
-    scheduledDate: req.body.scheduledDate || new Date().toISOString(),
+    scheduledDate: sessionDate,
     scheduledTime: req.body.scheduledTime || '09:00',
-    procedures: req.body.procedures || ['Massoterapia Clínica'],
-    evolutionText: req.body.evolutionText || req.body.treatmentNotes || '',
+    procedures: Array.isArray(req.body.procedures) && req.body.procedures.length > 0 
+      ? req.body.procedures 
+      : (typeof req.body.procedures === 'string' ? [req.body.procedures] : ['Massoterapia Clínica']),
+    evolutionText: req.body.evolutionText || req.body.treatmentNotes || req.body.notes || '',
+    bloodPressure: req.body.bloodPressure || undefined,
+    siNotes: req.body.siNotes || undefined,
+    clientSignatureUrl: req.body.clientSignatureUrl || undefined,
+    clientConfirmedAt: req.body.clientSignatureUrl ? (req.body.clientConfirmedAt || new Date().toISOString()) : undefined,
+    attendedAt: isCompleted ? (req.body.attendedAt || new Date().toISOString()) : undefined,
     price: price,
-    status: req.body.status || 'SCHEDULED',
+    status: req.body.status || (isCompleted ? 'COMPLETED' : 'SCHEDULED'),
     validationToken: `SESS-${Date.now().toString(16).toUpperCase()}`,
     createdAt: new Date().toISOString(),
   };
 
   db.sessions.unshift(newSession);
 
-  // Rule 1: Todo atendimento avulso lançado deverá acrescentar valor no caixa e ser enviado ao sistema financeiro
+  // If clinical notes, blood pressure or procedures were noted, record ClinicalEvolution in patient records
+  if (newSession.evolutionText || newSession.bloodPressure || (newSession.procedures && newSession.procedures.length > 0)) {
+    if (!Array.isArray(db.evolutions)) {
+      db.evolutions = [];
+    }
+    const evo: ClinicalEvolution = {
+      id: `evo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      tenantId,
+      patientId: newSession.patientId,
+      sessionId: newSession.id,
+      professionalId: newSession.professionalId,
+      professionalName: newSession.professionalName,
+      date: sessionDate,
+      procedures: newSession.procedures,
+      bloodPressure: newSession.bloodPressure,
+      notes: newSession.evolutionText || 'Atendimento de sessão avulsa registrado.',
+      version: 1,
+      createdAt: new Date().toISOString(),
+    };
+    db.evolutions.unshift(evo);
+  }
+
+  // Rule 1: Todo atendimento avulso lançado acrescenta valor no caixa do mês e é enviado ao sistema financeiro integrado
   recordFinancialCashEntry(tenantId, {
     type: 'SINGLE_SESSION',
     originId: newSession.id,
+    referenceId: newSession.id,
     description: 'Atendimento Massoterapia',
     patientId: newSession.patientId,
     patientName: newSession.patientName,
@@ -2250,9 +2284,9 @@ app.post('/api/sessions/single', (req, res) => {
     professionalName: newSession.professionalName,
     amount: price,
     effectiveAmount: price,
-    date: newSession.scheduledDate ? newSession.scheduledDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
-    month: newSession.scheduledDate ? newSession.scheduledDate.slice(0, 7) : new Date().toISOString().slice(0, 7),
-    notes: 'Atendimento de sessão avulsa lançado no caixa e enviado ao sistema financeiro externo.',
+    date: sessionDate,
+    month: sessionMonth,
+    notes: `Atendimento avulso (${newSession.procedures.join(', ')})${newSession.bloodPressure ? ` - PA: ${newSession.bloodPressure}` : ''}${newSession.clientSignatureUrl ? ' - Assinado pelo cliente' : ''}.`,
   });
 
   saveDatabase();

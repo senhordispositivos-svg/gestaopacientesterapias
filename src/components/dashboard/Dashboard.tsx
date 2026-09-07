@@ -49,6 +49,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onSelectPatient,
   onSendWhatsAppBirthday,
   onOpenNewPatient,
+  onOpenSingleSessionModal,
 }) => {
   const { tenant, user } = useAuth();
 
@@ -181,6 +182,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {user?.role === 'ADMIN' ? 'Administrador Geral' : 'Profissional Clínico'}
               </span>
             </div>
+            {onOpenSingleSessionModal && (
+              <button
+                type="button"
+                onClick={() => onOpenSingleSessionModal({} as any)}
+                className="px-3 sm:px-4 py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer flex items-center gap-1.5"
+                title="Acrescentar Sessão Avulsa com valor no Caixa do mês"
+              >
+                <CalendarCheck className="w-3.5 h-3.5" />
+                <span>+ Sessão Avulsa</span>
+              </button>
+            )}
             {onOpenNewPatient && (
               <button
                 type="button"

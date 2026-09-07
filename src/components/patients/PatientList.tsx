@@ -18,6 +18,8 @@ import {
   ArrowRightLeft,
   FileSignature,
   Send,
+  CalendarCheck,
+  Sparkles,
 } from 'lucide-react';
 import { Patient, User } from '../../types';
 import { validateCPF, formatCPF, formatPhone } from '../../utils/cpf';
@@ -31,6 +33,7 @@ interface PatientListProps {
   onOpenEditModal: (patient: Patient) => void;
   onDeletePatient: (patientId: string) => void;
   onOpenSendAnamnesisLink?: (patient?: Patient) => void;
+  onOpenSingleSessionModal?: (patient?: Patient) => void;
 }
 
 export const PatientList: React.FC<PatientListProps> = ({
@@ -41,6 +44,7 @@ export const PatientList: React.FC<PatientListProps> = ({
   onOpenEditModal,
   onDeletePatient,
   onOpenSendAnamnesisLink,
+  onOpenSingleSessionModal,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProfFilter, setSelectedProfFilter] = useState<string>('ALL');
@@ -114,6 +118,17 @@ export const PatientList: React.FC<PatientListProps> = ({
               title="Gerar e Enviar Link de Cadastro e Anamnese no WhatsApp"
             >
               <FileSignature className="w-4 h-4" /> Enviar Link no WhatsApp
+            </button>
+          )}
+
+          {onOpenSingleSessionModal && (
+            <button
+              type="button"
+              onClick={() => onOpenSingleSessionModal()}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition cursor-pointer"
+              title="Acrescentar Sessão Avulsa com valor no Caixa e Integração Financeira"
+            >
+              <CalendarCheck className="w-4 h-4" /> + Acrescentar Sessão Avulsa
             </button>
           )}
 
@@ -283,6 +298,18 @@ export const PatientList: React.FC<PatientListProps> = ({
                         <span>Ver Prontuário</span>
                       </button>
 
+                      {onOpenSingleSessionModal && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenSingleSessionModal(pat)}
+                          title="Acrescentar Sessão Avulsa"
+                          className="py-2 px-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center gap-1 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100"
+                        >
+                          <CalendarCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>+ Sessão</span>
+                        </button>
+                      )}
+
                       {onOpenSendAnamnesisLink && (
                         <button
                           type="button"
@@ -421,7 +448,18 @@ export const PatientList: React.FC<PatientListProps> = ({
                         </td>
 
                         <td className="px-4 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {onOpenSingleSessionModal && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenSingleSessionModal(pat)}
+                                title="Acrescentar Sessão Avulsa para este cliente"
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                              >
+                                <CalendarCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                <span>+ Sessão</span>
+                              </button>
+                            )}
                             {onOpenSendAnamnesisLink && (
                               <button
                                 type="button"

@@ -15,6 +15,7 @@ import { PatientFormModal } from './components/patients/PatientFormModal';
 import { AnamnesisModal } from './components/anamnesis/AnamnesisModal';
 import { PackageModal } from './components/packages/PackageModal';
 import { SingleSessionModal } from './components/sessions/SingleSessionModal';
+import { SessionsView } from './components/sessions/SessionsView';
 import { AttendanceModal } from './components/sessions/AttendanceModal';
 import { WhatsAppModal } from './components/whatsapp/WhatsAppModal';
 import { PublicValidationPage } from './components/public/PublicValidationPage';
@@ -650,6 +651,10 @@ export function App() {
                         setIsPatientModalOpen(true);
                       }}
                       onDeletePatient={handleDeletePatient}
+                      onOpenSingleSessionModal={patient => {
+                        setSelectedPatient(patient || null);
+                        setIsSingleSessionModalOpen(true);
+                      }}
                     />
                   </div>
                 </div>
@@ -689,33 +694,37 @@ export function App() {
 
               {/* Sessions Tab */}
               {activeView === 'sessions' && (
-                <div className="space-y-4">
-                  <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-                      Histórico e Agenda de Sessões
-                    </h2>
-                    <p className="text-sm text-slate-500 mb-4">
-                      Selecione um paciente para registrar a evolução de atendimento, assinar digitalmente ou enviar lembretes.
-                    </p>
-                    <PatientList
-                      patients={patients}
-                      professionals={professionals}
-                      onSelectPatient={patient => {
-                        setSelectedPatient(patient);
-                        setActiveView('patients');
-                      }}
-                      onOpenCreateModal={() => {
-                        setPatientToEdit(null);
-                        setIsPatientModalOpen(true);
-                      }}
-                      onOpenEditModal={patient => {
-                        setPatientToEdit(patient);
-                        setIsPatientModalOpen(true);
-                      }}
-                      onDeletePatient={() => {}}
-                    />
-                  </div>
-                </div>
+                <SessionsView
+                  sessions={sessions}
+                  patients={patients}
+                  professionals={professionals}
+                  packages={packages}
+                  onRefreshData={loadData}
+                  onOpenSingleSessionModal={patient => {
+                    setSelectedPatient(patient || null);
+                    setIsSingleSessionModalOpen(true);
+                  }}
+                  onOpenCreatePatientModal={() => {
+                    setPatientToEdit(null);
+                    setIsPatientModalOpen(true);
+                  }}
+                  onOpenEditPatientModal={patient => {
+                    setPatientToEdit(patient);
+                    setIsPatientModalOpen(true);
+                  }}
+                  onSelectPatient={patient => {
+                    setSelectedPatient(patient);
+                    setActiveView('patients');
+                  }}
+                  onOpenAttendanceModal={session => {
+                    setSelectedSessionForAttendance(session);
+                    setIsAttendanceModalOpen(true);
+                  }}
+                  onOpenWhatsAppModal={session => {
+                    setSelectedSessionForWhatsApp(session);
+                    setIsWhatsAppModalOpen(true);
+                  }}
+                />
               )}
 
               {/* Birthdays Tab */}
@@ -966,6 +975,10 @@ export function App() {
         patients={patients}
         professionals={professionals}
         preselectedPatientId={selectedPatient?.id}
+        onOpenCreatePatientModal={() => {
+          setPatientToEdit(null);
+          setIsPatientModalOpen(true);
+        }}
         onSessionCreated={async () => {
           await loadData();
           setIsSingleSessionModalOpen(false);
