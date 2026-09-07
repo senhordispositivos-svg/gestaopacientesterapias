@@ -126,11 +126,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
             : officialUrl
         );
         setFinancialAccessEmail(tenant.financialConfig?.accessEmail || 'osaiasbrito@gmail.com');
-        setFinancialAccessPassword(
-          tenant.financialConfig?.accessPassword && tenant.financialConfig.accessPassword !== 'Ojf6994@#gestaoPessoas'
-            ? tenant.financialConfig.accessPassword
-            : 'osaias2026'
-        );
+        setFinancialAccessPassword(tenant.financialConfig?.accessPassword || 'Ojf6994@#gestaoPessoas');
         setFinancialCategory(tenant.financialConfig?.category || 'MASSOTERAPIA');
         setFinancialSection(tenant.financialConfig?.section || 'MASSOTERAPIA');
         setFinancialAlsoAddToSalary(tenant.financialConfig?.alsoAddToSalary ?? true);

@@ -536,14 +536,14 @@ async function initDatabase() {
       const isOutdated = !demoTenant.financialConfig ||
         demoTenant.financialConfig.endpointUrl.includes('netlify') ||
         demoTenant.financialConfig.endpointUrl.includes('localhost') ||
-        demoTenant.financialConfig.accessPassword === 'Ojf6994@#gestaoPessoas';
+        demoTenant.financialConfig.accessPassword !== 'Ojf6994@#gestaoPessoas';
 
       if (isOutdated) {
         demoTenant.financialConfig = {
           enabled: true,
           endpointUrl: 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
           accessEmail: 'osaiasbrito@gmail.com',
-          accessPassword: 'osaias2026',
+          accessPassword: 'Ojf6994@#gestaoPessoas',
           category: 'MASSOTERAPIA',
           section: 'MASSOTERAPIA',
           alsoAddToSalary: true,
@@ -2524,7 +2524,7 @@ async function syncCashEntryToExternalSystem(
   const targetCategory = cfg.category || 'MASSOTERAPIA';
   const targetSection = cfg.section || 'MASSOTERAPIA';
   const targetEmail = cfg.accessEmail || 'osaiasbrito@gmail.com';
-  const targetPassword = cfg.accessPassword || 'osaias2026';
+  const targetPassword = cfg.accessPassword || 'Ojf6994@#gestaoPessoas';
   const month = entry.month || entry.date.slice(0, 7) || new Date().toISOString().slice(0, 7);
 
   const amountVal = Number(entry.amount ?? entry.effectiveAmount ?? 0);

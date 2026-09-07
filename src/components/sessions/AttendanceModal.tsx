@@ -4,6 +4,7 @@ import { Session } from '../../types';
 import { Activity, Clock, CheckSquare, Stethoscope, DollarSign, Wallet, CheckCircle2 } from 'lucide-react';
 import { formatDateTime } from '../../utils/crypto';
 import { formatCurrencyAccounting, formatCurrencyInput, parseCurrencyInput } from '../../utils/currency';
+import { lancarAtendimentoSessao } from '../../services/api';
 
 interface AttendanceModalProps {
   isOpen: boolean;
@@ -80,6 +81,22 @@ export const AttendanceModal: React.FC<AttendanceModalProps> = ({
     try {
       const bloodPressure = `${systolic}/${diastolic} mmHg`;
       const finalPrice = isPackageSession ? 0 : (price || 180);
+
+      // Sincronização direta com o sistema financeiro (Print 03)
+      if (!isPackageSession) {
+        try {
+          await lancarAtendimentoSessao({
+            valor: finalPrice,
+            nomeCliente: session.patientName || 'Mariana Alves',
+            procedimento: selectedProcedures.length > 0 ? selectedProcedures.join(' & ') : 'Massagem Relaxante & Drenagem',
+            data: new Date().toISOString().substring(0, 10),
+            alsoAddToSalary: true,
+          });
+        } catch (finErr) {
+          console.warn('Aviso de envio ao financeiro:', finErr);
+        }
+      }
+
       if (onSaveAttendance) {
         await onSaveAttendance({
           bloodPressure,
