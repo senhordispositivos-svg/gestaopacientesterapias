@@ -112,39 +112,106 @@ async function tryFetch(url: string, options?: RequestInit): Promise<Response | 
 // ================================================================
 export async function lancarAtendimentoSessao(dadosAtendimento: {
   valor?: number | string;
+  amount?: number | string;
   nomeCliente?: string;
+  clientName?: string;
+  paciente?: string;
   procedimento?: string;
+  description?: string;
+  servico?: string;
   category?: string;
   categoria?: string;
+  source?: string;
   data?: string;
+  date?: string;
   alsoAddToSalary?: boolean;
+  somarAoSalario?: boolean;
+  isPackage?: boolean;
+  ePacote?: boolean;
+  packageName?: string;
+  nomePacote?: string;
+  totalSessions?: number;
+  sessoes?: number;
+  isPackageSession?: boolean;
+  sessaoDePacote?: boolean;
+  sessionNumber?: number;
+  numeroSessao?: number;
 }) {
   const URL_FINANCEIRO = 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia';
 
-  const numValor = typeof dadosAtendimento.valor === 'string'
-    ? parseFloat(dadosAtendimento.valor.replace(',', '.')) || 180.00
-    : (dadosAtendimento.valor !== undefined ? Number(dadosAtendimento.valor) : 180.00);
+  const rawVal = dadosAtendimento.valor !== undefined ? dadosAtendimento.valor : dadosAtendimento.amount;
+  const numValor = typeof rawVal === 'string'
+    ? parseFloat(rawVal.replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.')) || 180.00
+    : (rawVal !== undefined ? Number(rawVal) : 180.00);
 
-  const payload = {
+  const clientNameVal = dadosAtendimento.nomeCliente || dadosAtendimento.clientName || dadosAtendimento.paciente || 'Mariana Alves';
+  const descVal = dadosAtendimento.procedimento || dadosAtendimento.description || dadosAtendimento.servico || 'Massagem Relaxante & Drenagem';
+  const catVal = dadosAtendimento.category || dadosAtendimento.categoria || dadosAtendimento.source || 'MASSOTERAPIA';
+  const dateVal = dadosAtendimento.data || dadosAtendimento.date || new Date().toISOString().substring(0, 10);
+  const addToSalaryVal = dadosAtendimento.alsoAddToSalary ?? dadosAtendimento.somarAoSalario ?? true;
+
+  const isPkg = dadosAtendimento.isPackage || dadosAtendimento.ePacote;
+  const isPkgSess = dadosAtendimento.isPackageSession || dadosAtendimento.sessaoDePacote;
+
+  const payload: Record<string, any> = {
     // 1. Credenciais
     email: 'osaiasbrito@gmail.com',
+    username: 'osaiasbrito@gmail.com',
+    user: 'osaiasbrito@gmail.com',
     password: 'Ojf6994@#gestaoPessoas',
+    senha: 'Ojf6994@#gestaoPessoas',
 
     // 2. Dados do Atendimento de Massoterapia (Print 03)
-    amount: numValor, // Valor digitado na tela de atendimento
-    clientName: dadosAtendimento.nomeCliente || 'Mariana Alves',
-    description: dadosAtendimento.procedimento || 'Massagem Relaxante & Drenagem',
-    category: dadosAtendimento.category || dadosAtendimento.categoria || 'MASSOTERAPIA',
-    date: dadosAtendimento.data || new Date().toISOString().substring(0, 10),
+    amount: isPkgSess ? 0 : numValor,
+    valor: isPkgSess ? 0 : numValor,
+    price: isPkgSess ? 0 : numValor,
+    clientName: clientNameVal,
+    nomeCliente: clientNameVal,
+    paciente: clientNameVal,
+    description: descVal,
+    procedimento: descVal,
+    servico: descVal,
+    category: catVal,
+    categoria: catVal,
+    source: catVal,
+    date: dateVal,
+    data: dateVal,
     
     // 3. Soma automaticamente no Salário Mensal Fixo
-    alsoAddToSalary: dadosAtendimento.alsoAddToSalary ?? true
+    alsoAddToSalary: isPkgSess ? false : addToSalaryVal,
+    somarAoSalario: isPkgSess ? false : addToSalaryVal,
+  };
+
+  if (isPkg) {
+    payload.isPackage = true;
+    payload.ePacote = true;
+    payload.tipo = 'PACOTE';
+    payload.packageName = dadosAtendimento.packageName || dadosAtendimento.nomePacote || 'Pacote de Massoterapia';
+    payload.nomePacote = payload.packageName;
+    payload.totalSessions = dadosAtendimento.totalSessions || dadosAtendimento.sessoes || 4;
+    payload.sessoes = payload.totalSessions;
+  } else if (isPkgSess) {
+    payload.isPackageSession = true;
+    payload.sessaoDePacote = true;
+    payload.tipo = 'PACOTE_SESSAO';
+    payload.packageName = dadosAtendimento.packageName || dadosAtendimento.nomePacote || 'Pacote de Massoterapia';
+    payload.nomePacote = payload.packageName;
+    payload.sessionNumber = dadosAtendimento.sessionNumber || dadosAtendimento.numeroSessao || 1;
+    payload.numeroSessao = payload.sessionNumber;
+  }
+
+  const authHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer Ojf6994@#gestaoPessoas',
+    'x-access-password': 'Ojf6994@#gestaoPessoas',
+    'x-user-password': 'Ojf6994@#gestaoPessoas',
+    'x-user-email': 'osaiasbrito@gmail.com',
   };
 
   try {
     const res = await fetch(URL_FINANCEIRO, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify(payload)
     });
 
@@ -154,14 +221,14 @@ export async function lancarAtendimentoSessao(dadosAtendimento: {
       return data;
     }
   } catch (err) {
-    console.warn('[Financeiro] Conexão externa direta falhou (CORS/rede/indisponível). Usando rota integrada...', err);
+    console.warn('[Financeiro] Conexão externa direta falhou ou CORS. Usando rota integrada do servidor da clínica...', err);
   }
 
   // Fallback seguro integrado para garantir que o lançamento fique computado no caixa e na sincronização
   try {
     const fallbackRes = await fetch('/api/integrations/massoterapia', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify(payload)
     });
     return await fallbackRes.json();
@@ -3357,18 +3424,32 @@ export const api = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(password ? { Authorization: `Bearer ${password}` } : {}),
+          'Authorization': `Bearer ${password}`,
+          'x-access-password': password,
+          'x-user-password': password,
+          'x-user-email': email,
         },
         body: JSON.stringify({
           email,
+          username: email,
+          user: email,
           password,
+          senha: password,
           amount: 150.00,
+          valor: 150.00,
           clientName: 'Teste de Conexão - Sistema Clínica',
+          nomeCliente: 'Teste de Conexão - Sistema Clínica',
           description: 'Atendimento Massoterapia (Teste de Validação)',
+          procedimento: 'Atendimento Massoterapia (Teste de Validação)',
           category,
+          categoria: category,
+          source: category,
           date,
+          data: date,
           alsoAddToSalary: config.alsoAddToSalary ?? true,
+          somarAoSalario: config.alsoAddToSalary ?? true,
           action: 'TESTE_CONEXAO',
+          test: true,
           section: config.section || 'MASSOTERAPIA',
           timestamp: new Date().toISOString(),
         }),
