@@ -60,9 +60,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
 
   // Financial Integration Config (Sistema de Gestão Financeira)
   const [financialEnabled, setFinancialEnabled] = useState(true);
-  const [financialEndpointUrl, setFinancialEndpointUrl] = useState('');
+  const [financialEndpointUrl, setFinancialEndpointUrl] = useState(
+    'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia'
+  );
   const [financialAccessEmail, setFinancialAccessEmail] = useState('osaiasbrito@gmail.com');
-  const [financialAccessPassword, setFinancialAccessPassword] = useState('Ojf6994@#gestaoPessoas');
+  const [financialAccessPassword, setFinancialAccessPassword] = useState('osaias2026');
   const [showFinancialPassword, setShowFinancialPassword] = useState(false);
   const [financialCategory, setFinancialCategory] = useState('MASSOTERAPIA');
   const [financialSection, setFinancialSection] = useState('MASSOTERAPIA');
@@ -116,9 +118,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
 
         // Financial config
         setFinancialEnabled(tenant.financialConfig?.enabled ?? true);
-        setFinancialEndpointUrl(tenant.financialConfig?.endpointUrl || `${window.location.origin}/api/integrations/massoterapia`);
+        const savedUrl = tenant.financialConfig?.endpointUrl;
+        const officialUrl = 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia';
+        setFinancialEndpointUrl(
+          savedUrl && !savedUrl.includes('netlify') && !savedUrl.includes('localhost')
+            ? savedUrl
+            : officialUrl
+        );
         setFinancialAccessEmail(tenant.financialConfig?.accessEmail || 'osaiasbrito@gmail.com');
-        setFinancialAccessPassword(tenant.financialConfig?.accessPassword || 'Ojf6994@#gestaoPessoas');
+        setFinancialAccessPassword(
+          tenant.financialConfig?.accessPassword && tenant.financialConfig.accessPassword !== 'Ojf6994@#gestaoPessoas'
+            ? tenant.financialConfig.accessPassword
+            : 'osaias2026'
+        );
         setFinancialCategory(tenant.financialConfig?.category || 'MASSOTERAPIA');
         setFinancialSection(tenant.financialConfig?.section || 'MASSOTERAPIA');
         setFinancialAlsoAddToSalary(tenant.financialConfig?.alsoAddToSalary ?? true);
@@ -849,16 +861,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
                   Link para integrar o sistema (URL da Aplicação Financeira)
                   <span className="text-rose-500">*</span>
                 </label>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFinancialEndpointUrl('https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia');
+                      setFinancialAccessEmail('osaiasbrito@gmail.com');
+                      setFinancialAccessPassword('osaias2026');
+                      setIsDirty(true);
+                    }}
+                    className="text-[11px] bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 border border-teal-200 dark:border-teal-800 px-2 py-0.5 rounded font-bold transition cursor-pointer"
+                  >
+                    Usar Endpoint Oficial (Cloud Run)
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
                       setFinancialEndpointUrl(`${window.location.origin}/api/integrations/massoterapia`);
                       setIsDirty(true);
                     }}
-                    className="text-[10px] text-teal-600 hover:text-teal-700 font-bold underline cursor-pointer"
+                    className="text-[10px] text-slate-600 dark:text-slate-300 hover:text-teal-600 underline cursor-pointer"
                   >
-                    Usar /api/integrations/massoterapia
+                    Rota Local (/api/integrations)
                   </button>
                   <button
                     type="button"
@@ -866,7 +890,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
                       setFinancialEndpointUrl('http://localhost:3000/api/financial/mock-external-receiver');
                       setIsDirty(true);
                     }}
-                    className="text-[10px] text-slate-500 hover:text-slate-700 underline cursor-pointer"
+                    className="text-[10px] text-slate-400 hover:text-slate-600 underline cursor-pointer"
                   >
                     Mock Receiver
                   </button>
@@ -879,11 +903,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
                   setFinancialEndpointUrl(e.target.value);
                   setIsDirty(true);
                 }}
-                placeholder="https://sua-aplicacao-financeira.com/api/integrations/massoterapia"
+                placeholder="https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia"
                 className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-[11px]"
               />
               <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                Endereço HTTP/HTTPS ou rota da aplicação financeira que receberá os atendimentos.
+                Endereço HTTP/HTTPS da aplicação financeira oficial que receberá as sessões e os pacotes.
               </p>
             </div>
 
@@ -1003,18 +1027,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
           </div>
 
           {/* Business Rules Informational Guide */}
-          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs space-y-1.5">
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs space-y-2">
             <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              Regras do Fluxo de Caixa Integrado Ativas:
+              As 3 Regras Oficiais de Integração Financeira:
             </h4>
-            <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-400 text-[11px]">
-              <li><strong>Sessões Avulsas:</strong> Todo atendimento lançado em sessão acrescenta valor automaticamente ao caixa.</li>
-              <li><strong>Novos Pacotes:</strong> Todo novo pacote contratado é lançado integralmente no caixa.</li>
-              <li><strong>Sessões do Pacote (2ª em diante):</strong> Não entram no caixa (R$ 0,00), pois o valor já foi creditado na compra do pacote.</li>
-              <li><strong>Sincronização Externa:</strong> Cada novo lançamento é transmitido automaticamente para o link cadastrado.</li>
-              <li><strong>Salário Mensal Fixo:</strong> Quando <code>alsoAddToSalary</code> estiver ativo, o valor também é incorporado ao rendimento mensal da outra ponta.</li>
-            </ul>
+            <div className="space-y-2 text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                <span className="font-bold text-teal-700 dark:text-teal-300">Regra 1 (Sessão Avulsa):</span> Ao finalizar atendimento avulso com valor digitado, envia <code>amount</code> (ou <code>valor</code>), <code>clientName</code>, <code>description: 'Atendimento Massoterapia'</code>, <code>category: 'MASSOTERAPIA'</code> e <code>alsoAddToSalary: true</code>.
+              </div>
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                <span className="font-bold text-teal-700 dark:text-teal-300">Regra 2 (Cadastro de Pacote):</span> Ao cadastrar um pacote, envia <code>isPackage: true</code>, <code>packageName</code>, <code>totalSessions</code>, <code>amount</code> (valor integral do pacote pago uma única vez), <code>clientName</code> e <code>alsoAddToSalary: true</code>.
+              </div>
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                <span className="font-bold text-teal-700 dark:text-teal-300">Regra 3 (Sessão de Pacote Quitado):</span> Ao realizar a sessão de um pacote já quitado, envia <code>isPackageSession: true</code>, <code>amount: 0</code>, <code>packageName</code> e <code>clientName</code> para registrar a presença sem duplicar a cobrança.
+              </div>
+            </div>
           </div>
 
           {/* Integration Specification & Payload Reference */}
@@ -1022,14 +1050,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-teal-950 dark:text-teal-200 flex items-center gap-1.5">
                 <ExternalLink className="w-4 h-4 text-teal-600" />
-                Função de Integração Oficial Ativa:
+                Endpoint & Credenciais Oficiais Ativas:
               </h4>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200">
                 POST /api/integrations/massoterapia
               </span>
             </div>
             <p className="text-[11px] text-teal-900 dark:text-teal-300">
-              O sistema utiliza a função <code>lancarAtendimentoNoFinanceiro(atendimento)</code> para disparar requisições autenticadas com <strong>amount</strong>, <strong>clientName</strong>, <strong>description</strong>, <strong>category: MASSOTERAPIA</strong>, <strong>date</strong> e <strong>alsoAddToSalary: true</strong>.
+              Autenticação via <strong>email: osaiasbrito@gmail.com</strong> e <strong>senha: osaias2026</strong>. Toda finalização de sessão ou criação de pacote dispara automaticamente o fetch para o endpoint configurado acima.
             </p>
           </div>
 

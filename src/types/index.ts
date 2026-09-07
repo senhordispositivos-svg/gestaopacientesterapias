@@ -61,6 +61,8 @@ export interface CashEntry {
   originId?: string;
   referenceId?: string;
   packageId?: string;
+  packageName?: string;
+  totalSessions?: number;
   sessionNumber?: number;
   description: string;
   patientId?: string;

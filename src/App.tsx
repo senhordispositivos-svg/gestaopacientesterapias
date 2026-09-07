@@ -984,8 +984,12 @@ export function App() {
           session={selectedSessionForAttendance}
           onSaveAttendance={async (attendanceData) => {
             if (!tenant || !selectedSessionForAttendance) return;
+            const finalPrice = attendanceData.price !== undefined
+              ? attendanceData.price
+              : selectedSessionForAttendance.price;
             await api.updateSession(tenant.id, selectedSessionForAttendance.id, {
               ...selectedSessionForAttendance,
+              price: finalPrice,
               status: 'COMPLETED',
               attendedAt: new Date().toISOString(),
               bloodPressure: attendanceData.bloodPressure,

@@ -530,21 +530,28 @@ async function initDatabase() {
       db.users[osaiasIndex].active = true;
     }
 
-    // Initialize Financial Integration & Seed Cash Entries if empty
+    // Initialize Financial Integration with official Cloud Run endpoint
     const demoTenant = db.tenants.find(t => t.id === 'tenant-demo-1');
-    if (demoTenant && !demoTenant.financialConfig) {
-      demoTenant.financialConfig = {
-        enabled: true,
-        endpointUrl: 'http://localhost:3000/api/integrations/massoterapia',
-        accessEmail: 'osaiasbrito@gmail.com',
-        accessPassword: 'Ojf6994@#gestaoPessoas',
-        category: 'MASSOTERAPIA',
-        section: 'MASSOTERAPIA',
-        alsoAddToSalary: true,
-        autoSync: true,
-        lastSyncStatus: 'SUCCESS',
-        lastSyncMessage: 'Integração pronta para envio automático de atendimentos.',
-      };
+    if (demoTenant) {
+      const isOutdated = !demoTenant.financialConfig ||
+        demoTenant.financialConfig.endpointUrl.includes('netlify') ||
+        demoTenant.financialConfig.endpointUrl.includes('localhost') ||
+        demoTenant.financialConfig.accessPassword === 'Ojf6994@#gestaoPessoas';
+
+      if (isOutdated) {
+        demoTenant.financialConfig = {
+          enabled: true,
+          endpointUrl: 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
+          accessEmail: 'osaiasbrito@gmail.com',
+          accessPassword: 'osaias2026',
+          category: 'MASSOTERAPIA',
+          section: 'MASSOTERAPIA',
+          alsoAddToSalary: true,
+          autoSync: true,
+          lastSyncStatus: 'IDLE',
+          lastSyncMessage: 'Integração configurada com o endpoint oficial Cloud Run.',
+        };
+      }
     }
 
     if (!Array.isArray(db.cashEntries)) {
@@ -1982,11 +1989,13 @@ app.post('/api/packages', (req, res) => {
     db.sessions.push(sess);
   }
 
-  // Rule 2: Todo novo pacote também deverá ser lançado no caixa
+  // Rule 2: Todo novo pacote também deverá ser lançado no caixa e enviado ao sistema financeiro
   recordFinancialCashEntry(tenantId, {
     type: 'PACKAGE',
     originId: newPackage.id,
     packageId: newPackage.id,
+    packageName: newPackage.title || newPackage.treatmentType,
+    totalSessions: newPackage.sessionCount,
     description: `Novo Pacote - ${newPackage.title} (${newPackage.sessionCount} sessões - ${newPackage.patientName})`,
     patientId: newPackage.patientId,
     patientName: newPackage.patientName,
@@ -2222,6 +2231,7 @@ app.post('/api/sessions/single', (req, res) => {
     scheduledTime: req.body.scheduledTime || '09:00',
     procedures: req.body.procedures || ['Massoterapia Clínica'],
     evolutionText: req.body.evolutionText || req.body.treatmentNotes || '',
+    price: price,
     status: req.body.status || 'SCHEDULED',
     validationToken: `SESS-${Date.now().toString(16).toUpperCase()}`,
     createdAt: new Date().toISOString(),
@@ -2229,11 +2239,11 @@ app.post('/api/sessions/single', (req, res) => {
 
   db.sessions.unshift(newSession);
 
-  // Rule 1: Todo atendimento lançado em sessão deverá acrescentar valor no caixa
+  // Rule 1: Todo atendimento avulso lançado deverá acrescentar valor no caixa e ser enviado ao sistema financeiro
   recordFinancialCashEntry(tenantId, {
     type: 'SINGLE_SESSION',
     originId: newSession.id,
-    description: `Sessão Avulsa - ${(newSession.procedures && newSession.procedures.join(', ')) || 'Massoterapia Clínica'} (${newSession.patientName})`,
+    description: 'Atendimento Massoterapia',
     patientId: newSession.patientId,
     patientName: newSession.patientName,
     professionalId: newSession.professionalId,
@@ -2275,19 +2285,18 @@ app.put('/api/sessions/:id', (req, res) => {
   // Record cash entry upon attendance/session update
   const updatedSess = db.sessions[index];
   const tenantCfg = db.tenants.find(t => t.id === updatedSess.tenantId);
-  const finCat = tenantCfg?.financialConfig?.category || 'Renda Extra';
+  const finCat = tenantCfg?.financialConfig?.category || 'MASSOTERAPIA';
   const finSec = tenantCfg?.financialConfig?.section || 'MASSOTERAPIA';
 
   if (!updatedSess.packageId) {
-    // Single session: always enters cash flow
+    // Regra 1: Sessão avulsa com valor digitado -> envia valor, description: 'Atendimento Massoterapia', category: 'MASSOTERAPIA', alsoAddToSalary: true
     const priceVal = Number(updatedSess.price) || 180;
     const sessionDate = updatedSess.scheduledDate || (updatedSess.attendedAt || new Date().toISOString()).slice(0, 10);
     const sessionMonth = sessionDate.slice(0, 7);
-    const procedureLabel = updatedSess.procedures?.length ? updatedSess.procedures.join(', ') : 'Massoterapia';
 
     recordFinancialCashEntry(updatedSess.tenantId, {
       type: 'SINGLE_SESSION',
-      description: `Atendimento sessão avulsa: ${procedureLabel}`,
+      description: 'Atendimento Massoterapia',
       patientId: updatedSess.patientId,
       patientName: updatedSess.patientName,
       professionalId: updatedSess.professionalId,
@@ -2303,16 +2312,17 @@ app.put('/api/sessions/:id', (req, res) => {
       notes: `Atendimento de sessão avulsa #${updatedSess.sessionNumber || 1}.`,
     });
   } else {
-    // Package session: 2nd session onwards does NOT enter cash flow (R$ 0,00) as per business requirement
+    // Regra 3: Sessão de pacote já quitado -> envia isPackageSession: true, amount: 0, packageName, clientName
     const sessNum = Number(updatedSess.sessionNumber) || 1;
-    const isFirstSession = sessNum === 1;
     const sessionDate = updatedSess.scheduledDate || (updatedSess.attendedAt || new Date().toISOString()).slice(0, 10);
     const sessionMonth = sessionDate.slice(0, 7);
-    const procedureLabel = updatedSess.procedures?.length ? updatedSess.procedures.join(', ') : 'Massoterapia';
+    const pkg = db.packages.find(p => p.id === updatedSess.packageId);
+    const pkgName = pkg?.title || pkg?.treatmentType || 'Pacote de Massoterapia';
 
     recordFinancialCashEntry(updatedSess.tenantId, {
       type: 'PACKAGE_SESSION',
-      description: `Atendimento Pacote - Sessão ${sessNum} (${procedureLabel})`,
+      description: `Sessão #${sessNum} de Pacote - ${pkgName}`,
+      packageName: pkgName,
       patientId: updatedSess.patientId,
       patientName: updatedSess.patientName,
       professionalId: updatedSess.professionalId,
@@ -2321,15 +2331,13 @@ app.put('/api/sessions/:id', (req, res) => {
       referenceId: updatedSess.id,
       packageId: updatedSess.packageId,
       sessionNumber: sessNum,
-      amount: Number(updatedSess.price) || 0,
-      effectiveAmount: 0, // Rule: already counted in package creation/1st session
+      amount: 0,
+      effectiveAmount: 0, // Regra 3: Presença registrada com valor 0 sem duplicar cobrança
       date: sessionDate,
       month: sessionMonth,
       category: finCat,
       section: finSec,
-      notes: isFirstSession
-        ? 'Sessão 1 do pacote (valor lançado na contratação do pacote).'
-        : `Sessão ${sessNum} do pacote — R$ 0,00 no caixa pois já lançado na 1ª sessão.`,
+      notes: `Sessão ${sessNum} do pacote — presença registrada no financeiro (R$ 0,00 - sem cobrança duplicada).`,
     });
   }
 
@@ -2398,6 +2406,53 @@ app.post('/api/sessions/:id/sign-direct', (req, res) => {
     hash: `SIG-SESS-${Date.now().toString(16).toUpperCase()}`,
   });
 
+  // Record financial entry upon completion via signature
+  const completedSess = db.sessions[index];
+  const sessionDate = completedSess.scheduledDate || (completedSess.attendedAt || new Date().toISOString()).slice(0, 10);
+  const sessionMonth = sessionDate.slice(0, 7);
+
+  if (!completedSess.packageId) {
+    const priceVal = Number(completedSess.price) || 180;
+    recordFinancialCashEntry(completedSess.tenantId, {
+      type: 'SINGLE_SESSION',
+      description: 'Atendimento Massoterapia',
+      patientId: completedSess.patientId,
+      patientName: completedSess.patientName,
+      professionalId: completedSess.professionalId,
+      professionalName: completedSess.professionalName,
+      originId: completedSess.id,
+      referenceId: completedSess.id,
+      amount: priceVal,
+      effectiveAmount: priceVal,
+      date: sessionDate,
+      month: sessionMonth,
+      notes: `Atendimento de sessão avulsa #${completedSess.sessionNumber || 1} assinado pelo cliente.`,
+    });
+  } else {
+    const sessNum = Number(completedSess.sessionNumber) || 1;
+    const pkg = db.packages.find(p => p.id === completedSess.packageId);
+    const pkgName = pkg?.title || pkg?.treatmentType || 'Pacote de Massoterapia';
+
+    recordFinancialCashEntry(completedSess.tenantId, {
+      type: 'PACKAGE_SESSION',
+      description: `Sessão #${sessNum} de Pacote - ${pkgName}`,
+      packageName: pkgName,
+      patientId: completedSess.patientId,
+      patientName: completedSess.patientName,
+      professionalId: completedSess.professionalId,
+      professionalName: completedSess.professionalName,
+      originId: completedSess.id,
+      referenceId: completedSess.id,
+      packageId: completedSess.packageId,
+      sessionNumber: sessNum,
+      amount: 0,
+      effectiveAmount: 0,
+      date: sessionDate,
+      month: sessionMonth,
+      notes: `Sessão ${sessNum} do pacote assinada — presença registrada (R$ 0,00).`,
+    });
+  }
+
   saveDatabase();
   broadcastRealtime(current.tenantId, { type: 'SESSION_UPDATED', entity: 'sessions', action: 'update', payload: db.sessions[index], id: db.sessions[index].id });
   if (current.packageId) {
@@ -2435,63 +2490,83 @@ async function syncCashEntryToExternalSystem(
   const targetCategory = cfg.category || 'MASSOTERAPIA';
   const targetSection = cfg.section || 'MASSOTERAPIA';
   const targetEmail = cfg.accessEmail || 'osaiasbrito@gmail.com';
-  const targetPassword = cfg.accessPassword || 'Ojf6994@#gestaoPessoas';
+  const targetPassword = cfg.accessPassword || 'osaias2026';
   const month = entry.month || entry.date.slice(0, 7) || new Date().toISOString().slice(0, 7);
 
-  // Calculate accumulated monthly total received for category "MASSOTERAPIA" / "Renda Extra"
-  const monthEntries = (db.cashEntries || []).filter(e => 
-    e.tenantId === tenantId && 
-    e.month === month &&
-    (e.category === targetCategory || !e.category || e.category === 'Renda Extra') &&
-    (e.section === targetSection || !e.section || e.section === 'MASSOTERAPIA')
-  );
-
-  const totalMonthReceived = monthEntries.reduce((acc, curr) => acc + (Number(curr.effectiveAmount) || 0), 0);
-  const amountVal = Number(entry.effectiveAmount ?? entry.amount ?? 0);
+  const amountVal = Number(entry.amount ?? entry.effectiveAmount ?? 0);
   const dateVal = entry.date || new Date().toISOString().substring(0, 10);
+  const clientName = entry.patientName || 'Cliente';
 
-  // Payload format adhering strictly to lancarAtendimentoNoFinanceiro
-  const payload = {
-    // 1. Credenciais de acesso
+  // Base payload adhering strictly to the user's 3 rules:
+  let payload: Record<string, any> = {
     email: targetEmail,
     password: targetPassword,
-
-    // 2. Dados do atendimento de massoterapia
-    amount: amountVal,
-    clientName: entry.patientName || 'Cliente',
-    description: entry.description || 'Atendimento Massoterapia',
-    category: targetCategory,
     date: dateVal,
-
-    // 3. Somar automaticamente ao Salário Mensal Fixo
-    alsoAddToSalary: cfg.alsoAddToSalary ?? true,
-
-    // Metadados adicionais para rastreamento e enriquecimento de relatório
-    action: 'LANCAMENTO_FINANCEIRO',
-    section: targetSection,
-    month,
-    monthFormatted: formatMonthName(month),
-    totalMonthReceived,
-    entry: {
-      id: entry.id,
-      type: entry.type,
-      description: entry.description,
-      amount: entry.amount,
-      effectiveAmount: entry.effectiveAmount,
-      date: entry.date,
-      patientName: entry.patientName,
-      professionalName: entry.professionalName,
-      category: targetCategory,
-      section: targetSection,
-      originId: entry.originId,
-      packageId: entry.packageId,
-      sessionNumber: entry.sessionNumber,
-      notes: entry.notes,
-    },
-    clinicName: tenant.tradeName || tenant.name,
-    tenantId: tenant.id,
-    timestamp: new Date().toISOString(),
+    category: targetCategory,
   };
+
+  if (entry.type === 'PACKAGE') {
+    // Regra 2: Quando cadastrar um pacote:
+    // envie isPackage: true, packageName, totalSessions, amount (valor total do pacote pago uma única vez), clientName e alsoAddToSalary: true.
+    const pkg = entry.packageId ? db.packages.find(p => p.id === entry.packageId) : null;
+    const pkgName = entry.packageName || pkg?.title || pkg?.treatmentType || 'Pacote de Massoterapia';
+    const totalSessions = entry.totalSessions || pkg?.sessionCount || 4;
+    const pkgAmount = Number(entry.amount || entry.effectiveAmount || 0);
+
+    payload = {
+      ...payload,
+      isPackage: true,
+      isPackageSession: false,
+      packageName: pkgName,
+      totalSessions,
+      amount: pkgAmount,
+      valor: pkgAmount,
+      clientName,
+      description: `Pacote ${pkgName} (${totalSessions} sessões)`,
+      alsoAddToSalary: cfg.alsoAddToSalary ?? true,
+    };
+  } else if (entry.type === 'PACKAGE_SESSION') {
+    // Regra 3: Quando o cliente fizer uma sessão de pacote já quitado:
+    // envie isPackageSession: true, amount: 0, packageName e clientName para registrar a presença sem duplicar a cobrança financeira.
+    const pkg = entry.packageId ? db.packages.find(p => p.id === entry.packageId) : null;
+    const pkgName = entry.packageName || pkg?.title || pkg?.treatmentType || 'Pacote de Massoterapia';
+    const sessNum = entry.sessionNumber || 1;
+
+    payload = {
+      ...payload,
+      isPackageSession: true,
+      isPackage: false,
+      amount: 0,
+      valor: 0,
+      packageName: pkgName,
+      clientName,
+      description: `Sessão #${sessNum} de Pacote - ${pkgName}`,
+      sessionNumber: sessNum,
+      alsoAddToSalary: false,
+    };
+  } else {
+    // Regra 1: Quando finalizar uma sessão avulsa com valor digitado:
+    // envie amount (ou valor), clientName, description: 'Atendimento Massoterapia', category: 'MASSOTERAPIA' e alsoAddToSalary: true.
+    payload = {
+      ...payload,
+      isPackage: false,
+      isPackageSession: false,
+      amount: amountVal,
+      valor: amountVal,
+      clientName,
+      description: 'Atendimento Massoterapia',
+      alsoAddToSalary: cfg.alsoAddToSalary ?? true,
+    };
+  }
+
+  // Metadados adicionais para integridade do sistema
+  payload.action = 'LANCAMENTO_FINANCEIRO';
+  payload.section = targetSection;
+  payload.month = month;
+  payload.monthFormatted = formatMonthName(month);
+  payload.clinicName = tenant.tradeName || tenant.name;
+  payload.tenantId = tenant.id;
+  payload.timestamp = new Date().toISOString();
 
   // Support relative endpoint URLs like "/api/integrations/massoterapia"
   let targetUrl = cfg.endpointUrl.trim();
@@ -2568,16 +2643,6 @@ function recordFinancialCashEntry(
     db.cashEntries = [];
   }
 
-  // Idempotency check: if an entry for this originId & type already exists, return it
-  if (data.originId) {
-    const existing = db.cashEntries.find(e => e.tenantId === tenantId && e.originId === data.originId && e.type === data.type);
-    if (existing) {
-      return existing;
-    }
-  }
-
-  const date = data.date || new Date().toISOString().split('T')[0];
-  const month = data.month || date.slice(0, 7);
   const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
   const targetCategory = tenant?.financialConfig?.category || 'MASSOTERAPIA';
   const targetSection = tenant?.financialConfig?.section || 'MASSOTERAPIA';
@@ -2587,21 +2652,32 @@ function recordFinancialCashEntry(
 
   // Rule 3: Atendimentos do pacote a partir da segunda sessão não entram no caixa, pois na primeira sessão já foi lançado
   if (data.type === 'PACKAGE_SESSION') {
+    effectiveAmount = 0;
     const sessionNum = data.sessionNumber || 1;
-    if (sessionNum >= 2) {
-      effectiveAmount = 0;
-      notes = notes || `Atendimento da sessão nº ${sessionNum} do pacote. Não entra no caixa (receita já lançada na compra/1ª sessão do pacote - R$ 0,00).`;
-    } else if (sessionNum === 1) {
-      // Check if package was already launched in the cash register
-      const packageAlreadyLaunched = db.cashEntries.some(
-        e => e.tenantId === tenantId && e.packageId === data.packageId && e.type === 'PACKAGE'
-      );
-      if (packageAlreadyLaunched) {
-        effectiveAmount = 0;
-        notes = notes || '1ª sessão do pacote realizada (receita total já computada no lançamento da contratação do pacote).';
+    notes = notes || `Sessão ${sessionNum} de pacote (R$ 0,00 para confirmação de presença sem duplicar cobrança).`;
+  }
+
+  // Idempotency check: if an entry for this originId & type already exists, update and resync
+  if (data.originId) {
+    const existing = db.cashEntries.find(e => e.tenantId === tenantId && e.originId === data.originId && e.type === data.type);
+    if (existing) {
+      if (data.amount !== undefined && (existing.amount !== data.amount || existing.effectiveAmount !== effectiveAmount)) {
+        existing.amount = Number(data.amount);
+        existing.effectiveAmount = effectiveAmount;
+        existing.syncedToExternal = false;
+        saveDatabase();
+        if (tenant?.financialConfig?.enabled && tenant?.financialConfig?.endpointUrl) {
+          syncCashEntryToExternalSystem(tenantId, existing).catch(err => {
+            console.warn('[Financial Sync] Resync notice:', err);
+          });
+        }
       }
+      return existing;
     }
   }
+
+  const date = data.date || new Date().toISOString().split('T')[0];
+  const month = data.month || date.slice(0, 7);
 
   const newEntry: CashEntry = {
     id: data.id || `cash-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -2609,6 +2685,8 @@ function recordFinancialCashEntry(
     type: data.type || 'SINGLE_SESSION',
     originId: data.originId || `manual-${Date.now()}`,
     packageId: data.packageId,
+    packageName: data.packageName,
+    totalSessions: data.totalSessions,
     sessionNumber: data.sessionNumber,
     description: data.description || 'Atendimento Massoterapia',
     patientId: data.patientId || '',
@@ -2637,9 +2715,8 @@ function recordFinancialCashEntry(
     id: newEntry.id,
   });
 
-  // Rule 4: O valor deverá ser enviado automaticamente lançado no controle financeiro em outro sistema
-  // If effective amount > 0 and auto-sync enabled, trigger external sync immediately
-  if (effectiveAmount > 0 && tenant?.financialConfig?.enabled && tenant?.financialConfig?.endpointUrl) {
+  // Automatically dispatch all 3 rules to external financial system
+  if (tenant?.financialConfig?.enabled && tenant?.financialConfig?.endpointUrl) {
     syncCashEntryToExternalSystem(tenantId, newEntry).catch(err => {
       console.warn('[Financial Sync] Auto-sync notice:', err);
     });
@@ -2860,15 +2937,35 @@ app.post('/api/financial/sync-all-pending', async (req, res) => {
 
 // POST /api/integrations/massoterapia (Endpoint oficial da integração)
 app.post('/api/integrations/massoterapia', (req, res) => {
-  const { email, password, amount, clientName, description, category, date, alsoAddToSalary } = req.body;
+  const {
+    email,
+    password,
+    amount,
+    valor,
+    clientName,
+    description,
+    category,
+    date,
+    alsoAddToSalary,
+    isPackage,
+    packageName,
+    totalSessions,
+    isPackageSession,
+    sessionNumber,
+  } = req.body;
 
   console.log('[API Integrations Massoterapia] Recebido lançamento:', {
     email,
     clientName,
-    amount,
+    amount: amount ?? valor,
     category,
     date,
     alsoAddToSalary,
+    isPackage,
+    packageName,
+    totalSessions,
+    isPackageSession,
+    sessionNumber,
   });
 
   if (!email || !password) {
@@ -2878,24 +2975,43 @@ app.post('/api/integrations/massoterapia', (req, res) => {
     });
   }
 
+  const rawAmount = amount !== undefined ? amount : valor;
   let numAmount = 0;
-  if (typeof amount === 'number') {
-    numAmount = amount;
-  } else if (typeof amount === 'string') {
-    numAmount = parseFloat(amount.replace(',', '.')) || 0;
+  if (typeof rawAmount === 'number') {
+    numAmount = rawAmount;
+  } else if (typeof rawAmount === 'string') {
+    numAmount = parseFloat(rawAmount.replace(',', '.')) || 0;
+  }
+
+  let successMessage = 'Atendimento lançado no controle financeiro com sucesso!';
+  if (isPackage) {
+    // Regra 2: Cadastro de pacote
+    successMessage = `Pacote "${packageName || 'Massoterapia'}" (${totalSessions || 4} sessões) cadastrado e somado ao salário fixo (R$ ${numAmount.toFixed(2)}) com sucesso!`;
+  } else if (isPackageSession) {
+    // Regra 3: Sessão de pacote quitado
+    successMessage = `Presença na sessão de pacote (${packageName || 'Massoterapia'}) registrada sem duplicar cobrança (R$ 0,00).`;
+  } else {
+    // Regra 1: Sessão avulsa
+    successMessage = `Atendimento avulso de R$ ${numAmount.toFixed(2)} lançado na categoria MASSOTERAPIA e somado ao salário fixo com sucesso!`;
   }
 
   return res.status(200).json({
     success: true,
-    message: 'Atendimento lançado no controle financeiro com sucesso!',
+    message: successMessage,
     data: {
       email,
       clientName: clientName || 'Cliente Massoterapia',
-      description: description || 'Atendimento Massoterapia',
+      description: description || (isPackage ? `Pacote ${packageName}` : 'Atendimento Massoterapia'),
       category: category || 'MASSOTERAPIA',
       amount: numAmount,
+      valor: numAmount,
       date: date || new Date().toISOString().substring(0, 10),
       alsoAddToSalary: alsoAddToSalary ?? true,
+      isPackage: Boolean(isPackage),
+      packageName: packageName || null,
+      totalSessions: totalSessions || null,
+      isPackageSession: Boolean(isPackageSession),
+      sessionNumber: sessionNumber || null,
       receivedAt: new Date().toISOString(),
     },
   });
