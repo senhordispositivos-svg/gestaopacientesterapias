@@ -159,8 +159,6 @@ export const SingleSessionModal: React.FC<SingleSessionModalProps> = ({
     }
   }, [isOpen, preselectedPatientId, patients, availableProfessionals, defaultProfId, professionalId]);
 
-  if (!isOpen) return null;
-
   // Filtered patients for selector
   const filteredPatients = patients.filter(p => {
     if (!patientSearchTerm.trim()) return true;
@@ -174,8 +172,8 @@ export const SingleSessionModal: React.FC<SingleSessionModalProps> = ({
 
   const selectedPatient = patients.find(p => p.id === patientId);
 
-  // BP classification helper
-  const bpAnalysis = useMemo(() => {
+  // BP classification helper (pure calculation - no hook)
+  const getBPAnalysis = () => {
     if (noBPRecorded) return { text: 'Não aferida', color: 'text-slate-400 bg-slate-100 dark:bg-slate-800' };
     const sys = parseInt(systolicBP, 10);
     const dia = parseInt(diastolicBP, 10);
@@ -191,7 +189,9 @@ export const SingleSessionModal: React.FC<SingleSessionModalProps> = ({
       return { text: 'Pré-Hipertensão', color: 'text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300' };
     }
     return { text: 'Hipertensão / Alerta', color: 'text-rose-700 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-300' };
-  }, [systolicBP, diastolicBP, noBPRecorded]);
+  };
+
+  const bpAnalysis = getBPAnalysis();
 
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCurrencyInput(e.target.value);
@@ -279,6 +279,8 @@ export const SingleSessionModal: React.FC<SingleSessionModalProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">

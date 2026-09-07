@@ -35,7 +35,7 @@ interface DashboardProps {
   onOpenNewPatient?: () => void;
   onOpenAnamnesis?: (patient: Patient) => void;
   onOpenPackageModal?: (patient: Patient) => void;
-  onOpenSingleSessionModal?: (patient: Patient) => void;
+  onOpenSingleSessionModal?: (patient?: Patient) => void;
   onAttendSession?: (session: Session) => void;
   onSendWhatsApp?: (session: Session) => void;
   onRefreshList?: () => void;
@@ -185,7 +185,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {onOpenSingleSessionModal && (
               <button
                 type="button"
-                onClick={() => onOpenSingleSessionModal({} as any)}
+                onClick={() => onOpenSingleSessionModal()}
                 className="px-3 sm:px-4 py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer flex items-center gap-1.5"
                 title="Acrescentar Sessão Avulsa com valor no Caixa do mês"
               >

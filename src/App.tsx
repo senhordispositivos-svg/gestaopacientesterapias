@@ -966,25 +966,27 @@ export function App() {
       />
 
       {/* Create Single Session Modal */}
-      <SingleSessionModal
-        isOpen={isSingleSessionModalOpen}
-        onClose={() => {
-          setIsSingleSessionModalOpen(false);
-          setSelectedPatient(null);
-        }}
-        patients={patients}
-        professionals={professionals}
-        preselectedPatientId={selectedPatient?.id}
-        onOpenCreatePatientModal={() => {
-          setPatientToEdit(null);
-          setIsPatientModalOpen(true);
-        }}
-        onSessionCreated={async () => {
-          await loadData();
-          setIsSingleSessionModalOpen(false);
-          setSelectedPatient(null);
-        }}
-      />
+      {isSingleSessionModalOpen && (
+        <SingleSessionModal
+          isOpen={isSingleSessionModalOpen}
+          onClose={() => {
+            setIsSingleSessionModalOpen(false);
+            setSelectedPatient(null);
+          }}
+          patients={patients}
+          professionals={professionals}
+          preselectedPatientId={selectedPatient?.id}
+          onOpenCreatePatientModal={() => {
+            setPatientToEdit(null);
+            setIsPatientModalOpen(true);
+          }}
+          onSessionCreated={async () => {
+            await loadData();
+            setIsSingleSessionModalOpen(false);
+            setSelectedPatient(null);
+          }}
+        />
+      )}
 
       {/* Attend Session Modal */}
       {selectedSessionForAttendance && (
