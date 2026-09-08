@@ -110,134 +110,169 @@ async function tryFetch(url: string, options?: RequestInit): Promise<Response | 
 // PRINT 03: ATENDIMENTO DO CLIENTE E DIGITAÇÃO DO VALOR DA SESSÃO
 // Chame esta função no sistema de Gestão de Pessoas ao concluir a sessão
 // ================================================================
-export async function lancarAtendimentoSessao(dadosAtendimento: {
+export interface DadosAtendimentoFinanceiro {
   valor?: number | string;
   amount?: number | string;
   nomeCliente?: string;
   clientName?: string;
-  paciente?: string;
   procedimento?: string;
   description?: string;
-  servico?: string;
-  category?: string;
   categoria?: string;
-  source?: string;
+  category?: string;
   data?: string;
   date?: string;
-  alsoAddToSalary?: boolean;
-  somarAoSalario?: boolean;
   isPackage?: boolean;
-  ePacote?: boolean;
   packageName?: string;
-  nomePacote?: string;
   totalSessions?: number;
-  sessoes?: number;
   isPackageSession?: boolean;
-  sessaoDePacote?: boolean;
   sessionNumber?: number;
+  alsoAddToSalary?: boolean;
+  // Campos de compatibilidade estendida
+  paciente?: string;
+  servico?: string;
+  source?: string;
+  somarAoSalario?: boolean;
+  ePacote?: boolean;
+  nomePacote?: string;
+  sessoes?: number;
+  sessaoDePacote?: boolean;
   numeroSessao?: number;
-}) {
-  const URL_FINANCEIRO = 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia';
+}
 
-  const rawVal = dadosAtendimento.valor !== undefined ? dadosAtendimento.valor : dadosAtendimento.amount;
-  const numValor = typeof rawVal === 'string'
-    ? parseFloat(rawVal.replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.')) || 180.00
-    : (rawVal !== undefined ? Number(rawVal) : 180.00);
+export function salvarFilaContingencia(item: any) {
+  if (typeof window === 'undefined') return;
+  try {
+    const fila = JSON.parse(localStorage.getItem('MASSOTERAPIA_PENDING_INCOMES') || '[]');
+    fila.push({ ...item, idTemp: Date.now(), createdAt: new Date().toISOString() });
+    localStorage.setItem('MASSOTERAPIA_PENDING_INCOMES', JSON.stringify(fila));
+  } catch (err) {
+    console.error('Erro ao gravar fila de contingência:', err);
+  }
+}
 
-  const clientNameVal = dadosAtendimento.nomeCliente || dadosAtendimento.clientName || dadosAtendimento.paciente || 'Mariana Alves';
-  const descVal = dadosAtendimento.procedimento || dadosAtendimento.description || dadosAtendimento.servico || 'Massagem Relaxante & Drenagem';
-  const catVal = dadosAtendimento.category || dadosAtendimento.categoria || dadosAtendimento.source || 'MASSOTERAPIA';
-  const dateVal = dadosAtendimento.data || dadosAtendimento.date || new Date().toISOString().substring(0, 10);
-  const addToSalaryVal = dadosAtendimento.alsoAddToSalary ?? dadosAtendimento.somarAoSalario ?? true;
+export async function sincronizarFilaContingencia(): Promise<{ total: number; sent: number; remaining: number }> {
+  if (typeof window === 'undefined') return { total: 0, sent: 0, remaining: 0 };
+  let fila: any[] = [];
+  try {
+    fila = JSON.parse(localStorage.getItem('MASSOTERAPIA_PENDING_INCOMES') || '[]');
+  } catch {
+    fila = [];
+  }
+  if (fila.length === 0) return { total: 0, sent: 0, remaining: 0 };
 
-  const isPkg = dadosAtendimento.isPackage || dadosAtendimento.ePacote;
-  const isPkgSess = dadosAtendimento.isPackageSession || dadosAtendimento.sessaoDePacote;
+  const URL_FINANCEIRO =
+    localStorage.getItem('FINANCIAL_API_URL') ||
+    'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia';
+
+  const naoSincronizados: any[] = [];
+  let sent = 0;
+
+  for (const item of fila) {
+    try {
+      const res = await fetch(URL_FINANCEIRO, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer osaias2026',
+          'x-access-password': 'osaias2026',
+        },
+        body: JSON.stringify(item),
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('text/html') && res.ok) {
+        sent++;
+      } else {
+        naoSincronizados.push(item);
+      }
+    } catch {
+      naoSincronizados.push(item);
+    }
+  }
+
+  localStorage.setItem('MASSOTERAPIA_PENDING_INCOMES', JSON.stringify(naoSincronizados));
+  return { total: fila.length, sent, remaining: naoSincronizados.length };
+}
+
+export async function lancarAtendimentoSessao(dados: DadosAtendimentoFinanceiro) {
+  const URL_FINANCEIRO =
+    (typeof window !== 'undefined' && localStorage.getItem('FINANCIAL_API_URL')) ||
+    'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia';
+
+  const rawValor = dados.valor ?? dados.amount ?? 0;
+  const numValor = typeof rawValor === 'string' 
+    ? parseFloat(rawValor.replace(/[^\d.,]/g, '').replace(',', '.')) || 0 
+    : Number(rawValor);
+
+  const clientNameVal = dados.nomeCliente || dados.clientName || dados.paciente || 'Cliente Massoterapia';
+  const descVal = dados.procedimento || dados.description || dados.servico || 'Atendimento Massoterapia';
+  const catVal = dados.categoria || dados.category || dados.source || 'MASSOTERAPIA';
+  const isPkg = Boolean(dados.isPackage || dados.ePacote);
+  const isPkgSess = Boolean(dados.isPackageSession || dados.sessaoDePacote);
+  const dateVal = dados.data || dados.date || new Date().toISOString().substring(0, 10);
+  const addSalary = (dados.alsoAddToSalary !== false && dados.somarAoSalario !== false) && !isPkgSess;
 
   const payload: Record<string, any> = {
-    // 1. Credenciais
     email: 'osaiasbrito@gmail.com',
-    username: 'osaiasbrito@gmail.com',
-    user: 'osaiasbrito@gmail.com',
-    password: 'Ojf6994@#gestaoPessoas',
-    senha: 'Ojf6994@#gestaoPessoas',
-
-    // 2. Dados do Atendimento de Massoterapia (Print 03)
+    password: 'osaias2026',
     amount: isPkgSess ? 0 : numValor,
     valor: isPkgSess ? 0 : numValor,
-    price: isPkgSess ? 0 : numValor,
     clientName: clientNameVal,
     nomeCliente: clientNameVal,
     paciente: clientNameVal,
     description: descVal,
     procedimento: descVal,
-    servico: descVal,
     category: catVal,
-    categoria: catVal,
     source: catVal,
     date: dateVal,
     data: dateVal,
-    
-    // 3. Soma automaticamente no Salário Mensal Fixo
-    alsoAddToSalary: isPkgSess ? false : addToSalaryVal,
-    somarAoSalario: isPkgSess ? false : addToSalaryVal,
-  };
-
-  if (isPkg) {
-    payload.isPackage = true;
-    payload.ePacote = true;
-    payload.tipo = 'PACOTE';
-    payload.packageName = dadosAtendimento.packageName || dadosAtendimento.nomePacote || 'Pacote de Massoterapia';
-    payload.nomePacote = payload.packageName;
-    payload.totalSessions = dadosAtendimento.totalSessions || dadosAtendimento.sessoes || 4;
-    payload.sessoes = payload.totalSessions;
-  } else if (isPkgSess) {
-    payload.isPackageSession = true;
-    payload.sessaoDePacote = true;
-    payload.tipo = 'PACOTE_SESSAO';
-    payload.packageName = dadosAtendimento.packageName || dadosAtendimento.nomePacote || 'Pacote de Massoterapia';
-    payload.nomePacote = payload.packageName;
-    payload.sessionNumber = dadosAtendimento.sessionNumber || dadosAtendimento.numeroSessao || 1;
-    payload.numeroSessao = payload.sessionNumber;
-  }
-
-  const authHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer Ojf6994@#gestaoPessoas',
-    'x-access-password': 'Ojf6994@#gestaoPessoas',
-    'x-user-password': 'Ojf6994@#gestaoPessoas',
-    'x-user-email': 'osaiasbrito@gmail.com',
+    isPackage: isPkg,
+    packageName: dados.packageName || dados.nomePacote || null,
+    totalSessions: dados.totalSessions || dados.sessoes || null,
+    isPackageSession: isPkgSess,
+    sessionNumber: dados.sessionNumber || dados.numeroSessao || null,
+    alsoAddToSalary: addSalary,
+    somarAoSalario: addSalary,
   };
 
   try {
     const res = await fetch(URL_FINANCEIRO, {
       method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify(payload)
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer osaias2026',
+        'x-access-password': 'osaias2026',
+      },
+      body: JSON.stringify(payload),
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      console.log('[Financeiro Cloud Run] Atendimento lançado com sucesso:', data);
-      return data;
+    const contentType = res.headers.get('content-type') || '';
+
+    // Se o servidor devolveu HTML (ex: página de carregamento do Vite ou SPA da Vercel)
+    if (contentType.includes('text/html')) {
+      salvarFilaContingencia(payload);
+      return {
+        success: true,
+        queued: true,
+        message: 'Atendimento registrado com sucesso! O lançamento financeiro foi salvo na fila local e será sincronizado automaticamente.',
+      };
     }
-  } catch (err) {
-    console.warn('[Financeiro] Conexão externa direta falhou ou CORS. Usando rota integrada do servidor da clínica...', err);
-  }
 
-  // Fallback seguro integrado para garantir que o lançamento fique computado no caixa e na sincronização
-  try {
-    const fallbackRes = await fetch('/api/integrations/massoterapia', {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify(payload)
-    });
-    return await fallbackRes.json();
-  } catch (errFallback) {
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Erro HTTP ${res.status} na API Financeira`);
+    }
+
+    const data = await res.json();
+    return { success: true, queued: false, data };
+  } catch (error: any) {
+    console.warn('Falha na conexão direta com a API Financeira. Salvando na fila local:', error.message);
+    salvarFilaContingencia(payload);
+    // Retorna sucesso com flag queued para não travar a interface do terapeuta
     return {
       success: true,
-      fallback: true,
-      message: 'Atendimento gravado no caixa da clínica e preparado para envio.',
-      data: payload
+      queued: true,
+      message: 'Atendimento concluído! Lançamento guardado na fila de contingência para envio automático.',
     };
   }
 }
@@ -247,11 +282,16 @@ export const lancarAtendimentoNoFinanceiro = lancarAtendimentoSessao;
 
 if (typeof window !== 'undefined') {
   (window as any).lancarAtendimentoSessao = lancarAtendimentoSessao;
+  (window as any).lancarAtendimentoNoFinanceiro = lancarAtendimentoSessao;
+  (window as any).salvarFilaContingencia = salvarFilaContingencia;
+  (window as any).sincronizarFilaContingencia = sincronizarFilaContingencia;
 }
 
 export const api = {
   lancarAtendimentoSessao,
   lancarAtendimentoNoFinanceiro,
+  salvarFilaContingencia,
+  sincronizarFilaContingencia,
   // Auth
   async login(email: string, password?: string, tenantId?: string): Promise<{ user: User; tenant: Tenant }> {
     const serverRes = await tryFetch('/api/auth/login', {

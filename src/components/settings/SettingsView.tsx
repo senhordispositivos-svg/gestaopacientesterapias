@@ -74,6 +74,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
   const [monthlySummary, setMonthlySummary] = useState<any>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [isSyncingPending, setIsSyncingPending] = useState(false);
+  const [localQueueCount, setLocalQueueCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    try {
+      const q = JSON.parse(localStorage.getItem('MASSOTERAPIA_PENDING_INCOMES') || '[]');
+      return Array.isArray(q) ? q.length : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [isSyncingLocalQueue, setIsSyncingLocalQueue] = useState(false);
 
   // Super User / Developer Edit Lock Mode
   const [isSuperUserMode, setIsSuperUserMode] = useState(false);
@@ -196,6 +206,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
     }
   };
 
+  const handleSyncLocalQueue = async () => {
+    setIsSyncingLocalQueue(true);
+    try {
+      const res = await api.sincronizarFilaContingencia();
+      const q = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('MASSOTERAPIA_PENDING_INCOMES') || '[]') : [];
+      setLocalQueueCount(Array.isArray(q) ? q.length : 0);
+      alert(`Sincronização da contingência: ${res.sent} de ${res.total} atendimento(s) enviados com sucesso!`);
+      await loadFinancialSummary();
+    } catch (err: any) {
+      alert(`Erro ao sincronizar fila local: ${err.message || 'Erro inesperado'}`);
+    } finally {
+      setIsSyncingLocalQueue(false);
+    }
+  };
+
   const handleSearchCep = async (cepValue: string) => {
     const clean = cepValue.replace(/\D/g, '');
     if (clean.length !== 8) return;
@@ -296,6 +321,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
         },
       });
 
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('FINANCIAL_API_URL', financialEndpointUrl.trim());
+      }
 
       setIsDirty(false);
       setIsSaved(true);
@@ -861,12 +889,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
                   <button
                     type="button"
                     onClick={() => {
-                      setFinancialEndpointUrl('https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia');
+                      const official = 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia';
+                      setFinancialEndpointUrl(official);
                       setFinancialAccessEmail('osaiasbrito@gmail.com');
                       setFinancialAccessPassword('osaias2026');
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem('FINANCIAL_API_URL', official);
+                      }
                       setIsDirty(true);
                     }}
-                    className="text-[11px] bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 border border-teal-200 dark:border-teal-800 px-2 py-0.5 rounded font-bold transition cursor-pointer"
+                    className="text-[11px] bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 border border-teal-200 dark:border-teal-800 px-2.5 py-1 rounded font-bold transition cursor-pointer"
                   >
                     Usar Endpoint Oficial (Cloud Run)
                   </button>
@@ -1134,6 +1166,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
                 >
                   {isSyncingPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                   Sincronizar {monthlySummary.pendingSyncCount} Pendente(s)
+                </button>
+              )}
+
+              {localQueueCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSyncLocalQueue}
+                  disabled={isSyncingLocalQueue}
+                  className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-xs"
+                >
+                  {isSyncingLocalQueue ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Sincronizar Fila Local ({localQueueCount} pendente{localQueueCount > 1 ? 's' : ''})
                 </button>
               )}
             </div>
