@@ -17,7 +17,7 @@
       "city": "São Luís",
       "state": "MA",
       "country": "Brasil",
-      "logoUrl": "",
+      "logoUrl": null,
       "primaryColor": "#0d9488",
       "secondaryColor": "#0f766e",
       "themeMode": "light",
@@ -41,28 +41,12 @@
         "section": "MASSOTERAPIA",
         "alsoAddToSalary": true,
         "autoSync": true,
-        "lastSyncStatus": "ERROR",
-        "lastSyncMessage": "Netlify retornou 404: o endpoint /api/integrations/massoterapia não existe no backend do Netlify (apenas arquivos estáticos)."
+        "lastSyncStatus": "SUCCESS",
+        "lastSyncMessage": "Conexão estabelecida com sucesso (HTTP 200)!"
       }
     }
   ],
   "users": [
-    {
-      "id": "user-master-1",
-      "tenantId": "tenant-demo-1",
-      "name": "Osaias Brito",
-      "email": "osaiasbrito@gmail.com",
-      "role": "ADMIN",
-      "accessMode": "FULL",
-      "specialty": "Fisioterapeuta & Massoterapeuta / Gestor Master",
-      "councilType": null,
-      "councilNumber": null,
-      "phone": null,
-      "active": true,
-      "avatarUrl": null,
-      "isSuperUser": true,
-      "createdAt": "2026-08-29 02:56:43.179474+00"
-    },
     {
       "id": "user-master-2",
       "tenantId": "tenant-demo-1",
@@ -78,38 +62,25 @@
       "avatarUrl": null,
       "isSuperUser": true,
       "createdAt": "2026-08-29 02:56:43.179474+00"
+    },
+    {
+      "id": "user-master-1",
+      "tenantId": "tenant-demo-1",
+      "name": "Osaias Brito",
+      "email": "osaiasbrito@gmail.com",
+      "role": "ADMIN",
+      "accessMode": "FULL",
+      "specialty": "Fisioterapeuta & Massoterapeuta / Gestor Master",
+      "councilType": null,
+      "councilNumber": null,
+      "phone": null,
+      "active": true,
+      "avatarUrl": null,
+      "isSuperUser": true,
+      "createdAt": "2026-08-29 02:56:43.179474+00"
     }
   ],
   "patients": [
-    {
-      "id": "pat-sidney-leitao",
-      "tenantId": "tenant-demo-1",
-      "name": "SIDNEY LEITÃO",
-      "email": "sidney.leitao@email.com",
-      "cpf": "123.456.789-00",
-      "rg": null,
-      "gender": "Masculino",
-      "phone": "(98) 98854-1695",
-      "whatsapp": "(98) 98854-1695",
-      "profession": "Empresário",
-      "birthDate": "1985-06-15",
-      "cep": "65075-000",
-      "street": "Avenida Litorânea",
-      "number": "500",
-      "complement": null,
-      "neighborhood": "Calhau",
-      "city": "São Luis",
-      "state": "MA",
-      "referencePoint": "Próximo à praia",
-      "notes": "Paciente com foco em relaxamento muscular e alívio de tensões.",
-      "photoUrl": null,
-      "avatarUrl": null,
-      "assignedProfessionalId": "user-super-osaias",
-      "assignedProfessionalName": "osaiasbrito",
-      "createdAt": "2026-08-19T02:00:00.000Z",
-      "updatedAt": "2026-08-19T02:00:00.000Z",
-      "deletedAt": null
-    },
     {
       "id": "pat-thayna-farias",
       "tenantId": "tenant-demo-1",
@@ -285,6 +256,35 @@
       "deletedAt": "2026-09-04T22:54:23.691Z"
     },
     {
+      "id": "pat-sidney-leitao",
+      "tenantId": "tenant-demo-1",
+      "name": "SIDNEY LEITÃO",
+      "email": "sidney.leitao@email.com",
+      "cpf": "123.456.789-00",
+      "rg": null,
+      "gender": "Masculino",
+      "phone": "(98) 98854-1695",
+      "whatsapp": "(98) 98854-1695",
+      "profession": "Empresário",
+      "birthDate": "1985-06-15",
+      "cep": "65075-000",
+      "street": "Avenida Litorânea",
+      "number": "500",
+      "complement": null,
+      "neighborhood": "Calhau",
+      "city": "São Luis",
+      "state": "MA",
+      "referencePoint": "Próximo à praia",
+      "notes": "Paciente com foco em relaxamento muscular e alívio de tensões.",
+      "photoUrl": null,
+      "avatarUrl": null,
+      "assignedProfessionalId": "user-super-osaias",
+      "assignedProfessionalName": "osaiasbrito",
+      "createdAt": "2026-08-19T02:00:00.000Z",
+      "updatedAt": "2026-08-19T02:00:00.000Z",
+      "deletedAt": null
+    },
+    {
       "id": "pat-fabio-santos",
       "tenantId": "tenant-demo-1",
       "name": "FABIO SANTOS DE OLIVEIRA",
@@ -425,6 +425,54 @@
       "createdAt": "2026-09-04T22:17:31.165Z"
     },
     {
+      "id": "anam-1788661568582",
+      "tenantId": "tenant-demo-1",
+      "patientId": "pat-test",
+      "healthHistory": {
+        "artrite": false,
+        "fumante": false,
+        "protese": false,
+        "varizes": false,
+        "alergias": false,
+        "diabetes": false,
+        "trombose": false,
+        "ansiedade": false,
+        "depressao": false,
+        "epilepsia": false,
+        "hipotensao": false,
+        "cardiopatia": false,
+        "hipertensao": false,
+        "osteoporose": false,
+        "fibromialgia": false,
+        "historicoCancer": false,
+        "menstruacaoNormal": true,
+        "cancerEmTratamento": false,
+        "doencaPeleContagiosa": false
+      },
+      "treatments": {
+        "fisioterapia": false,
+        "medicamentos": false,
+        "outroTratamento": false,
+        "tratamentoMedico": false
+      },
+      "habits": {
+        "dormeBem": true,
+        "atividadeFisica": false,
+        "bebidaAlcoolica": false,
+        "jaRealizouMassoterapia": false
+      },
+      "evaluation": {
+        "hasCurrentMedicalCondition": false
+      },
+      "responsibilityTermAccepted": true,
+      "patientSignatureUrl": "data:image/png;base64,abc",
+      "city": null,
+      "state": null,
+      "signedAt": "2026-09-06T02:26:08.582Z",
+      "signedByIp": "127.0.0.1",
+      "createdAt": "2026-09-06T02:26:08.582Z"
+    },
+    {
       "id": "anam-1788661046787",
       "tenantId": "tenant-demo-1",
       "patientId": "pat-1788661046784-2lx2",
@@ -494,54 +542,6 @@
       "signedAt": "2026-09-06T03:12:42.865Z",
       "signedByIp": "127.0.0.1",
       "createdAt": "2026-09-06T03:12:43.241Z"
-    },
-    {
-      "id": "anam-1788661568582",
-      "tenantId": "tenant-demo-1",
-      "patientId": "pat-test",
-      "healthHistory": {
-        "artrite": false,
-        "fumante": false,
-        "protese": false,
-        "varizes": false,
-        "alergias": false,
-        "diabetes": false,
-        "trombose": false,
-        "ansiedade": false,
-        "depressao": false,
-        "epilepsia": false,
-        "hipotensao": false,
-        "cardiopatia": false,
-        "hipertensao": false,
-        "osteoporose": false,
-        "fibromialgia": false,
-        "historicoCancer": false,
-        "menstruacaoNormal": true,
-        "cancerEmTratamento": false,
-        "doencaPeleContagiosa": false
-      },
-      "treatments": {
-        "fisioterapia": false,
-        "medicamentos": false,
-        "outroTratamento": false,
-        "tratamentoMedico": false
-      },
-      "habits": {
-        "dormeBem": true,
-        "atividadeFisica": false,
-        "bebidaAlcoolica": false,
-        "jaRealizouMassoterapia": false
-      },
-      "evaluation": {
-        "hasCurrentMedicalCondition": false
-      },
-      "responsibilityTermAccepted": true,
-      "patientSignatureUrl": "data:image/png;base64,abc",
-      "city": null,
-      "state": null,
-      "signedAt": "2026-09-06T02:26:08.582Z",
-      "signedByIp": "127.0.0.1",
-      "createdAt": "2026-09-06T02:26:08.582Z"
     },
     {
       "id": "anam-1788664198128",

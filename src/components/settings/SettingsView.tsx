@@ -126,7 +126,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
             : officialUrl
         );
         setFinancialAccessEmail(tenant.financialConfig?.accessEmail || 'osaiasbrito@gmail.com');
-        setFinancialAccessPassword(tenant.financialConfig?.accessPassword || 'Ojf6994@#gestaoPessoas');
+        setFinancialAccessPassword(tenant.financialConfig?.accessPassword || 'osaias2026');
         setFinancialCategory(tenant.financialConfig?.category || 'MASSOTERAPIA');
         setFinancialSection(tenant.financialConfig?.section || 'MASSOTERAPIA');
         setFinancialAlsoAddToSalary(tenant.financialConfig?.alsoAddToSalary ?? true);
@@ -942,7 +942,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
                     setFinancialAccessPassword(e.target.value);
                     setIsDirty(true);
                   }}
-                  placeholder="Ojf6994@#gestaoPessoas"
+                  placeholder="osaias2026 (ou Ojf6994@#gestaoPessoas)"
                   className="w-full p-2.5 pr-10 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                 />
                 <button
@@ -954,7 +954,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
                 </button>
               </div>
               <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                Senha de autenticação exigida pelo endpoint financeiro.
+                Senha de acesso (ex: <strong>osaias2026</strong> ou <strong>Ojf6994@#gestaoPessoas</strong>).
               </p>
             </div>
 
