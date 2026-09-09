@@ -6,19 +6,12 @@ import {
   Search,
   Filter,
   CheckCircle2,
-  AlertCircle,
-  Clock,
-  Send,
   Plus,
-  ArrowUpRight,
-  ShieldCheck,
-  Settings as SettingsIcon,
   Package,
   User,
   Calendar,
   FileText,
   Loader2,
-  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -28,7 +21,7 @@ interface FinancialViewProps {
   onNavigateToSettings?: () => void;
 }
 
-export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettings }) => {
+export const FinancialView: React.FC<FinancialViewProps> = () => {
   const { tenant } = useAuth();
   const currentTenantId = tenant?.id || 'tenant-demo-1';
 
@@ -39,8 +32,6 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
   const [cashEntries, setCashEntries] = useState<CashEntry[]>([]);
   const [monthlySummary, setMonthlySummary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
-  const [syncingEntryId, setSyncingEntryId] = useState<string | null>(null);
 
   // New manual entry modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -67,7 +58,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
       setCashEntries(entriesRes.entries || []);
       setMonthlySummary(summaryRes);
     } catch (err) {
-      console.error('Erro ao carregar dados financeiros:', err);
+      console.error('Erro ao carregar dados do fluxo de caixa:', err);
     } finally {
       setIsLoading(false);
     }
@@ -76,35 +67,6 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleSyncEntry = async (entryId: string) => {
-    setSyncingEntryId(entryId);
-    try {
-      const res = await api.syncCashEntry(currentTenantId, entryId);
-      if (res.success) {
-        await loadData();
-      } else {
-        alert(res.message || 'Falha ao sincronizar lançamento.');
-      }
-    } catch (err: any) {
-      alert(`Erro na sincronização: ${err.message || 'Falha de rede'}`);
-    } finally {
-      setSyncingEntryId(null);
-    }
-  };
-
-  const handleSyncAllPending = async () => {
-    setIsSyncingAll(true);
-    try {
-      const res = await api.syncAllPendingCashEntries(currentTenantId);
-      alert(res.message);
-      await loadData();
-    } catch (err: any) {
-      alert(`Falha ao sincronizar lançamentos: ${err.message || 'Falha de rede'}`);
-    } finally {
-      setIsSyncingAll(false);
-    }
-  };
 
   const handleCreateEntry = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,9 +86,9 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
         effectiveAmount: parsedAmount,
         date: newDate,
         month: newDate.slice(0, 7),
-        category: tenant?.financialConfig?.category || 'Renda Extra',
-        section: tenant?.financialConfig?.section || 'MASSOTERAPIA',
-        notes: 'Lançamento manual registrado no caixa.',
+        category: 'MASSOTERAPIA',
+        section: 'MASSOTERAPIA',
+        notes: 'Lançamento manual registrado no fluxo de caixa.',
       });
 
       setIsModalOpen(false);
@@ -141,10 +103,6 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
     }
   };
 
-  const targetCategory = tenant?.financialConfig?.category || 'Renda Extra';
-  const targetSection = tenant?.financialConfig?.section || 'MASSOTERAPIA';
-  const isConfigured = Boolean(tenant?.financialConfig?.endpointUrl);
-
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -155,23 +113,23 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
               <DollarSign className="w-5 h-5" />
             </span>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-              Fluxo de Caixa & Integração Financeira
+              Fluxo de Caixa (Gestão de Entradas do Mês)
             </h2>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Lançamento automático de sessões e pacotes com sincronização contínua com seu sistema de gestão.
+            Controle de receitas, atendimentos individuais, vendas de pacotes e saldo financeiro do mês.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
-            onClick={handleSyncAllPending}
-            disabled={isSyncingAll || (monthlySummary?.pendingSyncCount === 0)}
-            className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 text-xs font-bold flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
+            onClick={() => loadData()}
+            className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-2 transition cursor-pointer"
+            title="Atualizar dados do caixa"
           >
-            {isSyncingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Sincronizar Pendentes {monthlySummary?.pendingSyncCount > 0 ? `(${monthlySummary.pendingSyncCount})` : ''}
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
+            Atualizar
           </button>
 
           <button
@@ -182,32 +140,19 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
             <Plus className="w-4 h-4" />
             Novo Lançamento
           </button>
-
-          {onNavigateToSettings && (
-            <button
-              type="button"
-              onClick={onNavigateToSettings}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 text-xs transition cursor-pointer"
-              title="Configurações da Integração"
-            >
-              <SettingsIcon className="w-4 h-4" />
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Requirement 5 Highlight Card: External System (Renda Extra / MASSOTERAPIA) */}
+      {/* Monthly Summary Cards */}
       <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-6 rounded-2xl shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/40 pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs uppercase tracking-wider font-extrabold text-emerald-200">
-              <ShieldCheck className="w-4 h-4" />
-              Espelho do Sistema de Gestão Financeira Externa
+              <TrendingUp className="w-4 h-4" />
+              Resumo Consolidado do Mês
             </div>
-            <div className="text-lg font-bold flex items-center gap-2">
-              Categoria: <span className="bg-white/20 px-2.5 py-0.5 rounded-lg font-black">{targetCategory}</span>
-              <span className="text-emerald-300">»</span>
-              Sessão: <span className="bg-white/20 px-2.5 py-0.5 rounded-lg font-black">{targetSection}</span>
+            <div className="text-lg font-bold">
+              Gestão Financeira &middot; Entradas em Caixa
             </div>
           </div>
 
@@ -237,7 +182,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
               )}
             </div>
             <p className="text-[10px] text-emerald-200">
-              Valor creditado em {targetCategory} / {targetSection}
+              Receita líquida total em caixa
             </p>
           </div>
 
@@ -251,7 +196,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
               {monthlySummary?.singleSessionsCount || 0} lançamentos
             </div>
             <p className="text-[10px] text-emerald-200">
-              Valor entra integralmente no caixa
+              Atendimentos com valor integral
             </p>
           </div>
 
@@ -265,7 +210,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
               {monthlySummary?.packagesCount || 0} contratados
             </div>
             <p className="text-[10px] text-emerald-200">
-              Lançados integralmente no caixa
+              Valor do pacote creditado integralmente
             </p>
           </div>
 
@@ -273,53 +218,24 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
           <div className="bg-white/10 p-4 rounded-xl backdrop-blur-xs border border-white/10 space-y-1">
             <span className="text-xs font-medium text-emerald-100 flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              Sessões 2ª+ do Pacote
+              Sessões de Pacote (2ª+)
             </span>
             <div className="text-xl font-bold">
               {monthlySummary?.packageSessionsZeroCount || 0} atendimentos
             </div>
             <p className="text-[10px] text-emerald-200">
-              R$ 0,00 no caixa (já lançado na 1ª sessão)
+              R$ 0,00 no caixa (já quitado no pacote)
             </p>
           </div>
-        </div>
-
-        {/* Integration Status Footer */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs border-t border-emerald-500/30">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
-            <span className="text-emerald-100">
-              {isConfigured
-                ? `Integração conectada: ${tenant?.financialConfig?.endpointUrl}`
-                : 'Integração em modo de simulação (configure o link nas Configurações)'}
-            </span>
-          </div>
-          {tenant?.financialConfig?.lastSyncAt && (
-            <div className="text-[11px] text-emerald-200">
-              Última sincronização: {new Date(tenant.financialConfig.lastSyncAt).toLocaleString('pt-BR')}
-            </div>
-          )}
         </div>
       </div>
 
       {/* Rules Notice */}
-      <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 text-xs text-slate-600 dark:text-slate-300 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>
-            <strong>Regra de Negócio:</strong> Todo atendimento em sessão e novos pacotes entram no caixa. A partir da 2ª sessão de um pacote, o valor no caixa é <strong>R$ 0,00</strong> para não duplicar o faturamento.
-          </span>
-        </div>
-        {onNavigateToSettings && (
-          <button
-            type="button"
-            onClick={onNavigateToSettings}
-            className="text-teal-600 hover:text-teal-700 font-bold underline flex items-center gap-1 cursor-pointer"
-          >
-            Configurar link & senha de integração
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </button>
-        )}
+      <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-2">
+        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <span>
+          <strong>Regra Financeira:</strong> Atendimentos avulsos e novos pacotes entram no caixa no momento da confirmação. As sessões subsequentes de um pacote já contratado registram <strong>R$ 0,00</strong> no caixa para controle de presença sem duplicar a cobrança.
+        </span>
       </div>
 
       {/* Search & Filter Bar */}
@@ -392,8 +308,7 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
                   <th className="py-3 px-4">Tipo</th>
                   <th className="py-3 px-4">Valor Bruto</th>
                   <th className="py-3 px-4">Valor Caixa</th>
-                  <th className="py-3 px-4">Status Integração</th>
-                  <th className="py-3 px-4 text-right">Ações</th>
+                  <th className="py-3 px-4 text-right">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -451,45 +366,17 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
                         {isZero ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400">
                             <CheckCircle2 className="w-3 h-3 text-slate-400" />
-                            Já lançado no pacote
-                          </span>
-                        ) : entry.syncedToExternal ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            Sincronizado
-                          </span>
-                        ) : entry.syncError ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600" title={entry.syncError}>
-                            <AlertCircle className="w-3 h-3 text-rose-600" />
-                            Erro no Envio
+                            Contabilizado no pacote
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600">
-                            <Clock className="w-3 h-3 text-amber-600" />
-                            Pendente
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            Registrado no Caixa
                           </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        {!isZero && (
-                          <button
-                            type="button"
-                            onClick={() => handleSyncEntry(entry.id)}
-                            disabled={syncingEntryId === entry.id}
-                            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-700 dark:text-slate-300 hover:text-emerald-600 text-[11px] font-bold inline-flex items-center gap-1 transition disabled:opacity-50 cursor-pointer"
-                            title="Reenviar este lançamento para o sistema financeiro externo"
-                          >
-                            {syncingEntryId === entry.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Send className="w-3 h-3" />
-                            )}
-                            Enviar
-                          </button>
                         )}
                       </td>
                     </tr>
@@ -519,101 +406,94 @@ export const FinancialView: React.FC<FinancialViewProps> = ({ onNavigateToSettin
               </button>
             </div>
 
-            <form onSubmit={handleCreateEntry} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+            <form onSubmit={handleCreateEntry} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="font-semibold text-slate-700 dark:text-slate-300">
                   Tipo de Lançamento
                 </label>
                 <select
                   value={newType}
                   onChange={e => setNewType(e.target.value as any)}
-                  className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+                  className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium"
                 >
-                  <option value="SINGLE_SESSION">Sessão Avulsa de Massoterapia</option>
-                  <option value="PACKAGE">Novo Pacote Contratado</option>
-                  <option value="MANUAL_ADJUSTMENT">Ajuste de Caixa / Entrada</option>
+                  <option value="SINGLE_SESSION">Sessão Avulsa (R$ 180,00)</option>
+                  <option value="PACKAGE">Venda de Novo Pacote</option>
+                  <option value="MANUAL_ADJUSTMENT">Ajuste Manual / Outra Entrada</option>
                 </select>
               </div>
 
-              <div>
-                <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                  Nome do Paciente
+              <div className="space-y-1">
+                <label className="font-semibold text-slate-700 dark:text-slate-300">
+                  Nome do Paciente / Cliente
                 </label>
                 <input
                   type="text"
-                  required
                   value={newPatientName}
                   onChange={e => setNewPatientName(e.target.value)}
-                  placeholder="Ex: Maria da Silva"
-                  className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                  Descrição do Atendimento / Pacote
-                </label>
-                <input
-                  type="text"
-                  value={newDesc}
-                  onChange={e => setNewDesc(e.target.value)}
-                  placeholder="Ex: Drenagem Linfática / Massagem Relaxante"
-                  className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  placeholder="Ex: Maria Silva"
+                  className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Valor (R$)
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700 dark:text-slate-300">
+                    Valor Recebido (R$)
                   </label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
-                    required
                     value={newAmount}
                     onChange={e => setNewAmount(e.target.value)}
-                    className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-emerald-600"
+                    className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-emerald-600"
+                    required
                   />
                 </div>
-                <div>
-                  <label className="font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Data do Lançamento
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700 dark:text-slate-300">
+                    Data do Recebimento
                   </label>
                   <input
                     type="date"
-                    required
                     value={newDate}
                     onChange={e => setNewDate(e.target.value)}
-                    className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                    className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
+                    required
                   />
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-[11px] space-y-1">
-                <p className="font-bold">Destino no Sistema de Gestão Financeira:</p>
-                <p>Categoria: <strong>{targetCategory}</strong> » Sessão: <strong>{targetSection}</strong></p>
-                <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
-                  O valor será somado ao total recebido do mês e transmitido automaticamente.
-                </p>
+              <div className="space-y-1">
+                <label className="font-semibold text-slate-700 dark:text-slate-300">
+                  Descrição (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={newDesc}
+                  onChange={e => setNewDesc(e.target.value)}
+                  placeholder="Ex: Atendimento Massoterapia Relaxante"
+                  className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+                />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold transition cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-xs"
                 >
-                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                  Confirmar e Lançar no Caixa
+                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  Registrar no Caixa
                 </button>
               </div>
             </form>

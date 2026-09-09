@@ -2542,227 +2542,12 @@ async function syncCashEntryToExternalSystem(
   tenantId: string,
   entry: CashEntry
 ): Promise<{ success: boolean; message: string }> {
-  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
-  const cfg = tenant?.financialConfig;
-
-  if (!cfg || !cfg.enabled || !cfg.endpointUrl) {
-    return { success: false, message: 'Integração financeira externa desativada ou link não configurado.' };
-  }
-
-  const targetCategory = cfg.category || 'MASSOTERAPIA';
-  const targetSection = cfg.section || 'MASSOTERAPIA';
-  const targetEmail = cfg.accessEmail || 'osaiasbrito@gmail.com';
-  const targetPassword = cfg.accessPassword || 'osaias2026';
-  const month = entry.month || entry.date.slice(0, 7) || new Date().toISOString().slice(0, 7);
-
-  const amountVal = Number(entry.amount ?? entry.effectiveAmount ?? 0);
-  const dateVal = entry.date || new Date().toISOString().substring(0, 10);
-  const clientName = entry.patientName || 'Cliente';
-
-  // Base payload adhering strictly to the user's 3 rules and supporting both languages:
-  let payload: Record<string, any> = {
-    email: targetEmail,
-    username: targetEmail,
-    user: targetEmail,
-    password: targetPassword,
-    senha: targetPassword,
-    date: dateVal,
-    data: dateVal,
-    referenceMonth: month,
-    mesReferencia: month,
-    category: targetCategory,
-    categoria: targetCategory,
-    source: targetCategory,
-    section: targetSection,
-  };
-
-  if (entry.type === 'PACKAGE') {
-    // Regra 2: Quando cadastrar um pacote:
-    // envie isPackage: true, packageName, totalSessions, amount (valor total do pacote pago uma única vez), clientName e alsoAddToSalary: true.
-    const pkg = entry.packageId ? db.packages.find(p => p.id === entry.packageId) : null;
-    const pkgName = entry.packageName || pkg?.title || pkg?.treatmentType || 'Pacote de Massoterapia';
-    const totalSessions = entry.totalSessions || pkg?.sessionCount || 4;
-    const pkgAmount = Number(entry.amount || entry.effectiveAmount || 0);
-
-    payload = {
-      ...payload,
-      isPackage: true,
-      ePacote: true,
-      tipo: 'PACOTE',
-      isPackageSession: false,
-      sessaoDePacote: false,
-      packageName: pkgName,
-      nomePacote: pkgName,
-      totalSessions,
-      sessoes: totalSessions,
-      quantidadeSessoes: totalSessions,
-      amount: pkgAmount,
-      valor: pkgAmount,
-      price: pkgAmount,
-      clientName,
-      nomeCliente: clientName,
-      paciente: clientName,
-      description: `Pacote ${pkgName} (${totalSessions} sessões)`,
-      procedimento: `Pacote ${pkgName} (${totalSessions} sessões)`,
-      alsoAddToSalary: cfg.alsoAddToSalary ?? true,
-      somarAoSalario: cfg.alsoAddToSalary ?? true,
-    };
-  } else if (entry.type === 'PACKAGE_SESSION') {
-    // Regra 3: Quando o cliente fizer uma sessão de pacote já quitado:
-    // envie isPackageSession: true, amount: 0, packageName e clientName para registrar a presença sem duplicar a cobrança financeira.
-    const pkg = entry.packageId ? db.packages.find(p => p.id === entry.packageId) : null;
-    const pkgName = entry.packageName || pkg?.title || pkg?.treatmentType || 'Pacote de Massoterapia';
-    const sessNum = entry.sessionNumber || 1;
-
-    payload = {
-      ...payload,
-      isPackageSession: true,
-      sessaoDePacote: true,
-      tipo: 'PACOTE_SESSAO',
-      isPackage: false,
-      ePacote: false,
-      amount: 0,
-      valor: 0,
-      packageName: pkgName,
-      nomePacote: pkgName,
-      clientName,
-      nomeCliente: clientName,
-      paciente: clientName,
-      sessionNumber: sessNum,
-      numeroSessao: sessNum,
-      description: `Sessão #${sessNum} de Pacote - ${pkgName}`,
-      procedimento: `Sessão #${sessNum} de Pacote - ${pkgName}`,
-      alsoAddToSalary: false,
-      somarAoSalario: false,
-    };
-  } else {
-    // Regra 1: Quando finalizar uma sessão avulsa com valor digitado:
-    // envie amount (ou valor), clientName, description: 'Atendimento Massoterapia', category: 'MASSOTERAPIA' e alsoAddToSalary: true.
-    payload = {
-      ...payload,
-      isPackage: false,
-      ePacote: false,
-      isPackageSession: false,
-      sessaoDePacote: false,
-      tipo: 'SESSAO',
-      amount: amountVal,
-      valor: amountVal,
-      price: amountVal,
-      clientName,
-      nomeCliente: clientName,
-      paciente: clientName,
-      description: 'Atendimento Massoterapia',
-      procedimento: 'Atendimento Massoterapia',
-      alsoAddToSalary: cfg.alsoAddToSalary ?? true,
-      somarAoSalario: cfg.alsoAddToSalary ?? true,
-    };
-  }
-
-  // Metadados adicionais para integridade do sistema
-  payload.action = 'LANCAMENTO_FINANCEIRO';
-  payload.monthFormatted = formatMonthName(month);
-  payload.clinicName = tenant.tradeName || tenant.name;
-  payload.tenantId = tenant.id;
-  payload.timestamp = new Date().toISOString();
-
-  // Support relative endpoint URLs like "/api/integrations/massoterapia"
-  let targetUrl = cfg.endpointUrl.trim();
-  if (targetUrl.startsWith('/')) {
-    targetUrl = `http://127.0.0.1:3000${targetUrl}`;
-  }
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'User-Agent': 'ClinicaIntegrativa-FinancialBridge/1.0',
-    };
-    if (targetPassword) {
-      headers['Authorization'] = `Bearer ${targetPassword}`;
-      headers['x-access-password'] = targetPassword;
-      headers['x-user-password'] = targetPassword;
-    }
-    if (targetEmail) {
-      headers['x-user-email'] = targetEmail;
-    }
-
-    const response = await fetch(targetUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    const responseJson = await response.json().catch(() => null);
-    const isSuccess = response.ok && (responseJson ? responseJson.success !== false : true);
-
-    if (isSuccess) {
-      entry.syncedToExternal = true;
-      entry.syncedAt = new Date().toISOString();
-      entry.syncError = undefined;
-
-      cfg.lastSyncAt = entry.syncedAt;
-      cfg.lastSyncStatus = 'SUCCESS';
-      cfg.lastSyncMessage = responseJson?.message || `Atendimento lançado no controle financeiro com sucesso! (HTTP ${response.status}). Categoria: ${targetCategory}.`;
-      saveDatabase();
-      return { success: true, message: cfg.lastSyncMessage };
-    } else if (
-      (targetUrl.includes('ca2j6yzl6qm4otgueyocuu') || targetUrl.includes('/api/integrations/massoterapia')) &&
-      targetEmail.toLowerCase().includes('osaias') &&
-      (targetPassword === 'osaias2026' || targetPassword === 'Ojf6994@#gestaoPessoas' || targetPassword.length >= 4)
-    ) {
-      entry.syncedToExternal = true;
-      entry.syncedAt = new Date().toISOString();
-      entry.syncError = undefined;
-
-      cfg.lastSyncAt = entry.syncedAt;
-      cfg.lastSyncStatus = 'SUCCESS';
-      cfg.lastSyncMessage = `Atendimento registrado com sucesso no sistema financeiro integrado! Categoria: ${targetCategory}.`;
-      saveDatabase();
-      return { success: true, message: cfg.lastSyncMessage };
-    } else {
-      const isHtml = response.headers.get('content-type')?.includes('text/html');
-      let errText = '';
-      if (response.status === 404 && (isHtml || targetUrl.includes('netlify.app'))) {
-        errText = `Netlify retornou 404: o endpoint /api/integrations/massoterapia não existe no backend do Netlify (apenas arquivos estáticos).`;
-      } else {
-        const rawErr = responseJson?.message || (await response.text().catch(() => response.statusText));
-        errText = `Erro HTTP ${response.status}: ${String(rawErr).slice(0, 150)}`;
-      }
-      entry.syncedToExternal = false;
-      entry.syncError = errText;
-      cfg.lastSyncStatus = 'ERROR';
-      cfg.lastSyncMessage = errText;
-      saveDatabase();
-      return { success: false, message: errText };
-    }
-  } catch (err: any) {
-    if (
-      (targetUrl.includes('ca2j6yzl6qm4otgueyocuu') || targetUrl.includes('/api/integrations/massoterapia')) &&
-      targetEmail.toLowerCase().includes('osaias') &&
-      (targetPassword === 'osaias2026' || targetPassword === 'Ojf6994@#gestaoPessoas' || targetPassword.length >= 4)
-    ) {
-      entry.syncedToExternal = true;
-      entry.syncedAt = new Date().toISOString();
-      entry.syncError = undefined;
-
-      cfg.lastSyncAt = entry.syncedAt;
-      cfg.lastSyncStatus = 'SUCCESS';
-      cfg.lastSyncMessage = `Atendimento registrado com sucesso no sistema financeiro integrado! Categoria: ${targetCategory}.`;
-      saveDatabase();
-      return { success: true, message: cfg.lastSyncMessage };
-    }
-    const errorMsg = `Falha na requisição: ${err.message || 'Erro de conexão ou timeout'}`;
-    entry.syncedToExternal = false;
-    entry.syncError = errorMsg;
-    cfg.lastSyncStatus = 'ERROR';
-    cfg.lastSyncMessage = errorMsg;
-    saveDatabase();
-    return { success: false, message: errorMsg };
-  }
+  // External connection removed per user request. Entry is recorded in local cash flow.
+  entry.syncedToExternal = true;
+  entry.syncedAt = new Date().toISOString();
+  entry.syncError = undefined;
+  saveDatabase();
+  return { success: true, message: 'Lançamento registrado com sucesso no Fluxo de Caixa!' };
 }
 
 function recordFinancialCashEntry(
@@ -2774,8 +2559,8 @@ function recordFinancialCashEntry(
   }
 
   const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
-  const targetCategory = tenant?.financialConfig?.category || 'MASSOTERAPIA';
-  const targetSection = tenant?.financialConfig?.section || 'MASSOTERAPIA';
+  const targetCategory = 'MASSOTERAPIA';
+  const targetSection = 'MASSOTERAPIA';
 
   let effectiveAmount = Number(data.effectiveAmount ?? data.amount ?? 0);
   let notes = data.notes || '';
@@ -2787,20 +2572,15 @@ function recordFinancialCashEntry(
     notes = notes || `Sessão ${sessionNum} de pacote (R$ 0,00 para confirmação de presença sem duplicar cobrança).`;
   }
 
-  // Idempotency check: if an entry for this originId & type already exists, update and resync
+  // Idempotency check: if an entry for this originId & type already exists, update
   if (data.originId) {
     const existing = db.cashEntries.find(e => e.tenantId === tenantId && e.originId === data.originId && e.type === data.type);
     if (existing) {
       if (data.amount !== undefined && (existing.amount !== data.amount || existing.effectiveAmount !== effectiveAmount)) {
         existing.amount = Number(data.amount);
         existing.effectiveAmount = effectiveAmount;
-        existing.syncedToExternal = false;
+        existing.syncedToExternal = true;
         saveDatabase();
-        if (tenant?.financialConfig?.enabled && tenant?.financialConfig?.endpointUrl) {
-          syncCashEntryToExternalSystem(tenantId, existing).catch(err => {
-            console.warn('[Financial Sync] Resync notice:', err);
-          });
-        }
       }
       return existing;
     }
@@ -2829,7 +2609,7 @@ function recordFinancialCashEntry(
     month,
     category: data.category || targetCategory,
     section: data.section || targetSection,
-    syncedToExternal: false,
+    syncedToExternal: true,
     notes,
     createdAt: new Date().toISOString(),
   };
@@ -2844,13 +2624,6 @@ function recordFinancialCashEntry(
     payload: newEntry,
     id: newEntry.id,
   });
-
-  // Automatically dispatch all 3 rules to external financial system
-  if (tenant?.financialConfig?.enabled && tenant?.financialConfig?.endpointUrl) {
-    syncCashEntryToExternalSystem(tenantId, newEntry).catch(err => {
-      console.warn('[Financial Sync] Auto-sync notice:', err);
-    });
-  }
 
   return newEntry;
 }
