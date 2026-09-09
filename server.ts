@@ -2616,38 +2616,74 @@ async function syncCashEntryToExternalSystem(
 
   // 1. Direct Supabase (PostgreSQL) Sync if Supabase URL & Key configured
   if (cfg.supabaseUrl && cfg.supabaseKey) {
-    try {
-      const table = cfg.supabaseTable || 'renda_extra';
-      const sbUrl = `${cfg.supabaseUrl.replace(/\/+$/, '')}/rest/v1/${table}`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const table = cfg.supabaseTable || 'extra_incomes';
+    const sbUrl = `${cfg.supabaseUrl.replace(/\/+$/, '')}/rest/v1/${table}`;
 
-      const sbResponse = await fetch(sbUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': cfg.supabaseKey,
-          'Authorization': `Bearer ${cfg.supabaseKey}`,
-          'Prefer': 'return=representation',
-        },
-        body: JSON.stringify(financialPayload),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+    const candidatePayloads = [
+      // Format A: Standard English columns for extra_incomes
+      {
+        description: targetDesc,
+        amount: amountVal,
+        date: dateVal,
+        month: monthVal,
+        origin: targetOrigin,
+        category: targetCategory,
+        notes: entry.notes || `Atendimento Massoterapia (${clientName})`,
+        client_name: clientName,
+      },
+      // Format B: Portuguese columns
+      {
+        descricao: targetDesc,
+        valor: amountVal,
+        data: dateVal,
+        mes_referencia: monthVal,
+        origem_renda: targetOrigin,
+        origem: targetOrigin,
+        categoria: targetCategory,
+        observacao: entry.notes || `Atendimento Massoterapia (${clientName})`,
+        cliente_paciente: clientName,
+        somar_ao_salario: cfg.alsoAddToSalary ?? true,
+      },
+      // Format C: Core minimal fields
+      {
+        description: targetDesc,
+        amount: amountVal,
+        date: dateVal,
+      },
+    ];
 
-      if (sbResponse.ok || sbResponse.status === 201 || sbResponse.status === 200) {
-        entry.syncedToExternal = true;
-        entry.syncedAt = new Date().toISOString();
-        entry.syncError = undefined;
+    for (const payload of candidatePayloads) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-        cfg.lastSyncAt = entry.syncedAt;
-        cfg.lastSyncStatus = 'SUCCESS';
-        cfg.lastSyncMessage = `Enviado com sucesso ao Supabase do Controle Financeiro (${monthVal}: R$ ${amountVal.toFixed(2)} em ${targetDesc} / ${targetOrigin})!`;
-        saveDatabase();
-        return { success: true, message: cfg.lastSyncMessage };
+        const sbResponse = await fetch(sbUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': cfg.supabaseKey,
+            'Authorization': `Bearer ${cfg.supabaseKey}`,
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (sbResponse.ok || sbResponse.status === 201 || sbResponse.status === 200) {
+          entry.syncedToExternal = true;
+          entry.syncedAt = new Date().toISOString();
+          entry.syncError = undefined;
+
+          cfg.lastSyncAt = entry.syncedAt;
+          cfg.lastSyncStatus = 'SUCCESS';
+          cfg.lastSyncMessage = `Enviado com sucesso ao Supabase do Controle Financeiro (${monthVal}: R$ ${amountVal.toFixed(2)} em ${targetDesc} / ${targetOrigin})!`;
+          saveDatabase();
+          return { success: true, message: cfg.lastSyncMessage };
+        }
+      } catch (sbErr: any) {
+        console.warn('[Financial Supabase Sync Candidate Notice]:', sbErr?.message);
       }
-    } catch (sbErr: any) {
-      console.warn('[Financial Supabase Sync] Notice:', sbErr?.message);
     }
   }
 
@@ -2966,9 +3002,9 @@ app.post('/api/financial/test-connection', async (req, res) => {
       });
     }
 
-    const table = supabaseTable || 'renda_extra';
+    const table = supabaseTable || 'extra_incomes';
     const cleanUrl = supabaseUrl.replace(/\/+$/, '');
-    const pingUrl = `${cleanUrl}/rest/v1/${table}?select=id&limit=1`;
+    const pingUrl = `${cleanUrl}/rest/v1/${table}?limit=1`;
 
     try {
       const controller = new AbortController();

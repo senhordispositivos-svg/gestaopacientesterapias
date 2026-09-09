@@ -3391,6 +3391,25 @@ export const api = {
     };
     list.unshift(newEntry);
     setLocal(STORAGE_KEYS.CASH_ENTRIES, list);
+
+    // Auto-sync directly to Supabase if configured in local/Vercel mode
+    const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    const tenant = tenants.find(t => t.id === tenantId) || tenants[0];
+    const cfg = tenant?.financialConfig;
+    if (cfg?.enabled && cfg.autoSync !== false && (newEntry.effectiveAmount || newEntry.amount) > 0 && cfg.supabaseUrl && cfg.supabaseKey) {
+      this.sendCashEntryToSupabase(cfg, newEntry).then(res => {
+        if (res.success) {
+          const freshList = getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []);
+          const target = freshList.find(e => e.id === newEntry.id);
+          if (target) {
+            target.syncedToExternal = true;
+            target.syncedAt = new Date().toISOString();
+            setLocal(STORAGE_KEYS.CASH_ENTRIES, freshList);
+          }
+        }
+      }).catch(err => console.warn('[Auto-Sync Direct Supabase Notice]:', err));
+    }
+
     return newEntry;
   },
 
@@ -3445,7 +3464,7 @@ export const api = {
       mode: 'SUPABASE',
       supabaseUrl: '',
       supabaseKey: '',
-      supabaseTable: 'renda_extra',
+      supabaseTable: 'extra_incomes',
       endpointUrl: 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
       accessEmail: 'osaiasbrito@gmail.com',
       accessPassword: '',
@@ -3462,35 +3481,51 @@ export const api = {
     tenantId: string,
     config: Partial<FinancialIntegrationConfig>
   ): Promise<{ success: boolean; config: FinancialIntegrationConfig }> {
-    const serverRes = await tryFetch('/api/financial/config', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': tenantId,
-      },
-      body: JSON.stringify(config),
-    });
-    if (serverRes) {
-      return serverRes.json();
-    }
+    // Save to local storage first to guarantee persistence even on static hosts (Vercel)
     const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
     const idx = tenants.findIndex(t => t.id === tenantId);
+    let updatedConfig: FinancialIntegrationConfig;
+
     if (idx >= 0) {
-      tenants[idx].financialConfig = {
+      updatedConfig = {
         ...(tenants[idx].financialConfig || {
           enabled: true,
+          mode: 'SUPABASE',
+          supabaseUrl: '',
+          supabaseKey: '',
+          supabaseTable: 'extra_incomes',
           endpointUrl: '',
           category: 'Renda Extra',
           description: 'MASSOTERAPIA',
           originIncome: 'SERVIÇO',
           section: 'MASSOTERAPIA',
+          alsoAddToSalary: true,
+          autoSync: true,
         }),
         ...config,
       } as FinancialIntegrationConfig;
+      tenants[idx].financialConfig = updatedConfig;
       setLocal(STORAGE_KEYS.TENANTS, tenants);
-      return { success: true, config: tenants[idx].financialConfig! };
+    } else {
+      updatedConfig = config as FinancialIntegrationConfig;
     }
-    return { success: false, config: config as any };
+
+    try {
+      const serverRes = await tryFetch('/api/financial/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': tenantId,
+        },
+        body: JSON.stringify(config),
+      });
+      if (serverRes) {
+        const data = await serverRes.json();
+        return data;
+      }
+    } catch (_) {}
+
+    return { success: true, config: updatedConfig };
   },
 
   async testFinancialConnection(config: {
@@ -3507,6 +3542,108 @@ export const api = {
     section?: string;
     alsoAddToSalary?: boolean;
   }): Promise<{ success: boolean; message: string; status?: number; isNetlifyStaticError?: boolean; mode?: string }> {
+    const isSupabase = config.mode === 'SUPABASE' || (!config.endpointUrl && Boolean(config.supabaseUrl));
+
+    // 1. Direct Client-Side Test for SUPABASE (PostgreSQL)
+    // The PostgREST API on *.supabase.co has CORS natively enabled for web browsers.
+    if (isSupabase) {
+      const rawUrl = (config.supabaseUrl || '').trim();
+      const rawKey = (config.supabaseKey || '').trim();
+      const table = (config.supabaseTable || 'extra_incomes').trim() || 'extra_incomes';
+      const desc = config.description || 'MASSOTERAPIA';
+      const origin = config.originIncome || 'SERVIÇO';
+
+      if (!rawUrl || !rawKey) {
+        return {
+          success: false,
+          mode: 'SUPABASE',
+          message: 'Por favor, informe a URL do Supabase e a Chave de Acesso (anon ou service_role) para testar a conexão.',
+        };
+      }
+
+      const cleanUrl = rawUrl.replace(/\/+$/, '');
+      const testPingUrl = `${cleanUrl}/rest/v1/${table}?limit=1`;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const sbRes = await fetch(testPingUrl, {
+          method: 'GET',
+          headers: {
+            apikey: rawKey,
+            Authorization: `Bearer ${rawKey}`,
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (sbRes.ok) {
+          let sampleRow: any = null;
+          let cols: string[] = [];
+          try {
+            const data = await sbRes.json();
+            if (Array.isArray(data) && data.length > 0 && data[0]) {
+              sampleRow = data[0];
+              cols = Object.keys(sampleRow);
+            }
+          } catch (_) {}
+
+          const detectedInfo = cols.length > 0 ? ` [Colunas detectadas na tabela: ${cols.slice(0, 7).join(', ')}]` : '';
+
+          return {
+            success: true,
+            status: sbRes.status,
+            mode: 'SUPABASE',
+            message: `Conexão direta com o Supabase/PostgreSQL estabelecida com sucesso! A tabela "${table}" está online, liberada e pronta para receber os lançamentos em dinheiro como ${desc} (${origin}).${detectedInfo}`,
+          };
+        } else if (sbRes.status === 404) {
+          return {
+            success: false,
+            status: 404,
+            mode: 'SUPABASE',
+            message: `Conexão com o Supabase atingida, mas a tabela "${table}" não foi encontrada. Verifique se o nome exato no seu banco é "extra_incomes" ou copie o Script SQL abaixo para criá-la.`,
+          };
+        } else if (sbRes.status === 401 || sbRes.status === 403) {
+          return {
+            success: false,
+            status: sbRes.status,
+            mode: 'SUPABASE',
+            message: `Erro de autorização no Supabase (HTTP ${sbRes.status}). Verifique se a chave de acesso (anon ou service_role) está completa e correta.`,
+          };
+        } else {
+          const errText = await sbRes.text().catch(() => '');
+          return {
+            success: false,
+            status: sbRes.status,
+            mode: 'SUPABASE',
+            message: `Supabase retornou HTTP ${sbRes.status}: ${errText || sbRes.statusText}`,
+          };
+        }
+      } catch (clientErr: any) {
+        // Fallback to server ping if available
+        try {
+          const serverRes = await fetch('/api/financial/test-connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+          });
+          const serverData = await serverRes.json().catch(() => null);
+          if (serverData && typeof serverData.success === 'boolean') {
+            return serverData;
+          }
+        } catch (_) {}
+
+        return {
+          success: false,
+          mode: 'SUPABASE',
+          message: `Falha ao conectar com o Supabase em ${cleanUrl}: ${clientErr.message || 'Erro de rede ou URL inválida'}. Certifique-se de que a URL comece com "https://" e termine com ".supabase.co".`,
+        };
+      }
+    }
+
+    // 2. Direct Test for REST API / Webhook Mode
     try {
       const serverRes = await fetch('/api/financial/test-connection', {
         method: 'POST',
@@ -3518,10 +3655,16 @@ export const api = {
         return data;
       }
     } catch (serverErr) {
-      console.warn('Server test connection fetch error, checking client fallback:', serverErr);
+      console.warn('Server test connection fetch error, testing client fallback:', serverErr);
     }
 
-    // Direct client-side ping if backend server unreachable
+    if (!config.endpointUrl) {
+      return {
+        success: false,
+        message: 'Endpoint de URL não configurado para o modo REST API.',
+      };
+    }
+
     try {
       const email = config.accessEmail || 'osaiasbrito@gmail.com';
       const password = config.accessPassword || 'Ojf6994@#gestaoPessoas';
@@ -3573,7 +3716,7 @@ export const api = {
           : `Sistema externo retornou HTTP ${res.status}`),
       };
     } catch (err: any) {
-      const isNetlify = config.endpointUrl.includes('netlify.app');
+      const isNetlify = config.endpointUrl?.includes('netlify.app');
       return {
         success: false,
         message: isNetlify
@@ -3584,7 +3727,98 @@ export const api = {
     }
   },
 
+  // Direct client-side dispatch to Supabase extra_incomes table with auto-healing schema
+  async sendCashEntryToSupabase(
+    cfg: FinancialIntegrationConfig,
+    entry: CashEntry
+  ): Promise<{ success: boolean; message: string }> {
+    if (!cfg.supabaseUrl || !cfg.supabaseKey) {
+      return { success: false, message: 'Supabase não configurado.' };
+    }
+
+    const cleanUrl = cfg.supabaseUrl.trim().replace(/\/+$/, '');
+    const table = (cfg.supabaseTable || 'extra_incomes').trim() || 'extra_incomes';
+    const postUrl = `${cleanUrl}/rest/v1/${table}`;
+
+    const amountVal = Number(entry.effectiveAmount ?? entry.amount ?? 0);
+    const dateVal = entry.date || new Date().toISOString().substring(0, 10);
+    const monthVal = entry.month || dateVal.slice(0, 7);
+    const desc = cfg.description || 'MASSOTERAPIA';
+    const origin = cfg.originIncome || 'SERVIÇO';
+    const patient = entry.patientName || 'Cliente';
+
+    // Payload formatted to fit both English schema (extra_incomes standard in Supabase) and Portuguese schema
+    const payloadVariations = [
+      // Primary: English schema matching extra_incomes conventions
+      {
+        description: desc,
+        amount: amountVal,
+        date: dateVal,
+        month: monthVal,
+        origin: origin,
+        category: cfg.category || 'Renda Extra',
+        notes: entry.notes || `Atendimento Massoterapia - ${patient}`,
+        client_name: patient,
+      },
+      // Variation 2: Portuguese schema
+      {
+        descricao: desc,
+        valor: amountVal,
+        data: dateVal,
+        mes_referencia: monthVal,
+        origem_renda: origin,
+        origem: origin,
+        categoria: cfg.category || 'Renda Extra',
+        observacao: entry.notes || `Atendimento Massoterapia - ${patient}`,
+        cliente_paciente: patient,
+        somar_ao_salario: cfg.alsoAddToSalary ?? true,
+      },
+      // Variation 3: Minimal essential columns
+      {
+        description: desc,
+        amount: amountVal,
+        date: dateVal,
+      },
+    ];
+
+    let lastError = '';
+
+    for (const payload of payloadVariations) {
+      try {
+        const res = await fetch(postUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: cfg.supabaseKey.trim(),
+            Authorization: `Bearer ${cfg.supabaseKey.trim()}`,
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok || res.status === 201 || res.status === 200) {
+          return {
+            success: true,
+            message: `Lançamento de R$ ${amountVal.toFixed(2)} enviado ao Supabase (${monthVal}: ${desc} / ${origin})!`,
+          };
+        }
+
+        const errText = await res.text().catch(() => '');
+        lastError = `HTTP ${res.status}: ${errText}`;
+        console.warn('[Supabase Sync Attempt Failed]', lastError);
+      } catch (fetchErr: any) {
+        lastError = fetchErr.message;
+      }
+    }
+
+    return {
+      success: false,
+      message: `Falha ao sincronizar com Supabase: ${lastError}`,
+    };
+  },
+
   async syncCashEntry(tenantId: string, entryId: string): Promise<{ success: boolean; message?: string }> {
+    // 1. Try server sync first
     const serverRes = await tryFetch(`/api/financial/sync-entry/${entryId}`, {
       method: 'POST',
       headers: { 'x-tenant-id': tenantId },
@@ -3592,12 +3826,40 @@ export const api = {
     if (serverRes) {
       return serverRes.json();
     }
-    return { success: false, message: 'Servidor indisponível para sincronização.' };
+
+    // 2. Client-side direct sync for Vercel / static deployments
+    const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    const tenant = tenants.find(t => t.id === tenantId) || tenants[0];
+    const cfg = tenant?.financialConfig;
+
+    if (!cfg || !cfg.enabled) {
+      return { success: false, message: 'Integração financeira não ativada.' };
+    }
+
+    const cashEntries = getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []);
+    const entry = cashEntries.find(e => e.id === entryId);
+    if (!entry) {
+      return { success: false, message: 'Lançamento não encontrado no fluxo de caixa.' };
+    }
+
+    if (cfg.supabaseUrl && cfg.supabaseKey) {
+      const syncResult = await this.sendCashEntryToSupabase(cfg, entry);
+      if (syncResult.success) {
+        entry.syncedToExternal = true;
+        entry.syncedAt = new Date().toISOString();
+        entry.syncError = undefined;
+        setLocal(STORAGE_KEYS.CASH_ENTRIES, cashEntries);
+      }
+      return syncResult;
+    }
+
+    return { success: false, message: 'Configuração do Supabase incompleta.' };
   },
 
   async syncAllPendingCashEntries(
     tenantId: string
   ): Promise<{ success: boolean; syncedCount: number; message: string }> {
+    // 1. Try server sync
     const serverRes = await tryFetch('/api/financial/sync-all-pending', {
       method: 'POST',
       headers: { 'x-tenant-id': tenantId },
@@ -3605,6 +3867,51 @@ export const api = {
     if (serverRes) {
       return serverRes.json();
     }
-    return { success: false, syncedCount: 0, message: 'Servidor indisponível para sincronização em lote.' };
+
+    // 2. Client-side direct sync for Vercel
+    const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    const tenant = tenants.find(t => t.id === tenantId) || tenants[0];
+    const cfg = tenant?.financialConfig;
+
+    if (!cfg || !cfg.enabled || !cfg.supabaseUrl || !cfg.supabaseKey) {
+      return {
+        success: false,
+        syncedCount: 0,
+        message: 'Supabase não configurado ou integração desativada.',
+      };
+    }
+
+    const cashEntries = getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []);
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const toSync = cashEntries.filter(
+      e => (!tenantId || e.tenantId === tenantId) && (Number(e.effectiveAmount || e.amount) > 0) && (e.month === currentMonth || !e.syncedToExternal)
+    );
+
+    if (toSync.length === 0) {
+      return {
+        success: true,
+        syncedCount: 0,
+        message: 'Nenhum lançamento com valor em aberto para o mês atual.',
+      };
+    }
+
+    let successCount = 0;
+    for (const entry of toSync) {
+      const res = await this.sendCashEntryToSupabase(cfg, entry);
+      if (res.success) {
+        entry.syncedToExternal = true;
+        entry.syncedAt = new Date().toISOString();
+        entry.syncError = undefined;
+        successCount++;
+      }
+    }
+
+    setLocal(STORAGE_KEYS.CASH_ENTRIES, cashEntries);
+
+    return {
+      success: successCount > 0,
+      syncedCount: successCount,
+      message: `${successCount} lançamento(s) somados com sucesso no Controle Financeiro (mês ${currentMonth})!`,
+    };
   },
 };

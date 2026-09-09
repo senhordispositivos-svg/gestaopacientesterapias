@@ -76,7 +76,7 @@ export const FinancialIntegrationView: React.FC<FinancialIntegrationViewProps> =
         setMode(cfg.mode === 'REST_API' ? 'REST_API' : 'SUPABASE');
         setSupabaseUrl(cfg.supabaseUrl || '');
         setSupabaseKey(cfg.supabaseKey || '');
-        setSupabaseTable(cfg.supabaseTable || 'renda_extra');
+        setSupabaseTable(cfg.supabaseTable || 'extra_incomes');
         setEndpointUrl(
           cfg.endpointUrl ||
             'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia'
@@ -105,7 +105,7 @@ export const FinancialIntegrationView: React.FC<FinancialIntegrationViewProps> =
         mode,
         supabaseUrl: supabaseUrl.trim(),
         supabaseKey: supabaseKey.trim(),
-        supabaseTable: supabaseTable.trim() || 'renda_extra',
+        supabaseTable: supabaseTable.trim() || 'extra_incomes',
         endpointUrl: endpointUrl.trim(),
         accessEmail: accessEmail.trim(),
         accessPassword: accessPassword.trim(),
@@ -138,7 +138,7 @@ export const FinancialIntegrationView: React.FC<FinancialIntegrationViewProps> =
         mode,
         supabaseUrl: supabaseUrl.trim(),
         supabaseKey: supabaseKey.trim(),
-        supabaseTable: supabaseTable.trim() || 'renda_extra',
+        supabaseTable: supabaseTable.trim() || 'extra_incomes',
         endpointUrl: endpointUrl.trim(),
         accessEmail: accessEmail.trim(),
         accessPassword: accessPassword.trim(),
@@ -186,40 +186,35 @@ export const FinancialIntegrationView: React.FC<FinancialIntegrationViewProps> =
 
   // 1. Script SQL para o Supabase (PostgreSQL) do Controle Financeiro
   const sqlScript = `-- SCRIPT PARA O SUPABASE / POSTGRESQL DO APLICATIVO "CONTROLE FINANCEIRO"
--- Criação ou adequação da tabela de Renda Extra para receber os lançamentos de Massoterapia
+-- A tabela "extra_incomes" (Renda Extra) recebe os lançamentos de Massoterapia
 
-CREATE TABLE IF NOT EXISTS renda_extra (
+CREATE TABLE IF NOT EXISTS extra_incomes (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    descricao VARCHAR(255) NOT NULL DEFAULT 'MASSOTERAPIA',
-    origem_renda VARCHAR(100) NOT NULL DEFAULT 'SERVIÇO',
-    origem VARCHAR(100) DEFAULT 'SERVIÇO',
-    tipo VARCHAR(100) DEFAULT 'Renda Extra',
-    categoria VARCHAR(100) DEFAULT 'Renda Extra',
-    valor NUMERIC(12,2) NOT NULL DEFAULT 0.00,
-    data DATE NOT NULL DEFAULT CURRENT_DATE,
-    mes_referencia VARCHAR(7) NOT NULL, -- Exemplo: '2026-08', '2026-09'
-    mes VARCHAR(7),
-    observacao TEXT,
-    cliente_paciente VARCHAR(255),
-    procedimento VARCHAR(255),
-    somar_ao_salario BOOLEAN DEFAULT true,
+    description VARCHAR(255) NOT NULL DEFAULT 'MASSOTERAPIA',
+    origin VARCHAR(100) NOT NULL DEFAULT 'SERVIÇO',
+    category VARCHAR(100) DEFAULT 'Renda Extra',
+    amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    month VARCHAR(7) NOT NULL, -- Exemplo: '2026-08', '2026-09'
+    notes TEXT,
+    client_name VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Índices para agilizar a soma automática mensal na tela de Renda Extra
-CREATE INDEX IF NOT EXISTS idx_renda_extra_mes ON renda_extra(mes_referencia);
-CREATE INDEX IF NOT EXISTS idx_renda_extra_descricao ON renda_extra(descricao);
+CREATE INDEX IF NOT EXISTS idx_extra_incomes_month ON extra_incomes(month);
+CREATE INDEX IF NOT EXISTS idx_extra_incomes_desc ON extra_incomes(description);
 
 -- Habilitar RLS e criar política de leitura e inserção
-ALTER TABLE renda_extra ENABLE ROW LEVEL SECURITY;
+ALTER TABLE extra_incomes ENABLE ROW LEVEL SECURITY;
 
 DO $$ 
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_policies WHERE tablename = 'renda_extra' AND policyname = 'Permitir integracao massoterapia'
+    SELECT 1 FROM pg_policies WHERE tablename = 'extra_incomes' AND policyname = 'Permitir integracao massoterapia'
   ) THEN
     CREATE POLICY "Permitir integracao massoterapia" 
-    ON renda_extra FOR ALL 
+    ON extra_incomes FOR ALL 
     TO anon, authenticated 
     USING (true) 
     WITH CHECK (true);
@@ -529,23 +524,23 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
                   className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-mono text-slate-800"
                 />
                 <span className="text-[11px] text-slate-500 mt-1 block">
-                  Chave pública (anon) ou service_role com permissão na tabela renda_extra.
+                  Chave pública (anon) ou service_role do seu Supabase com permissão na tabela.
                 </span>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Nome da Tabela de Renda Extra
+                  Nome da Tabela de Renda Extra *
                 </label>
                 <input
                   type="text"
                   value={supabaseTable}
                   onChange={e => setSupabaseTable(e.target.value)}
-                  placeholder="renda_extra"
+                  placeholder="extra_incomes"
                   className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-mono text-slate-800"
                 />
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  Padrão do sistema: <code>renda_extra</code>
+                <span className="text-[11px] text-emerald-700 font-medium mt-1 block">
+                  Tabela identificada no seu Supabase: <code>extra_incomes</code>
                 </span>
               </div>
 
