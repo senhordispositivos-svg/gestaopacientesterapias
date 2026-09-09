@@ -3422,7 +3422,7 @@ export const api = {
       packagesCount: list.filter(e => e.type === 'PACKAGE').length,
       packageSessionsZeroCount: list.filter(e => e.type === 'PACKAGE_SESSION' && e.effectiveAmount === 0).length,
       pendingSyncCount: list.filter(e => e.effectiveAmount > 0 && !e.syncedToExternal).length,
-      integrationConfigured: Boolean(tenant?.financialConfig?.endpointUrl),
+      integrationConfigured: Boolean(tenant?.financialConfig?.endpointUrl || tenant?.financialConfig?.supabaseUrl),
       integrationEnabled: Boolean(tenant?.financialConfig?.enabled),
       endpointUrl: tenant?.financialConfig?.endpointUrl || '',
       lastSyncAt: tenant?.financialConfig?.lastSyncAt,
@@ -3431,14 +3431,82 @@ export const api = {
     };
   },
 
+  async getFinancialConfig(tenantId: string): Promise<FinancialIntegrationConfig> {
+    const serverRes = await tryFetch('/api/financial/config', {
+      headers: { 'x-tenant-id': tenantId },
+    });
+    if (serverRes) {
+      return serverRes.json();
+    }
+    const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    const tenant = tenants.find(t => t.id === tenantId) || tenants[0];
+    return tenant?.financialConfig || {
+      enabled: true,
+      mode: 'SUPABASE',
+      supabaseUrl: '',
+      supabaseKey: '',
+      supabaseTable: 'renda_extra',
+      endpointUrl: 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
+      accessEmail: 'osaiasbrito@gmail.com',
+      accessPassword: '',
+      category: 'Renda Extra',
+      description: 'MASSOTERAPIA',
+      originIncome: 'SERVIÇO',
+      section: 'MASSOTERAPIA',
+      alsoAddToSalary: true,
+      autoSync: true,
+    };
+  },
+
+  async saveFinancialConfig(
+    tenantId: string,
+    config: Partial<FinancialIntegrationConfig>
+  ): Promise<{ success: boolean; config: FinancialIntegrationConfig }> {
+    const serverRes = await tryFetch('/api/financial/config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-tenant-id': tenantId,
+      },
+      body: JSON.stringify(config),
+    });
+    if (serverRes) {
+      return serverRes.json();
+    }
+    const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
+    const idx = tenants.findIndex(t => t.id === tenantId);
+    if (idx >= 0) {
+      tenants[idx].financialConfig = {
+        ...(tenants[idx].financialConfig || {
+          enabled: true,
+          endpointUrl: '',
+          category: 'Renda Extra',
+          description: 'MASSOTERAPIA',
+          originIncome: 'SERVIÇO',
+          section: 'MASSOTERAPIA',
+        }),
+        ...config,
+      } as FinancialIntegrationConfig;
+      setLocal(STORAGE_KEYS.TENANTS, tenants);
+      return { success: true, config: tenants[idx].financialConfig! };
+    }
+    return { success: false, config: config as any };
+  },
+
   async testFinancialConnection(config: {
-    endpointUrl: string;
+    mode?: 'SUPABASE' | 'REST_API' | 'BOTH';
+    supabaseUrl?: string;
+    supabaseKey?: string;
+    supabaseTable?: string;
+    endpointUrl?: string;
     accessEmail?: string;
     accessPassword?: string;
     category?: string;
+    description?: string;
+    originIncome?: string;
     section?: string;
     alsoAddToSalary?: boolean;
-  }): Promise<{ success: boolean; message: string; status?: number; isNetlifyStaticError?: boolean }> {
+  }): Promise<{ success: boolean; message: string; status?: number; isNetlifyStaticError?: boolean; mode?: string }> {
     try {
       const serverRes = await fetch('/api/financial/test-connection', {
         method: 'POST',

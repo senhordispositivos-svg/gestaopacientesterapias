@@ -25,6 +25,7 @@ import { SendAnamnesisLinkModal } from './components/whatsapp/SendAnamnesisLinkM
 import { PackageDetailModal } from './components/packages/PackageDetailModal';
 import { PackagesTrackerView } from './components/packages/PackagesTrackerView';
 import { FinancialView } from './components/financial/FinancialView';
+import { FinancialIntegrationView } from './components/financial/FinancialIntegrationView';
 import { LoginView } from './components/auth/LoginView';
 import { MobileTabletHub } from './components/MobileTabletHub';
 import { ResolutionScaleModal } from './components/layout/ResolutionScaleModal';
@@ -774,7 +775,12 @@ export function App() {
 
               {/* Financial Cash Flow & Management Integration */}
               {activeView === 'financial' && (
-                <FinancialView onNavigateToSettings={() => setActiveView('settings')} />
+                <FinancialView onNavigateToSettings={() => setActiveView('settings')} onNavigateToIntegration={() => setActiveView('financial-integration')} />
+              )}
+
+              {/* Dedicated Financial Integration Tab */}
+              {activeView === 'financial-integration' && (
+                <FinancialIntegrationView onNavigateToCashFlow={() => setActiveView('financial')} />
               )}
 
               {/* Database Backup & Security */}

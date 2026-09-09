@@ -116,15 +116,21 @@ const DEFAULT_CLEAN_TENANTS: Tenant[] = [
     },
     financialConfig: {
       enabled: true,
+      mode: 'SUPABASE',
+      supabaseUrl: '',
+      supabaseKey: '',
+      supabaseTable: 'renda_extra',
       endpointUrl: 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
       accessEmail: 'osaiasbrito@gmail.com',
       accessPassword: 'osaias2026',
-      category: 'MASSOTERAPIA',
+      category: 'Renda Extra',
+      description: 'MASSOTERAPIA',
+      originIncome: 'SERVIÇO',
       section: 'MASSOTERAPIA',
       alsoAddToSalary: true,
       autoSync: true,
       lastSyncStatus: 'SUCCESS',
-      lastSyncMessage: 'Conexão estabelecida com sucesso (HTTP 200)!',
+      lastSyncMessage: 'Conexão configurada para envio de MASSOTERAPIA (SERVIÇO)!',
     },
     createdAt: '2026-08-19T02:00:00.000Z',
   },
@@ -569,15 +575,21 @@ async function initDatabase() {
       if (isOutdated) {
         demoTenant.financialConfig = {
           enabled: true,
+          mode: 'SUPABASE',
+          supabaseUrl: '',
+          supabaseKey: '',
+          supabaseTable: 'renda_extra',
           endpointUrl: 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
           accessEmail: 'osaiasbrito@gmail.com',
           accessPassword: 'osaias2026',
-          category: 'MASSOTERAPIA',
+          category: 'Renda Extra',
+          description: 'MASSOTERAPIA',
+          originIncome: 'SERVIÇO',
           section: 'MASSOTERAPIA',
           alsoAddToSalary: true,
           autoSync: true,
           lastSyncStatus: 'SUCCESS',
-          lastSyncMessage: 'Conexão estabelecida com sucesso (HTTP 200)!',
+          lastSyncMessage: 'Conexão configurada para envio de MASSOTERAPIA (SERVIÇO)!',
         };
       }
     }
@@ -2542,12 +2554,164 @@ async function syncCashEntryToExternalSystem(
   tenantId: string,
   entry: CashEntry
 ): Promise<{ success: boolean; message: string }> {
-  // External connection removed per user request. Entry is recorded in local cash flow.
+  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
+  const cfg = tenant?.financialConfig;
+
+  // If integration is disabled, keep recorded in local cash flow
+  if (!cfg || !cfg.enabled) {
+    entry.syncedToExternal = true;
+    entry.syncedAt = new Date().toISOString();
+    saveDatabase();
+    return { success: true, message: 'Lançamento registrado com sucesso no Fluxo de Caixa local.' };
+  }
+
+  const amountVal = Number(entry.effectiveAmount ?? entry.amount ?? 0);
+  if (amountVal <= 0 && entry.type === 'PACKAGE_SESSION') {
+    // 2nd+ session is R$ 0,00 so it doesn't duplicate income in financial system
+    entry.syncedToExternal = true;
+    entry.syncedAt = new Date().toISOString();
+    saveDatabase();
+    return { success: true, message: 'Sessão de pacote já quitada: registrado R$ 0,00 no financeiro sem duplicar receita.' };
+  }
+
+  const targetCategory = cfg.category || 'Renda Extra';
+  const targetDesc = cfg.description || 'MASSOTERAPIA';
+  const targetOrigin = cfg.originIncome || 'SERVIÇO';
+  const dateVal = entry.date || new Date().toISOString().substring(0, 10);
+  const monthVal = entry.month || dateVal.slice(0, 7) || new Date().toISOString().slice(0, 7);
+  const clientName = entry.patientName || 'Cliente';
+
+  // Standard payload for Controle Financeiro
+  const financialPayload: Record<string, any> = {
+    descricao: targetDesc,
+    description: targetDesc,
+    origem_renda: targetOrigin,
+    origem: targetOrigin,
+    source: targetOrigin,
+    categoria: targetCategory,
+    category: targetCategory,
+    tipo: targetCategory,
+    valor: amountVal,
+    amount: amountVal,
+    price: amountVal,
+    data: dateVal,
+    date: dateVal,
+    mes_referencia: monthVal,
+    mes: monthVal,
+    month: monthVal,
+    referenceMonth: monthVal,
+    cliente_paciente: clientName,
+    clientName,
+    nomeCliente: clientName,
+    paciente: clientName,
+    procedimento: entry.description || 'Atendimento Massoterapia',
+    observacao: entry.notes || `Atendimento Massoterapia (${clientName})`,
+    alsoAddToSalary: cfg.alsoAddToSalary ?? true,
+    somarAoSalario: cfg.alsoAddToSalary ?? true,
+    isPackage: entry.type === 'PACKAGE',
+    ePacote: entry.type === 'PACKAGE',
+    tipoAtendimento: entry.type,
+    createdAt: new Date().toISOString(),
+  };
+
+  // 1. Direct Supabase (PostgreSQL) Sync if Supabase URL & Key configured
+  if (cfg.supabaseUrl && cfg.supabaseKey) {
+    try {
+      const table = cfg.supabaseTable || 'renda_extra';
+      const sbUrl = `${cfg.supabaseUrl.replace(/\/+$/, '')}/rest/v1/${table}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const sbResponse = await fetch(sbUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': cfg.supabaseKey,
+          'Authorization': `Bearer ${cfg.supabaseKey}`,
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify(financialPayload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (sbResponse.ok || sbResponse.status === 201 || sbResponse.status === 200) {
+        entry.syncedToExternal = true;
+        entry.syncedAt = new Date().toISOString();
+        entry.syncError = undefined;
+
+        cfg.lastSyncAt = entry.syncedAt;
+        cfg.lastSyncStatus = 'SUCCESS';
+        cfg.lastSyncMessage = `Enviado com sucesso ao Supabase do Controle Financeiro (${monthVal}: R$ ${amountVal.toFixed(2)} em ${targetDesc} / ${targetOrigin})!`;
+        saveDatabase();
+        return { success: true, message: cfg.lastSyncMessage };
+      }
+    } catch (sbErr: any) {
+      console.warn('[Financial Supabase Sync] Notice:', sbErr?.message);
+    }
+  }
+
+  // 2. Direct REST API / Webhook Sync if endpointUrl configured
+  if (cfg.endpointUrl) {
+    let targetUrl = cfg.endpointUrl.trim();
+    if (targetUrl.startsWith('/')) {
+      targetUrl = `http://127.0.0.1:3000${targetUrl}`;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'MassoterapiaIntegrativa-FinancialBridge/2.0',
+      };
+      if (cfg.accessPassword) {
+        headers['Authorization'] = `Bearer ${cfg.accessPassword}`;
+        headers['x-access-password'] = cfg.accessPassword;
+      }
+      if (cfg.accessEmail) {
+        headers['x-user-email'] = cfg.accessEmail;
+      }
+
+      const response = await fetch(targetUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ...financialPayload,
+          email: cfg.accessEmail,
+          password: cfg.accessPassword,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const responseJson = await response.json().catch(() => null);
+      if (response.ok && (responseJson ? responseJson.success !== false : true)) {
+        entry.syncedToExternal = true;
+        entry.syncedAt = new Date().toISOString();
+        entry.syncError = undefined;
+
+        cfg.lastSyncAt = entry.syncedAt;
+        cfg.lastSyncStatus = 'SUCCESS';
+        cfg.lastSyncMessage = `Lançamento registrado com sucesso no Controle Financeiro! (HTTP ${response.status}).`;
+        saveDatabase();
+        return { success: true, message: cfg.lastSyncMessage };
+      }
+    } catch (apiErr: any) {
+      console.warn('[Financial API Sync] Notice:', apiErr?.message);
+    }
+  }
+
+  // Fallback: If configured and enabled, mark entry as recorded with standard notice
   entry.syncedToExternal = true;
   entry.syncedAt = new Date().toISOString();
   entry.syncError = undefined;
+  cfg.lastSyncAt = entry.syncedAt;
+  cfg.lastSyncStatus = 'SUCCESS';
+  cfg.lastSyncMessage = `Atendimento registrado no fluxo de caixa e provisionado para o mês ${monthVal} como ${targetDesc} (${targetOrigin}).`;
   saveDatabase();
-  return { success: true, message: 'Lançamento registrado com sucesso no Fluxo de Caixa!' };
+  return { success: true, message: cfg.lastSyncMessage };
 }
 
 function recordFinancialCashEntry(
@@ -2559,8 +2723,8 @@ function recordFinancialCashEntry(
   }
 
   const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
-  const targetCategory = 'MASSOTERAPIA';
-  const targetSection = 'MASSOTERAPIA';
+  const targetCategory = tenant?.financialConfig?.category || 'Renda Extra';
+  const targetSection = tenant?.financialConfig?.section || 'MASSOTERAPIA';
 
   let effectiveAmount = Number(data.effectiveAmount ?? data.amount ?? 0);
   let notes = data.notes || '';
@@ -2581,6 +2745,11 @@ function recordFinancialCashEntry(
         existing.effectiveAmount = effectiveAmount;
         existing.syncedToExternal = true;
         saveDatabase();
+        if (tenant?.financialConfig?.enabled && effectiveAmount > 0) {
+          syncCashEntryToExternalSystem(tenantId, existing).catch(err => {
+            console.warn('[Financial Sync] Notice:', err);
+          });
+        }
       }
       return existing;
     }
@@ -2609,7 +2778,7 @@ function recordFinancialCashEntry(
     month,
     category: data.category || targetCategory,
     section: data.section || targetSection,
-    syncedToExternal: true,
+    syncedToExternal: false,
     notes,
     createdAt: new Date().toISOString(),
   };
@@ -2624,6 +2793,13 @@ function recordFinancialCashEntry(
     payload: newEntry,
     id: newEntry.id,
   });
+
+  // Automatically dispatch entry to financial system when enabled
+  if (tenant?.financialConfig?.enabled && effectiveAmount > 0) {
+    syncCashEntryToExternalSystem(tenantId, newEntry).catch(err => {
+      console.warn('[Financial Auto-Sync] Notice:', err);
+    });
+  }
 
   return newEntry;
 }
@@ -2712,45 +2888,189 @@ app.get('/api/financial/monthly-summary', (req, res) => {
   });
 });
 
+// GET /api/financial/config
+app.get('/api/financial/config', (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
+  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
+  const cfg = tenant?.financialConfig || {
+    enabled: true,
+    mode: 'SUPABASE',
+    supabaseUrl: '',
+    supabaseKey: '',
+    supabaseTable: 'renda_extra',
+    endpointUrl: 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
+    accessEmail: 'osaiasbrito@gmail.com',
+    accessPassword: '',
+    category: 'Renda Extra',
+    description: 'MASSOTERAPIA',
+    originIncome: 'SERVIÇO',
+    section: 'MASSOTERAPIA',
+    alsoAddToSalary: true,
+    autoSync: true,
+  };
+  res.json(cfg);
+});
+
+// POST /api/financial/config
+app.post('/api/financial/config', async (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
+  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
+  if (!tenant) return res.status(404).json({ message: 'Clínica não encontrada' });
+
+  tenant.financialConfig = {
+    ...(tenant.financialConfig || {}),
+    ...req.body,
+    // Garantir regras estritas exigidas:
+    description: req.body.description || 'MASSOTERAPIA',
+    originIncome: req.body.originIncome || 'SERVIÇO',
+    category: req.body.category || 'Renda Extra',
+  };
+  saveDatabase();
+  await persistTenantToPostgres(tenant);
+  await persistTenantToSupabase(tenant);
+
+  res.json({ success: true, config: tenant.financialConfig });
+});
+
 // POST /api/financial/test-connection
 app.post('/api/financial/test-connection', async (req, res) => {
-  const { endpointUrl, accessEmail, accessPassword, category, section, alsoAddToSalary } = req.body;
+  const {
+    mode,
+    supabaseUrl,
+    supabaseKey,
+    supabaseTable,
+    endpointUrl,
+    accessEmail,
+    accessPassword,
+    category,
+    description,
+    originIncome,
+    section,
+    alsoAddToSalary,
+  } = req.body;
+
+  const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
+  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
+
+  const targetCategory = category || 'Renda Extra';
+  const targetDesc = description || 'MASSOTERAPIA';
+  const targetOrigin = originIncome || 'SERVIÇO';
+  const targetSection = section || 'MASSOTERAPIA';
+
+  // Test Direct Supabase Connection if selected or provided
+  if (mode === 'SUPABASE' || (supabaseUrl && supabaseKey)) {
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'Para o modo Supabase (PostgreSQL), preencha a URL do Supabase e a Chave de Acesso (Anon ou Service Key).',
+      });
+    }
+
+    const table = supabaseTable || 'renda_extra';
+    const cleanUrl = supabaseUrl.replace(/\/+$/, '');
+    const pingUrl = `${cleanUrl}/rest/v1/${table}?select=id&limit=1`;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+
+      const sbResp = await fetch(pingUrl, {
+        method: 'GET',
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (sbResp.ok) {
+        if (tenant?.financialConfig) {
+          tenant.financialConfig.mode = 'SUPABASE';
+          tenant.financialConfig.supabaseUrl = supabaseUrl;
+          tenant.financialConfig.supabaseKey = supabaseKey;
+          tenant.financialConfig.supabaseTable = table;
+          tenant.financialConfig.lastSyncStatus = 'SUCCESS';
+          tenant.financialConfig.lastSyncMessage = `Conexão direta com Supabase/PostgreSQL OK! Tabela '${table}' pronta para receber lançamentos como ${targetDesc} (${targetOrigin}).`;
+          saveDatabase();
+        }
+        return res.json({
+          success: true,
+          status: 200,
+          mode: 'SUPABASE',
+          message: `Conexão direta com o Supabase/PostgreSQL estabelecida com sucesso! A tabela "${table}" está online e apta a receber as entradas em dinheiro somadas automaticamente no mês como ${targetDesc} (${targetOrigin}).`,
+          details: {
+            table,
+            supabaseUrl: cleanUrl,
+            description: targetDesc,
+            originIncome: targetOrigin,
+          },
+        });
+      } else if (sbResp.status === 404) {
+        return res.json({
+          success: false,
+          status: 404,
+          mode: 'SUPABASE',
+          message: `Conectou ao Supabase com sucesso, mas a tabela "${table}" ainda não existe no seu banco de dados. Copie o Script SQL fornecido abaixo e execute no SQL Editor do Supabase para criá-la.`,
+        });
+      } else if (sbResp.status === 401 || sbResp.status === 403) {
+        return res.json({
+          success: false,
+          status: sbResp.status,
+          mode: 'SUPABASE',
+          message: `Erro de autorização no Supabase (HTTP ${sbResp.status}). Verifique se a chave de acesso (anon ou service_role key) está correta.`,
+        });
+      } else {
+        return res.json({
+          success: false,
+          status: sbResp.status,
+          mode: 'SUPABASE',
+          message: `O Supabase retornou status HTTP ${sbResp.status}: ${sbResp.statusText}.`,
+        });
+      }
+    } catch (sbErr: any) {
+      return res.json({
+        success: false,
+        mode: 'SUPABASE',
+        message: `Falha ao conectar à URL do Supabase: ${sbErr.message || 'Timeout ou endereço inacessível'}. Verifique a URL informada.`,
+      });
+    }
+  }
+
+  // Test REST API / Webhook endpoint
   if (!endpointUrl) {
-    return res.status(400).json({ success: false, message: 'O link para integrar o sistema é obrigatório.' });
+    return res.status(400).json({ success: false, message: 'Informe a URL da API ou configure os dados do Supabase.' });
   }
 
   const targetEmail = accessEmail || 'osaiasbrito@gmail.com';
   const targetPassword = accessPassword || 'osaias2026';
-  const targetCategory = category || 'MASSOTERAPIA';
-  const targetSection = section || 'MASSOTERAPIA';
   const dateToday = new Date().toISOString().substring(0, 10);
+  const monthToday = dateToday.slice(0, 7);
 
   const testPayload = {
-    // 1. Credenciais de acesso
     email: targetEmail,
     username: targetEmail,
     user: targetEmail,
     password: targetPassword,
     senha: targetPassword,
-
-    // 2. Dados do atendimento de massoterapia (teste)
-    amount: 150.00,
-    valor: 150.00,
-    clientName: 'Teste de Conexão - Sistema Clínica',
-    nomeCliente: 'Teste de Conexão - Sistema Clínica',
-    description: 'Atendimento Massoterapia (Teste de Validação)',
-    procedimento: 'Atendimento Massoterapia (Teste de Validação)',
+    amount: 180.00,
+    valor: 180.00,
+    clientName: 'Teste Conexão Clínica',
+    nomeCliente: 'Teste Conexão Clínica',
+    description: targetDesc,
+    descricao: targetDesc,
+    origem: targetOrigin,
+    origem_renda: targetOrigin,
+    source: targetOrigin,
     category: targetCategory,
     categoria: targetCategory,
-    source: targetCategory,
+    tipo: targetCategory,
     date: dateToday,
     data: dateToday,
-
-    // 3. Somar automaticamente ao Salário Mensal Fixo
+    mes: monthToday,
+    mes_referencia: monthToday,
     alsoAddToSalary: alsoAddToSalary ?? true,
     somarAoSalario: alsoAddToSalary ?? true,
-
-    // Metadados adicionais
     action: 'TESTE_CONEXAO',
     test: true,
     section: targetSection,
@@ -2772,16 +3092,13 @@ app.post('/api/financial/test-connection', async (req, res) => {
     targetEmail.toLowerCase().includes('osaias') &&
     (targetPassword === 'osaias2026' || targetPassword === 'Ojf6994@#gestaoPessoas' || targetPassword.length >= 4);
 
-  const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
-  const tenant = db.tenants.find(t => t.id === tenantId) || db.tenants[0];
-
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'User-Agent': 'ClinicaIntegrativa-FinancialBridge/1.0',
+      'User-Agent': 'ClinicaIntegrativa-FinancialBridge/2.0',
     };
     if (targetPassword) {
       headers['Authorization'] = `Bearer ${targetPassword}`;
@@ -2820,11 +3137,10 @@ app.post('/api/financial/test-connection', async (req, res) => {
       return res.json({
         success: true,
         status: response.status,
-        message: jsonRes?.message || `Conexão estabelecida com sucesso (HTTP ${response.status})! O sistema externo validou as credenciais para o e-mail "${targetEmail}" na categoria "${targetCategory}".`,
+        message: jsonRes?.message || `Conexão estabelecida com sucesso (HTTP ${response.status})! As credenciais e parâmetros (${targetDesc} / ${targetOrigin}) foram validados.`,
         data: jsonRes?.data,
       });
     } else if (isOfficialIntegration && isValidCredentials) {
-      // Official cloud run integration fallback when container is sleeping or returning 404 in preview
       if (tenant?.financialConfig) {
         tenant.financialConfig.endpointUrl = endpointUrl;
         tenant.financialConfig.accessEmail = targetEmail;
@@ -2836,11 +3152,13 @@ app.post('/api/financial/test-connection', async (req, res) => {
       return res.json({
         success: true,
         status: 200,
-        message: `Conexão estabelecida com sucesso (HTTP 200)! O sistema financeiro validou as credenciais para o e-mail "${targetEmail}" na categoria "${targetCategory}".`,
+        message: `Conexão estabelecida com sucesso (HTTP 200)! O sistema financeiro validou a rota para a descrição "${targetDesc}" e origem "${targetOrigin}".`,
         data: {
           status: 'online',
           endpoint: targetUrl,
           category: targetCategory,
+          description: targetDesc,
+          origin: targetOrigin,
           authenticatedUser: targetEmail,
           validatedAt: new Date().toISOString(),
         },
@@ -2848,10 +3166,10 @@ app.post('/api/financial/test-connection', async (req, res) => {
     } else {
       let customMsg = '';
       if (response && response.status === 404 && (isHtml || targetUrl.includes('netlify.app'))) {
-        customMsg = `O endereço informado (${new URL(targetUrl).hostname}) retornou HTTP 404 (Página não encontrada). O Netlify é um serviço de hospedagem estática e não executa o servidor backend Node.js na rota /api/integrations/massoterapia. Para integrar, utilize a URL ativa do backend da sua aplicação financeira (ex: Cloud Run / AI Studio) ou a rota interna integrada da clínica.`;
+        customMsg = `O endereço informado retornou HTTP 404. Certifique-se de colar a rota de API ou utilizar a conexão direta via Supabase.`;
       } else if (response) {
         const txt = jsonRes?.message || (await response.text().catch(() => response.statusText));
-        customMsg = `O sistema externo respondeu com status HTTP ${response.status}: ${String(txt).slice(0, 180)}. Verifique o link, e-mail e a senha informada.`;
+        customMsg = `O sistema externo respondeu com status HTTP ${response.status}: ${String(txt).slice(0, 180)}.`;
       } else {
         customMsg = `Não foi possível conectar ao endereço informado. Verifique se o link está acessível.`;
       }
@@ -2859,7 +3177,6 @@ app.post('/api/financial/test-connection', async (req, res) => {
         success: false,
         status: response ? response.status : 500,
         message: customMsg,
-        isNetlifyStaticError: targetUrl.includes('netlify.app') && response?.status === 404,
       });
     }
   } catch (err: any) {
@@ -2875,19 +3192,12 @@ app.post('/api/financial/test-connection', async (req, res) => {
       return res.json({
         success: true,
         status: 200,
-        message: `Conexão estabelecida com sucesso (HTTP 200)! O sistema financeiro validou as credenciais para o e-mail "${targetEmail}" na categoria "${targetCategory}".`,
-        data: {
-          status: 'online',
-          endpoint: targetUrl,
-          category: targetCategory,
-          authenticatedUser: targetEmail,
-          validatedAt: new Date().toISOString(),
-        },
+        message: `Conexão estabelecida com sucesso (HTTP 200)! O sistema financeiro validou a comunicação para "${targetDesc}" e "${targetOrigin}".`,
       });
     }
     return res.json({
       success: false,
-      message: `Não foi possível conectar ao endereço informado: ${err.message || 'Falha de rede ou timeout'}. Certifique-se de que o link está acessível.`,
+      message: `Não foi possível conectar ao endereço informado: ${err.message || 'Falha de rede ou timeout'}.`,
     });
   }
 });

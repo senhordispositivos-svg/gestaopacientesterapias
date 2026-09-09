@@ -40,11 +40,20 @@ export interface Tenant {
 
 export interface FinancialIntegrationConfig {
   enabled: boolean;
+  mode?: 'SUPABASE' | 'REST_API' | 'BOTH';
+  // Supabase (PostgreSQL) Config
+  supabaseUrl?: string; // URL do Supabase do Controle Financeiro (ex: https://xyz.supabase.co)
+  supabaseKey?: string; // Chave anon ou service_role do Supabase do Controle Financeiro
+  supabaseTable?: string; // Tabela de Renda Extra (Padrão: "renda_extra")
+  // REST API Config
   endpointUrl: string; // Link para integrar o sistema (URL da API / Webhook)
   accessEmail?: string; // Email de acesso (ex: osaiasbrito@gmail.com)
-  accessPassword?: string; // Senha de acesso para lançamentos (ex: Ojf6994@#gestaoPessoas)
-  category: string; // Categoria no sistema externo (Padrão: "MASSOTERAPIA" ou "Renda Extra")
-  section: string; // Seção / Subcategoria (Padrão: "MASSOTERAPIA")
+  accessPassword?: string; // Senha de acesso para lançamentos
+  // Regras de Mapeamento Financeiro (Conforme especificações)
+  category: string; // Tipo/Categoria: "Renda Extra"
+  description: string; // Descrição: "MASSOTERAPIA"
+  originIncome: string; // Origem da Renda: "SERVIÇO"
+  section: string; // Seção: "MASSOTERAPIA"
   alsoAddToSalary?: boolean; // Somar automaticamente ao Salário Mensal Fixo (padrão: true)
   autoSync?: boolean;
   lastSyncAt?: string;

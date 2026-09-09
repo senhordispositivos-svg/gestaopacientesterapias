@@ -12,6 +12,7 @@ import {
   Calendar,
   FileText,
   Loader2,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -19,9 +20,13 @@ import { CashEntry } from '../../types';
 
 interface FinancialViewProps {
   onNavigateToSettings?: () => void;
+  onNavigateToIntegration?: () => void;
 }
 
-export const FinancialView: React.FC<FinancialViewProps> = () => {
+export const FinancialView: React.FC<FinancialViewProps> = ({
+  onNavigateToSettings,
+  onNavigateToIntegration,
+}) => {
   const { tenant } = useAuth();
   const currentTenantId = tenant?.id || 'tenant-demo-1';
 
@@ -122,6 +127,18 @@ export const FinancialView: React.FC<FinancialViewProps> = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {onNavigateToIntegration && (
+            <button
+              type="button"
+              onClick={onNavigateToIntegration}
+              className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-2xs"
+              title="Configurar conexão com o app Controle Financeiro"
+            >
+              <ArrowLeftRight className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              Conectar com Controle Financeiro
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => loadData()}
