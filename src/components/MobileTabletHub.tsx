@@ -20,6 +20,8 @@ import {
   Sliders,
   Maximize,
   Minimize2,
+  DollarSign,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { Tenant, User } from '../types/index';
 
@@ -116,6 +118,22 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
       icon: ClipboardCheck,
       isGoldHighlighted: false,
       targetView: 'anamnesis',
+    },
+    {
+      id: 'financial',
+      title: 'FLUXO DE CAIXA',
+      subplateText: 'FINANCEIRO',
+      icon: DollarSign,
+      isGoldHighlighted: false,
+      targetView: 'financial',
+    },
+    {
+      id: 'financial-integration',
+      title: ['INTEGRAÇÃO', 'FINANCEIRA'],
+      subplateText: 'CONTROLE FINANCEIRO',
+      icon: ArrowLeftRight,
+      isGoldHighlighted: false,
+      targetView: 'financial-integration',
     },
     {
       id: 'professionals',

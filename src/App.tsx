@@ -775,19 +775,33 @@ export function App() {
 
               {/* Financial Cash Flow & Management Integration */}
               {activeView === 'financial' && (
-                <FinancialView onNavigateToSettings={() => setActiveView('settings')} onNavigateToIntegration={() => setActiveView('financial-integration')} />
+                <FinancialView
+                  initialTab="cashflow"
+                  onNavigateToSettings={() => setActiveView('settings')}
+                  onNavigateToIntegration={() => setActiveView('financial-integration')}
+                />
               )}
 
               {/* Dedicated Financial Integration Tab */}
               {activeView === 'financial-integration' && (
-                <FinancialIntegrationView onNavigateToCashFlow={() => setActiveView('financial')} />
+                <FinancialView
+                  initialTab="integration"
+                  onNavigateToSettings={() => setActiveView('settings')}
+                  onNavigateToIntegration={() => setActiveView('financial-integration')}
+                />
               )}
 
               {/* Database Backup & Security */}
               {activeView === 'backup' && <BackupManagerView onRefreshAllData={loadData} />}
 
               {/* Settings / White-label */}
-              {activeView === 'settings' && <SettingsView onUpdate={loadData} onNavigateToBackup={() => setActiveView('backup')} />}
+              {activeView === 'settings' && (
+                <SettingsView
+                  onUpdate={loadData}
+                  onNavigateToBackup={() => setActiveView('backup')}
+                  onNavigateToIntegration={() => setActiveView('financial-integration')}
+                />
+              )}
             </>
           )}
         </main>

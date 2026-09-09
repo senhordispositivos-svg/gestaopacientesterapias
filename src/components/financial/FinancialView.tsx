@@ -17,18 +17,29 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { CashEntry } from '../../types';
+import { FinancialIntegrationView } from './FinancialIntegrationView';
 
 interface FinancialViewProps {
+  initialTab?: 'cashflow' | 'integration';
   onNavigateToSettings?: () => void;
   onNavigateToIntegration?: () => void;
 }
 
 export const FinancialView: React.FC<FinancialViewProps> = ({
+  initialTab = 'cashflow',
   onNavigateToSettings,
   onNavigateToIntegration,
 }) => {
   const { tenant } = useAuth();
   const currentTenantId = tenant?.id || 'tenant-demo-1';
+
+  const [activeTab, setActiveTab] = useState<'cashflow' | 'integration'>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(() => new Date().toISOString().slice(0, 7));
   const [selectedType, setSelectedType] = useState<string>('ALL');
@@ -110,8 +121,44 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+      {/* Primary Financial Navigation Tabs */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1.5 shadow-2xs flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setActiveTab('cashflow')}
+          className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-2 transition cursor-pointer ${
+            activeTab === 'cashflow'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <DollarSign className="w-4 h-4" />
+          <span>Fluxo de Caixa (Entradas do Mês)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('integration')}
+          className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-2 transition cursor-pointer ${
+            activeTab === 'integration'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <ArrowLeftRight className="w-4 h-4" />
+          <span>Integração Controle Financeiro</span>
+          <span className="px-1.5 py-0.5 text-[10px] uppercase font-extrabold rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 ml-1">
+            Novo
+          </span>
+        </button>
+      </div>
+
+      {activeTab === 'integration' ? (
+        <FinancialIntegrationView onNavigateToCashFlow={() => setActiveTab('cashflow')} />
+      ) : (
+        <>
+          {/* Top Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
@@ -516,6 +563,8 @@ export const FinancialView: React.FC<FinancialViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
