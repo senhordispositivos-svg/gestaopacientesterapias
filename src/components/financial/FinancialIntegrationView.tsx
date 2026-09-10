@@ -432,7 +432,11 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
           <div className="flex bg-slate-200/80 p-1 rounded-lg">
             <button
               type="button"
-              onClick={() => setMode('SUPABASE')}
+              onClick={() => {
+                setMode('SUPABASE');
+                if (!supabaseUrl) setSupabaseUrl('https://dpaylubvupjjokpukuxy.supabase.co');
+                if (!supabaseTable) setSupabaseTable('extra_incomes');
+              }}
               className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
                 mode === 'SUPABASE'
                   ? 'bg-white text-emerald-700 shadow-xs'
@@ -440,7 +444,10 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
               }`}
             >
               <Database className="w-3.5 h-3.5" />
-              PostgreSQL / Supabase (Direto)
+              <span>PostgreSQL / Supabase (Direto)</span>
+              <span className="ml-1 px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold">
+                Recomendado
+              </span>
             </button>
             <button
               type="button"
@@ -452,7 +459,7 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
               }`}
             >
               <Link2 className="w-3.5 h-3.5" />
-              API Express / Webhook
+              <span>API Express / Webhook</span>
             </button>
           </div>
         </div>
@@ -565,6 +572,28 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
             /* Mode 2: REST API / Express Webhook */
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
               <div className="md:col-span-2">
+                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-lg text-xs text-amber-900 leading-relaxed flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Aviso para Netlify e Vercel:</strong> O endereço <code>gestaofinanceirafacil.netlify.app</code> hospeda apenas a interface estática e não possui servidor backend para rotas <code>/api/*</code>. Para integrar perfeitamente com o seu banco de dados, utilize a aba <strong>PostgreSQL / Supabase (Direto)</strong>.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('SUPABASE');
+                      if (!supabaseUrl) setSupabaseUrl('https://dpaylubvupjjokpukuxy.supabase.co');
+                      if (!supabaseTable) setSupabaseTable('extra_incomes');
+                    }}
+                    className="shrink-0 px-3 py-1.5 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 rounded-md transition cursor-pointer shadow-xs"
+                  >
+                    Usar Supabase Direto
+                  </button>
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                   Link / Rota da API do Controle Financeiro *
                 </label>
@@ -622,7 +651,7 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
               ) : (
                 <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               )}
-              <div className="text-sm">
+              <div className="text-sm flex-1">
                 <strong className="font-semibold block mb-0.5">
                   {testResult.success ? 'Conexão Estabelecida com Sucesso!' : 'Diagnóstico da Conexão'}
                 </strong>
@@ -630,6 +659,25 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
                 {testResult.details && (
                   <div className="mt-2 text-xs font-mono bg-white/60 p-2 rounded border border-emerald-200/50">
                     Tabela: {testResult.details.table} | Descrição: {testResult.details.description} | Origem: {testResult.details.originIncome}
+                  </div>
+                )}
+                {!testResult.success && mode === 'REST_API' && (
+                  <div className="mt-3 pt-2.5 border-t border-amber-200/80 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('SUPABASE');
+                        if (!supabaseUrl) setSupabaseUrl('https://dpaylubvupjjokpukuxy.supabase.co');
+                        if (!supabaseTable) setSupabaseTable('extra_incomes');
+                      }}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs rounded-lg transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Database className="w-3.5 h-3.5" />
+                      <span>Alternar para PostgreSQL / Supabase (Direto)</span>
+                    </button>
+                    <span className="text-xs text-amber-800">
+                      Conecta diretamente ao banco sem bloqueios de rede.
+                    </span>
                   </div>
                 )}
               </div>
