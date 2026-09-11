@@ -3731,9 +3731,9 @@ export const api = {
   async sendCashEntryToSupabase(
     cfg: FinancialIntegrationConfig,
     entry: CashEntry
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{ success: boolean; message: string; details?: any }> {
     if (!cfg.supabaseUrl || !cfg.supabaseKey) {
-      return { success: false, message: 'Supabase não configurado.' };
+      return { success: false, message: 'Supabase não configurado. Forneça a URL e a Chave de Acesso nas configurações de integração.' };
     }
 
     const cleanUrl = cfg.supabaseUrl.trim().replace(/\/+$/, '');
@@ -3747,8 +3747,60 @@ export const api = {
     const origin = cfg.originIncome || 'SERVIÇO';
     const patient = entry.patientName || 'Cliente';
 
-    // Payload formatted to fit both English schema (extra_incomes standard in Supabase) and Portuguese schema
+    // 1. Inspect existing table structure to detect known columns
+    let knownCols: string[] = [];
+    let sampleUserId: string | null = null;
+    try {
+      const inspectRes = await fetch(`${cleanUrl}/rest/v1/${table}?limit=1`, {
+        headers: {
+          apikey: cfg.supabaseKey.trim(),
+          Authorization: `Bearer ${cfg.supabaseKey.trim()}`,
+        },
+      });
+      if (inspectRes.ok) {
+        const rows = await inspectRes.json().catch(() => []);
+        if (Array.isArray(rows) && rows.length > 0 && rows[0]) {
+          knownCols = Object.keys(rows[0]);
+          if (rows[0].user_id) sampleUserId = rows[0].user_id;
+        }
+      }
+    } catch (_) {}
+
+    // Tailored payload strictly fitting detected columns
+    const tailoredPayload: Record<string, any> = {};
+    if (knownCols.length > 0) {
+      if (knownCols.includes('description')) tailoredPayload.description = desc;
+      else if (knownCols.includes('descricao')) tailoredPayload.descricao = desc;
+
+      if (knownCols.includes('amount')) tailoredPayload.amount = amountVal;
+      else if (knownCols.includes('valor')) tailoredPayload.valor = amountVal;
+
+      if (knownCols.includes('date')) tailoredPayload.date = dateVal;
+      else if (knownCols.includes('data')) tailoredPayload.data = dateVal;
+
+      if (knownCols.includes('month')) tailoredPayload.month = monthVal;
+      else if (knownCols.includes('mes_referencia')) tailoredPayload.mes_referencia = monthVal;
+      else if (knownCols.includes('mes')) tailoredPayload.mes = monthVal;
+
+      if (knownCols.includes('origin')) tailoredPayload.origin = origin;
+      else if (knownCols.includes('origem_renda')) tailoredPayload.origem_renda = origin;
+      else if (knownCols.includes('origem')) tailoredPayload.origem = origin;
+
+      if (knownCols.includes('category')) tailoredPayload.category = cfg.category || 'Renda Extra';
+      else if (knownCols.includes('categoria')) tailoredPayload.categoria = cfg.category || 'Renda Extra';
+
+      if (knownCols.includes('notes')) tailoredPayload.notes = entry.notes || `Atendimento Massoterapia - ${patient}`;
+      else if (knownCols.includes('observacao')) tailoredPayload.observacao = entry.notes || `Atendimento Massoterapia - ${patient}`;
+
+      if (knownCols.includes('client_name')) tailoredPayload.client_name = patient;
+      else if (knownCols.includes('cliente_paciente')) tailoredPayload.cliente_paciente = patient;
+
+      if (knownCols.includes('user_id') && sampleUserId) tailoredPayload.user_id = sampleUserId;
+    }
+
+    // Fallback payloads to try in succession
     const payloadVariations = [
+      ...(Object.keys(tailoredPayload).length >= 2 ? [tailoredPayload] : []),
       // Primary: English schema matching extra_incomes conventions
       {
         description: desc,
@@ -3773,11 +3825,17 @@ export const api = {
         cliente_paciente: patient,
         somar_ao_salario: cfg.alsoAddToSalary ?? true,
       },
-      // Variation 3: Minimal essential columns
+      // Variation 3: Minimal essential columns in English
       {
         description: desc,
         amount: amountVal,
         date: dateVal,
+      },
+      // Variation 4: Minimal essential columns in Portuguese
+      {
+        descricao: desc,
+        valor: amountVal,
+        data: dateVal,
       },
     ];
 
@@ -3799,21 +3857,21 @@ export const api = {
         if (res.ok || res.status === 201 || res.status === 200) {
           return {
             success: true,
-            message: `Lançamento de R$ ${amountVal.toFixed(2)} enviado ao Supabase (${monthVal}: ${desc} / ${origin})!`,
+            message: `Lançamento de R$ ${amountVal.toFixed(2)} enviado com sucesso ao Supabase (${monthVal}: ${desc} / ${origin})!`,
           };
         }
 
         const errText = await res.text().catch(() => '');
-        lastError = `HTTP ${res.status}: ${errText}`;
-        console.warn('[Supabase Sync Attempt Failed]', lastError);
+        lastError = `HTTP ${res.status}: ${errText || res.statusText}`;
+        console.warn('[Supabase Sync Attempt Notice]', lastError);
       } catch (fetchErr: any) {
-        lastError = fetchErr.message;
+        lastError = fetchErr?.message || 'Falha de conexão';
       }
     }
 
     return {
       success: false,
-      message: `Falha ao sincronizar com Supabase: ${lastError}`,
+      message: `Falha ao salvar no Supabase (${table}): ${lastError}`,
     };
   },
 
@@ -3848,27 +3906,33 @@ export const api = {
         entry.syncedToExternal = true;
         entry.syncedAt = new Date().toISOString();
         entry.syncError = undefined;
-        setLocal(STORAGE_KEYS.CASH_ENTRIES, cashEntries);
+      } else {
+        entry.syncedToExternal = false;
+        entry.syncError = syncResult.message;
       }
+      setLocal(STORAGE_KEYS.CASH_ENTRIES, cashEntries);
       return syncResult;
     }
 
-    return { success: false, message: 'Configuração do Supabase incompleta.' };
+    return { success: false, message: 'Configuração do Supabase incompleta (URL e chave necessárias).' };
   },
 
   async syncAllPendingCashEntries(
-    tenantId: string
-  ): Promise<{ success: boolean; syncedCount: number; message: string }> {
+    tenantId: string,
+    month?: string,
+    forceAll?: boolean
+  ): Promise<{ success: boolean; syncedCount: number; errorCount?: number; message: string }> {
     // 1. Try server sync
     const serverRes = await tryFetch('/api/financial/sync-all-pending', {
       method: 'POST',
       headers: { 'x-tenant-id': tenantId },
+      body: JSON.stringify({ month, forceAll }),
     });
     if (serverRes) {
       return serverRes.json();
     }
 
-    // 2. Client-side direct sync for Vercel
+    // 2. Client-side direct sync for Vercel / static deployments
     const tenants = getLocal<Tenant[]>(STORAGE_KEYS.TENANTS, []);
     const tenant = tenants.find(t => t.id === tenantId) || tenants[0];
     const cfg = tenant?.financialConfig;
@@ -3877,25 +3941,33 @@ export const api = {
       return {
         success: false,
         syncedCount: 0,
-        message: 'Supabase não configurado ou integração desativada.',
+        message: 'Supabase não configurado ou chave de acesso ausente. Configure a conexão antes de sincronizar.',
       };
     }
 
     const cashEntries = getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []);
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    const toSync = cashEntries.filter(
-      e => (!tenantId || e.tenantId === tenantId) && (Number(e.effectiveAmount || e.amount) > 0) && (e.month === currentMonth || !e.syncedToExternal)
-    );
+    const targetMonth = month || new Date().toISOString().slice(0, 7);
+    const toSync = cashEntries.filter(e => {
+      if (tenantId && e.tenantId && e.tenantId !== tenantId) return false;
+      const amount = Number(e.effectiveAmount ?? e.amount ?? 0);
+      if (amount <= 0) return false;
+      if (month && e.month !== targetMonth) return false;
+      if (forceAll) return true;
+      return !e.syncedToExternal || Boolean(e.syncError);
+    });
 
     if (toSync.length === 0) {
       return {
         success: true,
         syncedCount: 0,
-        message: 'Nenhum lançamento com valor em aberto para o mês atual.',
+        message: 'Nenhum lançamento pendente para o mês selecionado.',
       };
     }
 
     let successCount = 0;
+    let errorCount = 0;
+    let lastErr = '';
+
     for (const entry of toSync) {
       const res = await this.sendCashEntryToSupabase(cfg, entry);
       if (res.success) {
@@ -3903,6 +3975,11 @@ export const api = {
         entry.syncedAt = new Date().toISOString();
         entry.syncError = undefined;
         successCount++;
+      } else {
+        entry.syncedToExternal = false;
+        entry.syncError = res.message;
+        lastErr = res.message;
+        errorCount++;
       }
     }
 
@@ -3911,7 +3988,13 @@ export const api = {
     return {
       success: successCount > 0,
       syncedCount: successCount,
-      message: `${successCount} lançamento(s) somados com sucesso no Controle Financeiro (mês ${currentMonth})!`,
+      errorCount,
+      message:
+        successCount > 0
+          ? `${successCount} lançamento(s) somados com sucesso no Controle Financeiro!${
+              errorCount > 0 ? ` (${errorCount} com aviso: ${lastErr})` : ''
+            }`
+          : `Não foi possível sincronizar os lançamentos: ${lastErr}`,
     };
   },
 };

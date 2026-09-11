@@ -2617,9 +2617,62 @@ async function syncCashEntryToExternalSystem(
   // 1. Direct Supabase (PostgreSQL) Sync if Supabase URL & Key configured
   if (cfg.supabaseUrl && cfg.supabaseKey) {
     const table = cfg.supabaseTable || 'extra_incomes';
-    const sbUrl = `${cfg.supabaseUrl.replace(/\/+$/, '')}/rest/v1/${table}`;
+    const cleanSbUrl = cfg.supabaseUrl.replace(/\/+$/, '');
+    const sbUrl = `${cleanSbUrl}/rest/v1/${table}`;
+
+    // Inspect existing columns if possible
+    let knownCols: string[] = [];
+    let sampleUserId: string | null = null;
+    try {
+      const inspectRes = await fetch(`${cleanSbUrl}/rest/v1/${table}?limit=1`, {
+        headers: {
+          apikey: cfg.supabaseKey,
+          Authorization: `Bearer ${cfg.supabaseKey}`,
+        },
+      });
+      if (inspectRes.ok) {
+        const rows = await inspectRes.json().catch(() => []);
+        if (Array.isArray(rows) && rows.length > 0 && rows[0]) {
+          knownCols = Object.keys(rows[0]);
+          if (rows[0].user_id) sampleUserId = rows[0].user_id;
+        }
+      }
+    } catch (_) {}
+
+    // Dynamically tailored payload if columns were detected
+    const tailoredPayload: Record<string, any> = {};
+    if (knownCols.length > 0) {
+      if (knownCols.includes('description')) tailoredPayload.description = targetDesc;
+      else if (knownCols.includes('descricao')) tailoredPayload.descricao = targetDesc;
+
+      if (knownCols.includes('amount')) tailoredPayload.amount = amountVal;
+      else if (knownCols.includes('valor')) tailoredPayload.valor = amountVal;
+
+      if (knownCols.includes('date')) tailoredPayload.date = dateVal;
+      else if (knownCols.includes('data')) tailoredPayload.data = dateVal;
+
+      if (knownCols.includes('month')) tailoredPayload.month = monthVal;
+      else if (knownCols.includes('mes_referencia')) tailoredPayload.mes_referencia = monthVal;
+      else if (knownCols.includes('mes')) tailoredPayload.mes = monthVal;
+
+      if (knownCols.includes('origin')) tailoredPayload.origin = targetOrigin;
+      else if (knownCols.includes('origem_renda')) tailoredPayload.origem_renda = targetOrigin;
+      else if (knownCols.includes('origem')) tailoredPayload.origem = targetOrigin;
+
+      if (knownCols.includes('category')) tailoredPayload.category = targetCategory;
+      else if (knownCols.includes('categoria')) tailoredPayload.categoria = targetCategory;
+
+      if (knownCols.includes('notes')) tailoredPayload.notes = entry.notes || `Atendimento Massoterapia (${clientName})`;
+      else if (knownCols.includes('observacao')) tailoredPayload.observacao = entry.notes || `Atendimento Massoterapia (${clientName})`;
+
+      if (knownCols.includes('client_name')) tailoredPayload.client_name = clientName;
+      else if (knownCols.includes('cliente_paciente')) tailoredPayload.cliente_paciente = clientName;
+
+      if (knownCols.includes('user_id') && sampleUserId) tailoredPayload.user_id = sampleUserId;
+    }
 
     const candidatePayloads = [
+      ...(Object.keys(tailoredPayload).length >= 2 ? [tailoredPayload] : []),
       // Format A: Standard English columns for extra_incomes
       {
         description: targetDesc,
@@ -2650,8 +2703,15 @@ async function syncCashEntryToExternalSystem(
         amount: amountVal,
         date: dateVal,
       },
+      // Format D: Portuguese minimal
+      {
+        descricao: targetDesc,
+        valor: amountVal,
+        data: dateVal,
+      },
     ];
 
+    let lastSbError = '';
     for (const payload of candidatePayloads) {
       try {
         const controller = new AbortController();
@@ -2681,9 +2741,22 @@ async function syncCashEntryToExternalSystem(
           saveDatabase();
           return { success: true, message: cfg.lastSyncMessage };
         }
+
+        const errText = await sbResponse.text().catch(() => '');
+        lastSbError = `HTTP ${sbResponse.status}: ${errText || sbResponse.statusText}`;
       } catch (sbErr: any) {
-        console.warn('[Financial Supabase Sync Candidate Notice]:', sbErr?.message);
+        lastSbError = sbErr?.message || 'Falha de rede';
       }
+    }
+
+    // Se Supabase falhou e não há endpointUrl alternativo, reportar o erro real
+    if (!cfg.endpointUrl) {
+      entry.syncedToExternal = false;
+      entry.syncError = lastSbError;
+      cfg.lastSyncStatus = 'ERROR';
+      cfg.lastSyncMessage = `Falha ao salvar no Supabase (${table}): ${lastSbError}`;
+      saveDatabase();
+      return { success: false, message: cfg.lastSyncMessage };
     }
   }
 
@@ -3251,23 +3324,46 @@ app.post('/api/financial/sync-entry/:id', async (req, res) => {
 // POST /api/financial/sync-all-pending
 app.post('/api/financial/sync-all-pending', async (req, res) => {
   const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
-  const pending = (db.cashEntries || []).filter(e => e.tenantId === tenantId && e.effectiveAmount > 0 && !e.syncedToExternal);
+  const { month, forceAll } = req.body || {};
+
+  let targetEntries = (db.cashEntries || []).filter(
+    e => (!tenantId || e.tenantId === tenantId) && Number(e.effectiveAmount ?? e.amount ?? 0) > 0
+  );
+
+  if (month && typeof month === 'string') {
+    targetEntries = targetEntries.filter(e => e.month === month);
+  }
+
+  if (!forceAll) {
+    targetEntries = targetEntries.filter(e => !e.syncedToExternal || Boolean(e.syncError));
+  }
 
   let syncedCount = 0;
   let errorCount = 0;
+  let lastMessage = '';
 
-  for (const entry of pending) {
+  for (const entry of targetEntries) {
     const resSync = await syncCashEntryToExternalSystem(tenantId, entry);
-    if (resSync.success) syncedCount++;
-    else errorCount++;
+    if (resSync.success) {
+      syncedCount++;
+      lastMessage = resSync.message;
+    } else {
+      errorCount++;
+      lastMessage = resSync.message;
+    }
   }
 
   res.json({
-    success: true,
-    totalPending: pending.length,
+    success: syncedCount > 0 || targetEntries.length === 0,
+    totalTarget: targetEntries.length,
     syncedCount,
     errorCount,
-    message: `${syncedCount} lançamento(s) sincronizado(s) com sucesso. ${errorCount ? `${errorCount} com erro.` : ''}`,
+    message:
+      targetEntries.length === 0
+        ? 'Nenhum lançamento com valor em aberto para o mês selecionado.'
+        : `${syncedCount} de ${targetEntries.length} lançamento(s) sincronizado(s) com sucesso no Controle Financeiro.${
+            errorCount > 0 ? ` (${errorCount} com erro: ${lastMessage})` : ''
+          }`,
   });
 });
 
