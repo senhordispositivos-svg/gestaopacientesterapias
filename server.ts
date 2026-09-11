@@ -117,13 +117,13 @@ const DEFAULT_CLEAN_TENANTS: Tenant[] = [
     financialConfig: {
       enabled: true,
       mode: 'SUPABASE',
-      supabaseUrl: '',
-      supabaseKey: '',
-      supabaseTable: 'renda_extra',
-      endpointUrl: 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
+      supabaseUrl: 'https://dpaylubvupjjokpukuxy.supabase.co',
+      supabaseKey: 'sb_publishable_uDVtjc0J1dGBgS510tpphg_oSrmPUTu',
+      supabaseTable: 'extra_incomes',
+      endpointUrl: 'https://ais-dev-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
       accessEmail: 'osaiasbrito@gmail.com',
-      accessPassword: 'osaias2026',
-      category: 'Renda Extra',
+      accessPassword: 'Ojf6994@#gestaoPessoas',
+      category: 'SERVIÇO',
       description: 'MASSOTERAPIA',
       originIncome: 'SERVIÇO',
       section: 'MASSOTERAPIA',
@@ -565,24 +565,26 @@ async function initDatabase() {
       db.users[osaiasIndex].active = true;
     }
 
-    // Initialize Financial Integration with official Cloud Run endpoint
+    // Initialize Financial Integration with official Cloud Run endpoint and Supabase
     const demoTenant = db.tenants.find(t => t.id === 'tenant-demo-1');
     if (demoTenant) {
       const isOutdated = !demoTenant.financialConfig ||
+        !demoTenant.financialConfig.supabaseKey ||
         demoTenant.financialConfig.endpointUrl.includes('netlify') ||
-        demoTenant.financialConfig.endpointUrl.includes('localhost');
+        demoTenant.financialConfig.endpointUrl.includes('localhost') ||
+        demoTenant.financialConfig.endpointUrl.includes('ais-pre');
 
       if (isOutdated) {
         demoTenant.financialConfig = {
           enabled: true,
           mode: 'SUPABASE',
-          supabaseUrl: '',
-          supabaseKey: '',
-          supabaseTable: 'renda_extra',
-          endpointUrl: 'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
+          supabaseUrl: 'https://dpaylubvupjjokpukuxy.supabase.co',
+          supabaseKey: 'sb_publishable_uDVtjc0J1dGBgS510tpphg_oSrmPUTu',
+          supabaseTable: 'extra_incomes',
+          endpointUrl: 'https://ais-dev-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
           accessEmail: 'osaiasbrito@gmail.com',
-          accessPassword: 'osaias2026',
-          category: 'Renda Extra',
+          accessPassword: 'Ojf6994@#gestaoPessoas',
+          category: 'SERVIÇO',
           description: 'MASSOTERAPIA',
           originIncome: 'SERVIÇO',
           section: 'MASSOTERAPIA',
@@ -2574,253 +2576,132 @@ async function syncCashEntryToExternalSystem(
     return { success: true, message: 'Sessão de pacote já quitada: registrado R$ 0,00 no financeiro sem duplicar receita.' };
   }
 
-  const targetCategory = cfg.category || 'Renda Extra';
-  const targetDesc = cfg.description || 'MASSOTERAPIA';
-  const targetOrigin = cfg.originIncome || 'SERVIÇO';
-  const dateVal = entry.date || new Date().toISOString().substring(0, 10);
-  const monthVal = entry.month || dateVal.slice(0, 7) || new Date().toISOString().slice(0, 7);
-  const clientName = entry.patientName || 'Cliente';
+  const dataAtual = entry.date || new Date().toISOString().split('T')[0];
+  const mesAtual = entry.month || dataAtual.substring(0, 7);
+  const valorNum = Number(entry.effectiveAmount ?? entry.amount ?? 0);
+  const cliente = entry.patientName || 'Cliente Não Informado';
+  const procedimento = entry.description || 'Atendimento Massoterapia';
 
-  // Standard payload for Controle Financeiro
-  const financialPayload: Record<string, any> = {
-    descricao: targetDesc,
-    description: targetDesc,
-    origem_renda: targetOrigin,
-    origem: targetOrigin,
-    source: targetOrigin,
-    categoria: targetCategory,
-    category: targetCategory,
-    tipo: targetCategory,
-    valor: amountVal,
-    amount: amountVal,
-    price: amountVal,
-    data: dateVal,
-    date: dateVal,
-    mes_referencia: monthVal,
-    mes: monthVal,
-    month: monthVal,
-    referenceMonth: monthVal,
-    cliente_paciente: clientName,
-    clientName,
-    nomeCliente: clientName,
-    paciente: clientName,
-    procedimento: entry.description || 'Atendimento Massoterapia',
-    observacao: entry.notes || `Atendimento Massoterapia (${clientName})`,
-    alsoAddToSalary: cfg.alsoAddToSalary ?? true,
-    somarAoSalario: cfg.alsoAddToSalary ?? true,
-    isPackage: entry.type === 'PACKAGE',
-    ePacote: entry.type === 'PACKAGE',
-    tipoAtendimento: entry.type,
-    createdAt: new Date().toISOString(),
+  const payload = {
+    email: cfg.accessEmail || 'osaiasbrito@gmail.com',
+    password: cfg.accessPassword || 'Ojf6994@#gestaoPessoas',
+    clientName: cliente,
+    amount: valorNum,
+    description: 'MASSOTERAPIA',
+    category: 'SERVIÇO',
+    source: 'SERVIÇO',
+    date: dataAtual,
+    referenceMonth: mesAtual,
+    status: 'RECEIVED',
+    procedimento: procedimento,
+    alsoAddToSalary: true,
+    notes: `Cliente/Paciente: ${cliente} | Procedimento: ${procedimento}`,
   };
 
-  // 1. Direct Supabase (PostgreSQL) Sync if Supabase URL & Key configured
-  if (cfg.supabaseUrl && cfg.supabaseKey) {
-    const table = cfg.supabaseTable || 'extra_incomes';
-    const cleanSbUrl = cfg.supabaseUrl.replace(/\/+$/, '');
-    const sbUrl = `${cleanSbUrl}/rest/v1/${table}`;
+  const apiUrl =
+    cfg.endpointUrl ||
+    'https://ais-dev-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia';
 
-    // Inspect existing columns if possible
-    let knownCols: string[] = [];
-    let sampleUserId: string | null = null;
-    try {
-      const inspectRes = await fetch(`${cleanSbUrl}/rest/v1/${table}?limit=1`, {
-        headers: {
-          apikey: cfg.supabaseKey,
-          Authorization: `Bearer ${cfg.supabaseKey}`,
-        },
-      });
-      if (inspectRes.ok) {
-        const rows = await inspectRes.json().catch(() => []);
-        if (Array.isArray(rows) && rows.length > 0 && rows[0]) {
-          knownCols = Object.keys(rows[0]);
-          if (rows[0].user_id) sampleUserId = rows[0].user_id;
-        }
-      }
-    } catch (_) {}
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    // Dynamically tailored payload if columns were detected
-    const tailoredPayload: Record<string, any> = {};
-    if (knownCols.length > 0) {
-      if (knownCols.includes('description')) tailoredPayload.description = targetDesc;
-      else if (knownCols.includes('descricao')) tailoredPayload.descricao = targetDesc;
-
-      if (knownCols.includes('amount')) tailoredPayload.amount = amountVal;
-      else if (knownCols.includes('valor')) tailoredPayload.valor = amountVal;
-
-      if (knownCols.includes('date')) tailoredPayload.date = dateVal;
-      else if (knownCols.includes('data')) tailoredPayload.data = dateVal;
-
-      if (knownCols.includes('month')) tailoredPayload.month = monthVal;
-      else if (knownCols.includes('mes_referencia')) tailoredPayload.mes_referencia = monthVal;
-      else if (knownCols.includes('mes')) tailoredPayload.mes = monthVal;
-
-      if (knownCols.includes('origin')) tailoredPayload.origin = targetOrigin;
-      else if (knownCols.includes('origem_renda')) tailoredPayload.origem_renda = targetOrigin;
-      else if (knownCols.includes('origem')) tailoredPayload.origem = targetOrigin;
-
-      if (knownCols.includes('category')) tailoredPayload.category = targetCategory;
-      else if (knownCols.includes('categoria')) tailoredPayload.categoria = targetCategory;
-
-      if (knownCols.includes('notes')) tailoredPayload.notes = entry.notes || `Atendimento Massoterapia (${clientName})`;
-      else if (knownCols.includes('observacao')) tailoredPayload.observacao = entry.notes || `Atendimento Massoterapia (${clientName})`;
-
-      if (knownCols.includes('client_name')) tailoredPayload.client_name = clientName;
-      else if (knownCols.includes('cliente_paciente')) tailoredPayload.cliente_paciente = clientName;
-
-      if (knownCols.includes('user_id') && sampleUserId) tailoredPayload.user_id = sampleUserId;
-    }
-
-    const candidatePayloads = [
-      ...(Object.keys(tailoredPayload).length >= 2 ? [tailoredPayload] : []),
-      // Format A: Standard English columns for extra_incomes
-      {
-        description: targetDesc,
-        amount: amountVal,
-        date: dateVal,
-        month: monthVal,
-        origin: targetOrigin,
-        category: targetCategory,
-        notes: entry.notes || `Atendimento Massoterapia (${clientName})`,
-        client_name: clientName,
-      },
-      // Format B: Portuguese columns
-      {
-        descricao: targetDesc,
-        valor: amountVal,
-        data: dateVal,
-        mes_referencia: monthVal,
-        origem_renda: targetOrigin,
-        origem: targetOrigin,
-        categoria: targetCategory,
-        observacao: entry.notes || `Atendimento Massoterapia (${clientName})`,
-        cliente_paciente: clientName,
-        somar_ao_salario: cfg.alsoAddToSalary ?? true,
-      },
-      // Format C: Core minimal fields
-      {
-        description: targetDesc,
-        amount: amountVal,
-        date: dateVal,
-      },
-      // Format D: Portuguese minimal
-      {
-        descricao: targetDesc,
-        valor: amountVal,
-        data: dateVal,
-      },
-    ];
-
-    let lastSbError = '';
-    for (const payload of candidatePayloads) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-        const sbResponse = await fetch(sbUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': cfg.supabaseKey,
-            'Authorization': `Bearer ${cfg.supabaseKey}`,
-            'Prefer': 'return=minimal',
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-
-        if (sbResponse.ok || sbResponse.status === 201 || sbResponse.status === 200) {
-          entry.syncedToExternal = true;
-          entry.syncedAt = new Date().toISOString();
-          entry.syncError = undefined;
-
-          cfg.lastSyncAt = entry.syncedAt;
-          cfg.lastSyncStatus = 'SUCCESS';
-          cfg.lastSyncMessage = `Enviado com sucesso ao Supabase do Controle Financeiro (${monthVal}: R$ ${amountVal.toFixed(2)} em ${targetDesc} / ${targetOrigin})!`;
-          saveDatabase();
-          return { success: true, message: cfg.lastSyncMessage };
-        }
-
-        const errText = await sbResponse.text().catch(() => '');
-        lastSbError = `HTTP ${sbResponse.status}: ${errText || sbResponse.statusText}`;
-      } catch (sbErr: any) {
-        lastSbError = sbErr?.message || 'Falha de rede';
-      }
-    }
-
-    // Se Supabase falhou e não há endpointUrl alternativo, reportar o erro real
-    if (!cfg.endpointUrl) {
-      entry.syncedToExternal = false;
-      entry.syncError = lastSbError;
-      cfg.lastSyncStatus = 'ERROR';
-      cfg.lastSyncMessage = `Falha ao salvar no Supabase (${table}): ${lastSbError}`;
-      saveDatabase();
-      return { success: false, message: cfg.lastSyncMessage };
-    }
-  }
-
-  // 2. Direct REST API / Webhook Sync if endpointUrl configured
-  if (cfg.endpointUrl) {
-    let targetUrl = cfg.endpointUrl.trim();
-    if (targetUrl.startsWith('/')) {
-      targetUrl = `http://127.0.0.1:3000${targetUrl}`;
-    }
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-      const headers: Record<string, string> = {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'MassoterapiaIntegrativa-FinancialBridge/2.0',
-      };
-      if (cfg.accessPassword) {
-        headers['Authorization'] = `Bearer ${cfg.accessPassword}`;
-        headers['x-access-password'] = cfg.accessPassword;
-      }
-      if (cfg.accessEmail) {
-        headers['x-user-email'] = cfg.accessEmail;
-      }
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
 
-      const response = await fetch(targetUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          ...financialPayload,
-          email: cfg.accessEmail,
-          password: cfg.accessPassword,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+    const resultado = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(resultado?.error || resultado?.message || `HTTP ${response.status}`);
 
-      const responseJson = await response.json().catch(() => null);
-      if (response.ok && (responseJson ? responseJson.success !== false : true)) {
-        entry.syncedToExternal = true;
-        entry.syncedAt = new Date().toISOString();
-        entry.syncError = undefined;
+    console.log('✅ Sucesso (API Financeira):', resultado);
+    entry.syncedToExternal = true;
+    entry.syncedAt = new Date().toISOString();
+    entry.syncError = undefined;
 
-        cfg.lastSyncAt = entry.syncedAt;
-        cfg.lastSyncStatus = 'SUCCESS';
-        cfg.lastSyncMessage = `Lançamento registrado com sucesso no Controle Financeiro! (HTTP ${response.status}).`;
-        saveDatabase();
-        return { success: true, message: cfg.lastSyncMessage };
-      }
-    } catch (apiErr: any) {
-      console.warn('[Financial API Sync] Notice:', apiErr?.message);
-    }
+    cfg.lastSyncAt = entry.syncedAt;
+    cfg.lastSyncStatus = 'SUCCESS';
+    cfg.lastSyncMessage = `Enviado com sucesso à API Financeira (${mesAtual}: R$ ${valorNum.toFixed(2)} em MASSOTERAPIA)!`;
+    saveDatabase();
+    return { success: true, message: cfg.lastSyncMessage };
+  } catch (error: any) {
+    console.warn('⚠️ Falha na API. Executando Fallback no Supabase...', error.message);
+    return await enviarViaSupabaseDiretoNoServidor(cfg, entry, payload);
   }
+}
 
-  // Fallback: If configured and enabled, mark entry as recorded with standard notice
-  entry.syncedToExternal = true;
-  entry.syncedAt = new Date().toISOString();
-  entry.syncError = undefined;
-  cfg.lastSyncAt = entry.syncedAt;
-  cfg.lastSyncStatus = 'SUCCESS';
-  cfg.lastSyncMessage = `Atendimento registrado no fluxo de caixa e provisionado para o mês ${monthVal} como ${targetDesc} (${targetOrigin}).`;
-  saveDatabase();
-  return { success: true, message: cfg.lastSyncMessage };
+async function enviarViaSupabaseDiretoNoServidor(
+  cfg: any,
+  entry: CashEntry,
+  payload: any
+): Promise<{ success: boolean; message: string }> {
+  const sbUrl = cfg.supabaseUrl || 'https://dpaylubvupjjokpukuxy.supabase.co';
+  const sbKey = cfg.supabaseKey || 'sb_publishable_uDVtjc0J1dGBgS510tpphg_oSrmPUTu';
+  const tableName = cfg.supabaseTable || 'extra_incomes';
+  const endpoint = `${sbUrl.replace(/\/+$/, '')}/rest/v1/${tableName}`;
+
+  // Mapeamento compatível com o banco da Gestão Financeira
+  const corpoSupabase = {
+    description: payload.description,
+    descricao: payload.description,
+    origin: 'SERVIÇO',
+    origem_renda: 'SERVIÇO',
+    category: 'Renda Extra',
+    categoria: 'Renda Extra',
+    amount: payload.amount,
+    valor: payload.amount,
+    date: payload.date,
+    data: payload.date,
+    month: payload.referenceMonth,
+    mes_referencia: payload.referenceMonth,
+    client_name: payload.clientName,
+    cliente_paciente: payload.clientName,
+    notes: payload.notes,
+    observacao: payload.notes,
+    somar_ao_salario: true,
+    created_at: new Date().toISOString(),
+  };
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'apikey': sbKey,
+        'Authorization': `Bearer ${sbKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation',
+      },
+      body: JSON.stringify(corpoSupabase),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const data = await res.json().catch(() => null);
+    console.log('✅ Salvo no Supabase via Fallback:', data);
+
+    entry.syncedToExternal = true;
+    entry.syncedAt = new Date().toISOString();
+    entry.syncError = undefined;
+
+    cfg.lastSyncAt = entry.syncedAt;
+    cfg.lastSyncStatus = 'SUCCESS';
+    cfg.lastSyncMessage = `Salvo no Supabase via Fallback (${payload.referenceMonth}: R$ ${Number(payload.amount).toFixed(2)} em MASSOTERAPIA)!`;
+    saveDatabase();
+    return { success: true, message: cfg.lastSyncMessage };
+  } catch (err: any) {
+    console.error('❌ Erro no fallback Supabase:', err);
+    entry.syncedToExternal = false;
+    entry.syncError = err.message;
+    cfg.lastSyncStatus = 'ERROR';
+    cfg.lastSyncMessage = `Erro no fallback Supabase: ${err.message}`;
+    saveDatabase();
+    return { success: false, message: cfg.lastSyncMessage };
+  }
 }
 
 function recordFinancialCashEntry(

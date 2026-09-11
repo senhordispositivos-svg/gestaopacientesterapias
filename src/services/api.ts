@@ -194,87 +194,123 @@ export async function sincronizarFilaContingencia(): Promise<{ total: number; se
   return { total: fila.length, sent, remaining: naoSincronizados.length };
 }
 
-export async function lancarAtendimentoSessao(dados: DadosAtendimentoFinanceiro) {
-  const URL_FINANCEIRO =
-    (typeof window !== 'undefined' && localStorage.getItem('FINANCIAL_API_URL')) ||
-    'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia';
+/**
+ * Script de Envio - Sistema de Gestão de Pessoas (Massoterapia/Fisioterapia)
+ */
+export const INTEGRATION_CONFIG = {
+  apiUrl: 'https://ais-dev-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
+  authEmail: 'osaiasbrito@gmail.com',
+  authPassword: 'Ojf6994@#gestaoPessoas',
+  supabaseUrl: 'https://dpaylubvupjjokpukuxy.supabase.co',
+  supabaseKey: 'sb_publishable_uDVtjc0J1dGBgS510tpphg_oSrmPUTu',
+  tableName: 'extra_incomes'
+};
 
+export async function enviarAtendimentoParaFinanceiro(dadosAtendimento: any) {
+  const dataAtual = dadosAtendimento.data || new Date().toISOString().split('T')[0];
+  const mesAtual = dadosAtendimento.mesReferencia || dataAtual.substring(0, 7);
+  const valorNum = Number(dadosAtendimento.valor || 0);
+  const cliente = dadosAtendimento.clienteNome || 'Cliente Não Informado';
+  const procedimento = dadosAtendimento.procedimento || 'Atendimento Massoterapia';
+
+  const payload = {
+    email: INTEGRATION_CONFIG.authEmail,
+    password: INTEGRATION_CONFIG.authPassword,
+    clientName: cliente,
+    amount: valorNum,
+    description: 'MASSOTERAPIA',
+    category: 'SERVIÇO',
+    source: 'SERVIÇO',
+    date: dataAtual,
+    referenceMonth: mesAtual,
+    status: 'RECEIVED',
+    procedimento: procedimento,
+    alsoAddToSalary: true,
+    notes: `Cliente/Paciente: ${cliente} | Procedimento: ${procedimento}`
+  };
+
+  try {
+    const response = await fetch(INTEGRATION_CONFIG.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const resultado = await response.json();
+    if (!response.ok) throw new Error(resultado.error || resultado.message || 'Erro na API');
+    
+    console.log('✅ Sucesso (API Financeira):', resultado);
+    return resultado;
+  } catch (error: any) {
+    console.warn('⚠️ Falha na API. Executando Fallback no Supabase...', error.message);
+    return await enviarViaSupabaseDireto(payload);
+  }
+}
+
+export async function enviarViaSupabaseDireto(payload: any) {
+  const endpoint = `${INTEGRATION_CONFIG.supabaseUrl}/rest/v1/${INTEGRATION_CONFIG.tableName}`;
+  
+  // Mapeamento compatível com o banco da Gestão Financeira
+  const corpoSupabase = {
+    description: payload.description,
+    descricao: payload.description,
+    origin: 'SERVIÇO',
+    origem_renda: 'SERVIÇO',
+    category: 'Renda Extra',
+    categoria: 'Renda Extra',
+    amount: payload.amount,
+    valor: payload.amount,
+    date: payload.date,
+    data: payload.date,
+    month: payload.referenceMonth,
+    mes_referencia: payload.referenceMonth,
+    client_name: payload.clientName,
+    cliente_paciente: payload.clientName,
+    notes: payload.notes,
+    observacao: payload.notes,
+    somar_ao_salario: true,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'apikey': INTEGRATION_CONFIG.supabaseKey,
+        'Authorization': `Bearer ${INTEGRATION_CONFIG.supabaseKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(corpoSupabase)
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    console.log('✅ Salvo no Supabase via Fallback:', data);
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('❌ Erro no fallback Supabase:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function lancarAtendimentoSessao(dados: DadosAtendimentoFinanceiro) {
   const rawValor = dados.valor ?? dados.amount ?? 0;
   const numValor = typeof rawValor === 'string' 
     ? parseFloat(rawValor.replace(/[^\d.,]/g, '').replace(',', '.')) || 0 
     : Number(rawValor);
-
-  const clientNameVal = dados.nomeCliente || dados.clientName || dados.paciente || 'Cliente Massoterapia';
-  const descVal = dados.procedimento || dados.description || dados.servico || 'Atendimento Massoterapia';
-  const catVal = dados.categoria || dados.category || dados.source || 'MASSOTERAPIA';
-  const isPkg = Boolean(dados.isPackage || dados.ePacote);
   const isPkgSess = Boolean(dados.isPackageSession || dados.sessaoDePacote);
-  const dateVal = dados.data || dados.date || new Date().toISOString().substring(0, 10);
-  const addSalary = (dados.alsoAddToSalary !== false && dados.somarAoSalario !== false) && !isPkgSess;
 
-  const payload: Record<string, any> = {
-    email: 'osaiasbrito@gmail.com',
-    password: 'osaias2026',
-    amount: isPkgSess ? 0 : numValor,
+  return enviarAtendimentoParaFinanceiro({
+    data: dados.data || dados.date,
+    mesReferencia: (dados.data || dados.date || '').slice(0, 7),
     valor: isPkgSess ? 0 : numValor,
-    clientName: clientNameVal,
-    nomeCliente: clientNameVal,
-    paciente: clientNameVal,
-    description: descVal,
-    procedimento: descVal,
-    category: catVal,
-    source: catVal,
-    date: dateVal,
-    data: dateVal,
-    isPackage: isPkg,
-    packageName: dados.packageName || dados.nomePacote || null,
-    totalSessions: dados.totalSessions || dados.sessoes || null,
-    isPackageSession: isPkgSess,
-    sessionNumber: dados.sessionNumber || dados.numeroSessao || null,
-    alsoAddToSalary: addSalary,
-    somarAoSalario: addSalary,
-  };
-
-  try {
-    const res = await fetch(URL_FINANCEIRO, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer osaias2026',
-        'x-access-password': 'osaias2026',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const contentType = res.headers.get('content-type') || '';
-
-    // Se o servidor devolveu HTML (ex: página de carregamento do Vite ou SPA da Vercel)
-    if (contentType.includes('text/html')) {
-      salvarFilaContingencia(payload);
-      return {
-        success: true,
-        queued: true,
-        message: 'Atendimento registrado com sucesso! O lançamento financeiro foi salvo na fila local e será sincronizado automaticamente.',
-      };
-    }
-
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
-      throw new Error(errJson.message || `Erro HTTP ${res.status} na API Financeira`);
-    }
-
-    const data = await res.json();
-    return { success: true, queued: false, data };
-  } catch (error: any) {
-    console.warn('Falha na conexão direta com a API Financeira. Salvando na fila local:', error.message);
-    salvarFilaContingencia(payload);
-    // Retorna sucesso com flag queued para não travar a interface do terapeuta
-    return {
-      success: true,
-      queued: true,
-      message: 'Atendimento concluído! Lançamento guardado na fila de contingência para envio automático.',
-    };
-  }
+    clienteNome: dados.nomeCliente || dados.clientName || dados.paciente || 'Cliente Não Informado',
+    procedimento: dados.procedimento || dados.description || dados.servico || 'Atendimento Massoterapia',
+  });
 }
 
 // Alias para compatibilidade reversa

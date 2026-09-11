@@ -34,15 +34,17 @@ export const FinancialIntegrationView: React.FC<FinancialIntegrationViewProps> =
 }) => {
   const { tenant, refreshTenantData } = useAuth();
 
-  const [mode, setMode] = useState<'SUPABASE' | 'REST_API'>('SUPABASE');
+  const [mode, setMode] = useState<'SUPABASE' | 'REST_API'>('REST_API');
   const [enabled, setEnabled] = useState(true);
-  const [supabaseUrl, setSupabaseUrl] = useState('');
-  const [supabaseKey, setSupabaseKey] = useState('');
-  const [supabaseTable, setSupabaseTable] = useState('renda_extra');
-  const [endpointUrl, setEndpointUrl] = useState('');
-  const [accessEmail, setAccessEmail] = useState('');
-  const [accessPassword, setAccessPassword] = useState('');
-  const [category, setCategory] = useState('Renda Extra');
+  const [supabaseUrl, setSupabaseUrl] = useState('https://dpaylubvupjjokpukuxy.supabase.co');
+  const [supabaseKey, setSupabaseKey] = useState('sb_publishable_uDVtjc0J1dGBgS510tpphg_oSrmPUTu');
+  const [supabaseTable, setSupabaseTable] = useState('extra_incomes');
+  const [endpointUrl, setEndpointUrl] = useState(
+    'https://ais-dev-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia'
+  );
+  const [accessEmail, setAccessEmail] = useState('osaiasbrito@gmail.com');
+  const [accessPassword, setAccessPassword] = useState('Ojf6994@#gestaoPessoas');
+  const [category, setCategory] = useState('SERVIÇO');
   const [description, setDescription] = useState('MASSOTERAPIA');
   const [originIncome, setOriginIncome] = useState('SERVIÇO');
   const [alsoAddToSalary, setAlsoAddToSalary] = useState(true);
@@ -58,7 +60,7 @@ export const FinancialIntegrationView: React.FC<FinancialIntegrationViewProps> =
     mode?: string;
     details?: any;
   } | null>(null);
-  const [activeCodeTab, setActiveCodeTab] = useState<'SQL' | 'EXPRESS' | 'PROMPT'>('SQL');
+  const [activeCodeTab, setActiveCodeTab] = useState<'ENVIO' | 'SQL' | 'EXPRESS' | 'PROMPT'>('ENVIO');
   const [copiedTab, setCopiedTab] = useState<string | null>(null);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
@@ -74,16 +76,17 @@ export const FinancialIntegrationView: React.FC<FinancialIntegrationViewProps> =
       if (cfg) {
         setEnabled(cfg.enabled ?? true);
         setMode(cfg.mode === 'REST_API' ? 'REST_API' : 'SUPABASE');
-        setSupabaseUrl(cfg.supabaseUrl || '');
-        setSupabaseKey(cfg.supabaseKey || '');
+        setSupabaseUrl(cfg.supabaseUrl || 'https://dpaylubvupjjokpukuxy.supabase.co');
+        setSupabaseKey(cfg.supabaseKey || 'sb_publishable_uDVtjc0J1dGBgS510tpphg_oSrmPUTu');
         setSupabaseTable(cfg.supabaseTable || 'extra_incomes');
         setEndpointUrl(
-          cfg.endpointUrl ||
-            'https://ais-pre-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia'
+          cfg.endpointUrl && !cfg.endpointUrl.includes('ais-pre')
+            ? cfg.endpointUrl
+            : 'https://ais-dev-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia'
         );
         setAccessEmail(cfg.accessEmail || 'osaiasbrito@gmail.com');
-        setAccessPassword(cfg.accessPassword || '');
-        setCategory(cfg.category || 'Renda Extra');
+        setAccessPassword(cfg.accessPassword || 'Ojf6994@#gestaoPessoas');
+        setCategory(cfg.category || 'SERVIÇO');
         setDescription(cfg.description || 'MASSOTERAPIA');
         setOriginIncome(cfg.originIncome || 'SERVIÇO');
         setAlsoAddToSalary(cfg.alsoAddToSalary ?? true);
@@ -222,6 +225,111 @@ BEGIN
 END $$;
 `;
 
+  // 1. Script de Envio do Sistema de Gestão de Pessoas (Massoterapia/Fisioterapia)
+  const sendingScriptSnippet = `/**
+ * Script de Envio - Sistema de Gestão de Pessoas (Massoterapia/Fisioterapia)
+ */
+const INTEGRATION_CONFIG = {
+  apiUrl: 'https://ais-dev-ca2j6yzl6qm4otgueyocuu-440149738355.us-east1.run.app/api/integrations/massoterapia',
+  authEmail: 'osaiasbrito@gmail.com',
+  authPassword: 'Ojf6994@#gestaoPessoas',
+  supabaseUrl: 'https://dpaylubvupjjokpukuxy.supabase.co',
+  supabaseKey: 'sb_publishable_uDVtjc0J1dGBgS510tpphg_oSrmPUTu',
+  tableName: 'extra_incomes'
+};
+
+async function enviarAtendimentoParaFinanceiro(dadosAtendimento) {
+  const dataAtual = dadosAtendimento.data || new Date().toISOString().split('T')[0];
+  const mesAtual = dadosAtendimento.mesReferencia || dataAtual.substring(0, 7);
+  const valorNum = Number(dadosAtendimento.valor || 0);
+  const cliente = dadosAtendimento.clienteNome || 'Cliente Não Informado';
+  const procedimento = dadosAtendimento.procedimento || 'Atendimento Massoterapia';
+
+  const payload = {
+    email: INTEGRATION_CONFIG.authEmail,
+    password: INTEGRATION_CONFIG.authPassword,
+    clientName: cliente,
+    amount: valorNum,
+    description: 'MASSOTERAPIA',
+    category: 'SERVIÇO',
+    source: 'SERVIÇO',
+    date: dataAtual,
+    referenceMonth: mesAtual,
+    status: 'RECEIVED',
+    procedimento: procedimento,
+    alsoAddToSalary: true,
+    notes: \`Cliente/Paciente: \${cliente} | Procedimento: \${procedimento}\`
+  };
+
+  try {
+    const response = await fetch(INTEGRATION_CONFIG.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const resultado = await response.json();
+    if (!response.ok) throw new Error(resultado.error || resultado.message || 'Erro na API');
+    
+    console.log('✅ Sucesso (API Financeira):', resultado);
+    return resultado;
+  } catch (error) {
+    console.warn('⚠️ Falha na API. Executando Fallback no Supabase...', error.message);
+    return await enviarViaSupabaseDireto(payload);
+  }
+}
+
+async function enviarViaSupabaseDireto(payload) {
+  const endpoint = \`\${INTEGRATION_CONFIG.supabaseUrl}/rest/v1/\${INTEGRATION_CONFIG.tableName}\`;
+  
+  // Mapeamento compatível com o banco da Gestão Financeira
+  const corpoSupabase = {
+    description: payload.description,
+    descricao: payload.description,
+    origin: 'SERVIÇO',
+    origem_renda: 'SERVIÇO',
+    category: 'Renda Extra',
+    categoria: 'Renda Extra',
+    amount: payload.amount,
+    valor: payload.amount,
+    date: payload.date,
+    data: payload.date,
+    month: payload.referenceMonth,
+    mes_referencia: payload.referenceMonth,
+    client_name: payload.clientName,
+    cliente_paciente: payload.clientName,
+    notes: payload.notes,
+    observacao: payload.notes,
+    somar_ao_salario: true,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'apikey': INTEGRATION_CONFIG.supabaseKey,
+        'Authorization': \`Bearer \${INTEGRATION_CONFIG.supabaseKey}\`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(corpoSupabase)
+    });
+
+    if (!res.ok) throw new Error(\`HTTP \${res.status}: \${await res.text()}\`);
+    const data = await res.json();
+    console.log('✅ Salvo no Supabase via Fallback:', data);
+    return { success: true, data };
+  } catch (err) {
+    console.error('❌ Erro no fallback Supabase:', err);
+    return { success: false, error: err.message };
+  }
+}
+`;
+
   // 2. Código de rota Express (Node.js) para o server.ts do Controle Financeiro
   const expressSnippet = `// COLE NO ARQUIVO server.ts DO SEU APLICATIVO "CONTROLE FINANCEIRO"
 // Rota dedicada para receber as entradas do Sistema de Massoterapia
@@ -229,58 +337,57 @@ END $$;
 app.post('/api/integrations/massoterapia', async (req, res) => {
   try {
     const {
-      descricao = 'MASSOTERAPIA',
-      origem_renda = 'SERVIÇO',
-      origem = 'SERVIÇO',
-      categoria = 'Renda Extra',
-      valor = 0,
-      data = new Date().toISOString().slice(0, 10),
-      mes_referencia = data.slice(0, 7),
-      cliente_paciente,
-      procedimento,
-      observacao,
+      email,
+      password,
+      clientName = 'Cliente Não Informado',
+      amount = 0,
+      description = 'MASSOTERAPIA',
+      category = 'SERVIÇO',
+      source = 'SERVIÇO',
+      date = new Date().toISOString().split('T')[0],
+      referenceMonth = date.substring(0, 7),
+      status = 'RECEIVED',
+      procedimento = 'Atendimento Massoterapia',
       alsoAddToSalary = true,
-      test = false
+      notes = ''
     } = req.body;
 
-    const numValor = Number(valor) || 0;
-    const mesVigor = mes_referencia || data.slice(0, 7);
+    const valorNum = Number(amount) || 0;
+    const mesVigor = referenceMonth || date.substring(0, 7);
 
-    // Se for teste de conexão
-    if (test || req.body.action === 'TESTE_CONEXAO') {
-      return res.json({
-        success: true,
-        message: 'Conexão com Sistema de Massoterapia validada com sucesso!',
-        descricao: 'MASSOTERAPIA',
-        origem: 'SERVIÇO',
-        mesVigor
-      });
+    // Validação de Credenciais (Opcional)
+    if (email && email !== 'osaiasbrito@gmail.com') {
+      return res.status(401).json({ success: false, message: 'Credencial inválida' });
     }
 
-    // 1. Inserir no PostgreSQL / Supabase do Controle Financeiro
-    // Caso use o Supabase REST direto ou banco local:
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
-      const sbResp = await fetch(\`\${process.env.SUPABASE_URL}/rest/v1/renda_extra\`, {
+    // 1. Inserir no Supabase / PostgreSQL do Controle Financeiro (extra_incomes)
+    if (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+      const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+      await fetch(\`\${process.env.SUPABASE_URL.replace(/\\/+$/, '')}/rest/v1/extra_incomes\`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': process.env.SUPABASE_ANON_KEY,
-          'Authorization': \`Bearer \${process.env.SUPABASE_ANON_KEY}\`,
-          'Prefer': 'return=minimal'
+          'apikey': sbKey,
+          'Authorization': \`Bearer \${sbKey}\`,
+          'Prefer': 'return=representation'
         },
         body: JSON.stringify({
+          description: 'MASSOTERAPIA',
           descricao: 'MASSOTERAPIA',
+          origin: 'SERVIÇO',
           origem_renda: 'SERVIÇO',
-          origem: 'SERVIÇO',
-          tipo: 'Renda Extra',
+          category: 'Renda Extra',
           categoria: 'Renda Extra',
-          valor: numValor,
-          data,
+          amount: valorNum,
+          valor: valorNum,
+          date,
+          data: date,
+          month: mesVigor,
           mes_referencia: mesVigor,
-          mes: mesVigor,
-          observacao: observacao || \`Atendimento Massoterapia - \${cliente_paciente || 'Cliente'}\`,
-          cliente_paciente,
-          procedimento,
+          client_name: clientName,
+          cliente_paciente: clientName,
+          notes: notes || \`Cliente: \${clientName} | Procedimento: \${procedimento}\`,
+          observacao: notes || \`Cliente: \${clientName} | Procedimento: \${procedimento}\`,
           somar_ao_salario: alsoAddToSalary,
           created_at: new Date().toISOString()
         })
@@ -289,11 +396,10 @@ app.post('/api/integrations/massoterapia', async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: \`Lançamento de R$ \${numValor.toFixed(2)} registrado com sucesso no mês \${mesVigor} como MASSOTERAPIA (SERVIÇO)!\`,
-      descricao: 'MASSOTERAPIA',
-      origem: 'SERVIÇO',
-      valor: numValor,
-      mes: mesVigor
+      message: \`Lançamento de R$ \${valorNum.toFixed(2)} registrado com sucesso no mês \${mesVigor} como MASSOTERAPIA (SERVIÇO)!\`,
+      clientName,
+      amount: valorNum,
+      referenceMonth: mesVigor
     });
   } catch (error) {
     console.error('Erro na integração de massoterapia:', error);
@@ -303,21 +409,9 @@ app.post('/api/integrations/massoterapia', async (req, res) => {
 `;
 
   // 3. Prompt pronto para colar no chat da IA do aplicativo Controle Financeiro
-  const promptForFinancialChat = `Olá! Preciso configurar a conexão do meu aplicativo Controle Financeiro para receber automaticamente as entradas em dinheiro que vêm do meu Sistema de Massoterapia (Gestão de Pacientes).
+  const promptForFinancialChat = `Substitua o script de envio da Gestão de Pessoas pelo código ajustado abaixo, padronizando os nomes das variáveis para o contrato que a Gestão Financeira espera:
 
-Ambos os sistemas foram desenvolvidos com o Google AI Studio e utilizam PostgreSQL / Supabase como banco de dados.
-
-### REGRAS OBRIGATÓRIAS DE NEGÓCIO:
-1. Toda vez que um atendimento (sessão avulsa ou pacote) for lançado em dinheiro no Sistema de Massoterapia:
-   - Descrição: "MASSOTERAPIA"
-   - Origem da Renda: "SERVIÇO"
-   - Tipo / Categoria: "Renda Extra"
-2. Os lançamentos em dinheiro deverão entrar e ser somados automaticamente no MÊS EM VIGOR (ex: Agosto, Setembro) na tela de Renda Extra.
-3. Se a tabela "renda_extra" já existir, garantir que ela possua as colunas: "descricao", "origem_renda", "valor", "data", "mes_referencia", "observacao".
-4. Criar a rota de API em server.ts: POST /api/integrations/massoterapia para receber esse payload e salvar na tabela do Supabase/PostgreSQL somando ao total de Renda Extra do mês.
-5. Garantir que na tela de Renda Extra, os lançamentos com descrição "MASSOTERAPIA" e origem "SERVIÇO" apareçam listados e somados no mês de referência correspondente.
-
-Por favor, aplique as alterações necessárias no Controle Financeiro para receber e somar esses lançamentos perfeitamente.`;
+${sendingScriptSnippet}`;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-200">
@@ -733,7 +827,19 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
           </div>
 
           {/* Tabs for Codes */}
-          <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+          <div className="flex flex-wrap bg-slate-800 p-1 rounded-lg border border-slate-700 gap-1">
+            <button
+              type="button"
+              onClick={() => setActiveCodeTab('ENVIO')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                activeCodeTab === 'ENVIO'
+                  ? 'bg-emerald-500 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <FileCode2 className="w-3.5 h-3.5" />
+              1. Script de Envio (Gestão de Pessoas)
+            </button>
             <button
               type="button"
               onClick={() => setActiveCodeTab('SQL')}
@@ -744,7 +850,7 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
               }`}
             >
               <Database className="w-3.5 h-3.5" />
-              1. Script SQL (Supabase)
+              2. Script SQL (Supabase)
             </button>
             <button
               type="button"
@@ -756,7 +862,7 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
               }`}
             >
               <FileCode2 className="w-3.5 h-3.5" />
-              2. Rota Express (server.ts)
+              3. Rota Express (server.ts)
             </button>
             <button
               type="button"
@@ -768,12 +874,49 @@ Por favor, aplique as alterações necessárias no Controle Financeiro para rece
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              3. Prompt Pronto para Chat IA
+              4. Prompt para Chat IA
             </button>
           </div>
         </div>
 
         <div className="p-6 space-y-4">
+          {/* Tab 0: Script de Envio (Gestão de Pessoas) */}
+          {activeCodeTab === 'ENVIO' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Script de Envio - Sistema de Gestão de Pessoas (Massoterapia/Fisioterapia)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Script com nomes de variáveis padronizadas para o contrato que a Gestão Financeira espera (inclui fallback automático para o Supabase).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(sendingScriptSnippet, 'envio')}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  {copiedTab === 'envio' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-700 font-bold">Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Copiar Script de Envio</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <pre className="bg-slate-950 text-slate-200 p-4 rounded-xl text-xs font-mono overflow-x-auto max-h-96 border border-slate-800 leading-relaxed">
+                {sendingScriptSnippet}
+              </pre>
+            </div>
+          )}
+
           {/* Tab 1: SQL Script */}
           {activeCodeTab === 'SQL' && (
             <div className="space-y-3">
