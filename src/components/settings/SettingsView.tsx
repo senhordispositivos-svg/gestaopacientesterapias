@@ -30,10 +30,9 @@ const PRESET_LOGOS = [
 interface SettingsViewProps {
   onUpdate?: () => void;
   onNavigateToBackup?: () => void;
-  onNavigateToIntegration?: () => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigateToBackup, onNavigateToIntegration }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigateToBackup }) => {
   const { user, tenant, updateTenantConfig, allTenants, switchTenant } = useAuth();
 
   const [tradeName, setTradeName] = useState('');
@@ -295,37 +294,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onUpdate, onNavigate
             <span>+ Cadastrar Outra Clínica</span>
           </button>
         </div>
-      </div>
-
-      {/* Financial Integration Quick Access Card */}
-      <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/40 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm text-white">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
-            <ArrowLeftRight className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-[10px] text-emerald-400 uppercase font-extrabold tracking-wider flex items-center gap-2">
-              <span>Módulo de Integração</span>
-              <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold">Google AI Studio</span>
-            </div>
-            <div className="text-base font-bold text-white flex items-center gap-2 mt-0.5">
-              <span>Conexão com App "Controle Financeiro"</span>
-            </div>
-            <p className="text-xs text-slate-300 mt-1 max-w-xl">
-              Configurações para envio automático das entradas em dinheiro como <strong>MASSOTERAPIA</strong> e origem <strong>SERVIÇO</strong> (Renda Extra) no Supabase / PostgreSQL.
-            </p>
-          </div>
-        </div>
-        {onNavigateToIntegration && (
-          <button
-            type="button"
-            onClick={onNavigateToIntegration}
-            className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-2 cursor-pointer shadow-md shrink-0"
-          >
-            <ArrowLeftRight className="w-4 h-4" />
-            <span>Abrir Configurações de Integração</span>
-          </button>
-        )}
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">

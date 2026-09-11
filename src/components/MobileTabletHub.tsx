@@ -120,22 +120,6 @@ export const MobileTabletHub: React.FC<MobileTabletHubProps> = ({
       targetView: 'anamnesis',
     },
     {
-      id: 'financial',
-      title: 'FLUXO DE CAIXA',
-      subplateText: 'FINANCEIRO',
-      icon: DollarSign,
-      isGoldHighlighted: false,
-      targetView: 'financial',
-    },
-    {
-      id: 'financial-integration',
-      title: ['INTEGRAÇÃO', 'FINANCEIRA'],
-      subplateText: 'CONTROLE FINANCEIRO',
-      icon: ArrowLeftRight,
-      isGoldHighlighted: false,
-      targetView: 'financial-integration',
-    },
-    {
       id: 'professionals',
       title: ['USUÁRIOS E', 'PERMISSÕES'],
       subplateText: 'USUÁRIOS',

@@ -24,8 +24,6 @@ import { PublicAnamnesisPage } from './components/public/PublicAnamnesisPage';
 import { SendAnamnesisLinkModal } from './components/whatsapp/SendAnamnesisLinkModal';
 import { PackageDetailModal } from './components/packages/PackageDetailModal';
 import { PackagesTrackerView } from './components/packages/PackagesTrackerView';
-import { FinancialView } from './components/financial/FinancialView';
-import { FinancialIntegrationView } from './components/financial/FinancialIntegrationView';
 import { LoginView } from './components/auth/LoginView';
 import { MobileTabletHub } from './components/MobileTabletHub';
 import { ResolutionScaleModal } from './components/layout/ResolutionScaleModal';
@@ -773,24 +771,6 @@ export function App() {
               {/* Audit Logs */}
               {activeView === 'audit' && <AuditLogView />}
 
-              {/* Financial Cash Flow & Management Integration */}
-              {activeView === 'financial' && (
-                <FinancialView
-                  initialTab="cashflow"
-                  onNavigateToSettings={() => setActiveView('settings')}
-                  onNavigateToIntegration={() => setActiveView('financial-integration')}
-                />
-              )}
-
-              {/* Dedicated Financial Integration Tab */}
-              {activeView === 'financial-integration' && (
-                <FinancialView
-                  initialTab="integration"
-                  onNavigateToSettings={() => setActiveView('settings')}
-                  onNavigateToIntegration={() => setActiveView('financial-integration')}
-                />
-              )}
-
               {/* Database Backup & Security */}
               {activeView === 'backup' && <BackupManagerView onRefreshAllData={loadData} />}
 
@@ -799,7 +779,6 @@ export function App() {
                 <SettingsView
                   onUpdate={loadData}
                   onNavigateToBackup={() => setActiveView('backup')}
-                  onNavigateToIntegration={() => setActiveView('financial-integration')}
                 />
               )}
             </>

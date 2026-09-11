@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Patient, User } from '../../types';
-import { api, lancarAtendimentoSessao } from '../../services/api';
+import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import {
   CalendarCheck,
@@ -264,19 +264,6 @@ export const SingleSessionModal: React.FC<SingleSessionModalProps> = ({
         clientSignatureUrl: signatureDataUrl || undefined,
         clientConfirmedAt: signatureDataUrl ? new Date().toISOString() : undefined,
       });
-
-      // Executa lançamento direto no sistema financeiro integrado (Print 03)
-      try {
-        await lancarAtendimentoSessao({
-          valor: price || 180.00,
-          nomeCliente: pat?.name || 'Mariana Alves',
-          procedimento: techniquesToSave.join(' & '),
-          data: scheduledDate,
-          alsoAddToSalary: true,
-        });
-      } catch (finErr) {
-        console.warn('Aviso de envio ao sistema financeiro:', finErr);
-      }
 
       setSuccessResult({
         amount: price || 180,
