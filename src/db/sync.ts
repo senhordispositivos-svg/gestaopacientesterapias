@@ -12,6 +12,7 @@ import {
   SignatureRecord,
   PublicValidationToken,
   AuditLog,
+  RendaMassoterapiaEntry,
 } from '../types/index.ts';
 
 let _schemaInitialized = false;
@@ -239,6 +240,29 @@ export async function ensurePostgresSchema(): Promise<boolean> {
         ip_address TEXT NOT NULL,
         hash TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS renda_massoterapia (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        data_lancamento TEXT NOT NULL,
+        valor_recebido NUMERIC(12, 2) NOT NULL,
+        observacao TEXT,
+        usuario_responsavel TEXT NOT NULL,
+        referencia_atendimento TEXT,
+        paciente_id TEXT,
+        paciente_nome TEXT NOT NULL,
+        origem_tipo VARCHAR(50) NOT NULL,
+        origem_id TEXT NOT NULL,
+        mes_referencia TEXT NOT NULL,
+        status TEXT DEFAULT 'RECEBIDO' NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT,
+        CONSTRAINT uk_renda_massoterapia_origem UNIQUE (origem_tipo, origem_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_renda_massoterapia_tenant_mes ON renda_massoterapia (tenant_id, mes_referencia);
+      CREATE INDEX IF NOT EXISTS idx_renda_massoterapia_data ON renda_massoterapia (data_lancamento);
+      CREATE INDEX IF NOT EXISTS idx_renda_massoterapia_origem ON renda_massoterapia (origem_tipo, origem_id);
     `;
 
     await pool.query(ddl);
@@ -270,6 +294,7 @@ export async function loadAllFromPostgres() {
       auditLogsList,
       documentFilesList,
       signaturesList,
+      rendaMassoterapiaList,
     ] = await Promise.all([
       db.select().from(schema.tenants),
       db.select().from(schema.users),
@@ -282,6 +307,7 @@ export async function loadAllFromPostgres() {
       db.select().from(schema.auditLogs),
       db.select().from(schema.documentFiles),
       db.select().from(schema.signatures),
+      db.select().from(schema.rendaMassoterapia),
     ]);
 
     return {
@@ -296,6 +322,7 @@ export async function loadAllFromPostgres() {
       auditLogs: auditLogsList as unknown as AuditLog[],
       documentFiles: documentFilesList as unknown as DocumentFile[],
       signatures: signaturesList as unknown as SignatureRecord[],
+      rendaMassoterapia: rendaMassoterapiaList as unknown as RendaMassoterapiaEntry[],
     };
   } catch (err: unknown) {
     const message = (err as Error)?.message || String(err);
@@ -316,6 +343,7 @@ export async function syncStoreToPostgres(store: {
   auditLogs: AuditLog[];
   documentFiles: DocumentFile[];
   signatures: SignatureRecord[];
+  rendaMassoterapia?: RendaMassoterapiaEntry[];
 }) {
   if (!hasSqlConfig || !db) return;
 
@@ -792,6 +820,47 @@ export async function syncStoreToPostgres(store: {
           });
       } catch (docErr) {
         console.warn(`[PostgreSQL] Document file sync warning (${doc.id}):`, docErr);
+      }
+    }
+
+    // 10. Renda Massoterapia (Internal Financial Integration)
+    if (Array.isArray(store.rendaMassoterapia) && store.rendaMassoterapia.length > 0) {
+      for (const item of store.rendaMassoterapia) {
+        if (!validTenantIds.has(item.tenantId)) continue;
+        try {
+          await db
+            .insert(schema.rendaMassoterapia)
+            .values({
+              id: item.id,
+              tenantId: item.tenantId,
+              dataLancamento: item.dataLancamento,
+              valorRecebido: String(item.valorRecebido),
+              observacao: item.observacao || null,
+              usuarioResponsavel: item.usuarioResponsavel,
+              referenciaAtendimento: item.referenciaAtendimento || null,
+              pacienteId: item.pacienteId && validPatientIds.has(item.pacienteId) ? item.pacienteId : null,
+              pacienteNome: item.pacienteNome,
+              origemTipo: item.origemTipo,
+              origemId: item.origemId,
+              mesReferencia: item.mesReferencia,
+              status: item.status || 'RECEBIDO',
+              createdAt: item.createdAt,
+              updatedAt: item.updatedAt || null,
+            })
+            .onConflictDoUpdate({
+              target: schema.rendaMassoterapia.id,
+              set: {
+                dataLancamento: item.dataLancamento,
+                valorRecebido: String(item.valorRecebido),
+                observacao: item.observacao || null,
+                usuarioResponsavel: item.usuarioResponsavel,
+                status: item.status || 'RECEBIDO',
+                updatedAt: item.updatedAt || new Date().toISOString(),
+              },
+            });
+        } catch (rmErr) {
+          console.warn(`[PostgreSQL] Renda Massoterapia sync warning (${item.id}):`, rmErr);
+        }
       }
     }
   } catch (error) {

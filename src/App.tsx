@@ -26,6 +26,7 @@ import { PackageDetailModal } from './components/packages/PackageDetailModal';
 import { PackagesTrackerView } from './components/packages/PackagesTrackerView';
 import { LoginView } from './components/auth/LoginView';
 import { MobileTabletHub } from './components/MobileTabletHub';
+import { RendaMassoterapiaView } from './components/finance/RendaMassoterapiaView';
 import { ResolutionScaleModal } from './components/layout/ResolutionScaleModal';
 import { FullscreenExitButton } from './components/layout/FullscreenExitButton';
 import { useFullscreen } from './hooks/useFullscreen';
@@ -756,6 +757,11 @@ export function App() {
                   currentTenant={tenant}
                   onRefreshData={loadData}
                 />
+              )}
+
+              {/* Renda Massoterapia (Integração Financeira) */}
+              {activeView === 'renda-massoterapia' && (
+                <RendaMassoterapiaView onRefreshData={loadData} />
               )}
 
               {/* WhatsApp Automation */}

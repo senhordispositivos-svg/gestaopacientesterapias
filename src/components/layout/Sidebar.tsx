@@ -102,6 +102,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'birthdays', label: 'Aniversariantes', icon: Cake, roles: ['ADMIN', 'PROFESSIONAL', 'RECEPTIONIST'] },
     { id: 'professionals', label: 'Usuários & Permissões', icon: Users, roles: ['ADMIN', 'RECEPTIONIST'] },
     { id: 'reports', label: 'Relatórios', icon: BarChart3, roles: ['ADMIN', 'PROFESSIONAL'] },
+    { id: 'renda-massoterapia', label: 'Renda Massoterapia', icon: DollarSign, roles: ['ADMIN', 'PROFESSIONAL'] },
   ];
 
   const systemItems = [

@@ -435,3 +435,48 @@ export interface DbConnectionTestResult {
   };
 }
 
+export interface RendaMassoterapiaEntry {
+  id: string;
+  tenantId: string;
+  dataLancamento: string; // YYYY-MM-DD
+  valorRecebido: number;
+  observacao?: string;
+  usuarioResponsavel: string;
+  referenciaAtendimento?: string;
+  pacienteId?: string;
+  pacienteNome: string;
+  origemTipo: 'atendimento_massoterapia' | 'pacote_massoterapia' | 'avulso_massoterapia';
+  origemId: string;
+  mesReferencia: string; // YYYY-MM
+  status: 'RECEBIDO' | 'CANCELADO' | 'ESTORNADO';
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface FinancialConnectionTestResult {
+  success: boolean;
+  message: string;
+  database: string;
+  table: string;
+  recordsCount: number;
+  currentMonthTotal: number;
+  responseTimeMs: number;
+  testedAt: string;
+  error?: string;
+}
+
+export interface FinancialIntegrationStep {
+  step: number;
+  name: string;
+  status: 'OK' | 'ERROR' | 'WARNING';
+  details: string;
+}
+
+export interface FinancialIntegrationTestResult {
+  success: boolean;
+  summary: string;
+  steps: FinancialIntegrationStep[];
+  checkedAt: string;
+  error?: string;
+}
+

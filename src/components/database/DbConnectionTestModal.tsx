@@ -23,6 +23,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { DbConnectionTestResult } from '../../types';
+import { FinancialIntegrationTestModal } from '../finance/FinancialIntegrationTestModal';
 
 interface DbConnectionTestModalProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export const DbConnectionTestModal: React.FC<DbConnectionTestModalProps> = ({ is
   const [isRunningTest, setIsRunningTest] = useState(false);
   const [testResult, setTestResult] = useState<DbConnectionTestResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isFinTestModalOpen, setIsFinTestModalOpen] = useState(false);
 
   const isSuperUser = Boolean(
     !user ||
@@ -380,6 +382,31 @@ export const DbConnectionTestModal: React.FC<DbConnectionTestModalProps> = ({ is
                   </div>
                 </div>
               )}
+
+              {/* Card 4: Integração Financeira - renda_massoterapia */}
+              <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                      Integração Financeira (renda_massoterapia)
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold">
+                      PostgreSQL Integrado
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Execute a rotina de validação dos 7 passos (Banco, Tabela, Usuário, Colunas, INSERT, SELECT e Regra Anti-Duplicidade).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsFinTestModalOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  Testar Integração (7 Passos)
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -414,6 +441,12 @@ export const DbConnectionTestModal: React.FC<DbConnectionTestModalProps> = ({ is
           </div>
         </div>
       </div>
+
+      {/* Modal de Teste de Integração Financeira */}
+      <FinancialIntegrationTestModal
+        isOpen={isFinTestModalOpen}
+        onClose={() => setIsFinTestModalOpen(false)}
+      />
     </div>
   );
 };

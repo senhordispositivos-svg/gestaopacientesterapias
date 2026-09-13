@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, integer, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, boolean, integer, jsonb, numeric } from 'drizzle-orm/pg-core';
 
 export const tenants = pgTable('tenants', {
   id: text('id').primaryKey(),
@@ -214,3 +214,22 @@ export const signatures = pgTable('signatures', {
   ipAddress: text('ip_address').notNull(),
   hash: text('hash').notNull(),
 });
+
+export const rendaMassoterapia = pgTable('renda_massoterapia', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  dataLancamento: text('data_lancamento').notNull(),
+  valorRecebido: numeric('valor_recebido', { precision: 12, scale: 2 }).notNull(),
+  observacao: text('observacao'),
+  usuarioResponsavel: text('usuario_responsavel').notNull(),
+  referenciaAtendimento: text('referencia_atendimento'),
+  pacienteId: text('paciente_id'),
+  pacienteNome: text('paciente_nome').notNull(),
+  origemTipo: text('origem_tipo').notNull(),
+  origemId: text('origem_id').notNull(),
+  mesReferencia: text('mes_referencia').notNull(),
+  status: text('status').default('RECEBIDO').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at'),
+});
+

@@ -16,10 +16,12 @@ import {
   Users,
   CheckCircle2,
   AlertCircle,
+  DollarSign,
 } from 'lucide-react';
 import { Patient, Session, SessionPackage, Anamnesis, Tenant, User } from '../../types';
 import { ClientAnamnesisSheet } from './ClientAnamnesisSheet';
 import { AnamnesisModal } from '../anamnesis/AnamnesisModal';
+import { RendaMassoterapiaView } from '../finance/RendaMassoterapiaView';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -41,7 +43,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const { tenant: authTenant } = useAuth();
   const activeTenant = currentTenant || authTenant;
 
-  const [activeTab, setActiveTab] = useState<'sheet' | 'metrics'>('sheet');
+  const [activeTab, setActiveTab] = useState<'sheet' | 'metrics' | 'renda'>('sheet');
   const [selectedPatientId, setSelectedPatientId] = useState<string>(patients[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentAnamnesis, setCurrentAnamnesis] = useState<Anamnesis | null>(null);
@@ -240,6 +242,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <BarChart3 className="w-4 h-4" />
               Métricas Gerais
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('renda')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'renda'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <DollarSign className="w-4 h-4" />
+              Renda Massoterapia
+            </button>
           </div>
         </div>
 
@@ -410,6 +425,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Renda Massoterapia Tab */}
+      {activeTab === 'renda' && (
+        <RendaMassoterapiaView onRefreshData={onRefreshData} />
       )}
 
       {/* Modal de Anamnese Completa */}
