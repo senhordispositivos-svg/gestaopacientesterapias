@@ -1938,7 +1938,7 @@ app.get('/api/packages', (req, res) => {
   res.json(list);
 });
 
-app.post('/api/packages', (req, res) => {
+app.post('/api/packages', async (req, res) => {
   const tenantId = (req.headers['x-tenant-id'] as string) || req.body.tenantId || 'tenant-demo-1';
   const pat = db.patients.find(p => p.id === req.body.patientId);
   const osaiasUser = db.users.find(u => u.email?.toLowerCase() === 'osaiasbrito@gmail.com' || u.id === 'user-super-osaias' || u.id === 'user-master-1') || DEFAULT_USERS[0];
@@ -2005,7 +2005,7 @@ app.post('/api/packages', (req, res) => {
   });
 
   // Integração Tabela renda_massoterapia (PostgreSQL): Lançamento de Pacote de Massoterapia (valor integral único)
-  recordRendaMassoterapiaEntry(tenantId, {
+  await recordRendaMassoterapiaEntry(tenantId, {
     origemTipo: 'pacote_massoterapia',
     origemId: newPackage.id,
     referenciaAtendimento: newPackage.id,
@@ -2026,7 +2026,7 @@ app.post('/api/packages', (req, res) => {
   res.status(201).json(newPackage);
 });
 
-app.put('/api/packages/:id', (req, res) => {
+app.put('/api/packages/:id', async (req, res) => {
   const index = db.packages.findIndex(p => p.id === req.params.id);
   if (index === -1) return res.status(404).json({ message: 'Pacote não encontrado' });
 
@@ -2043,7 +2043,7 @@ app.put('/api/packages/:id', (req, res) => {
   const updatedPkg = db.packages[index];
 
   // Atualização em renda_massoterapia se preço ou dados mudarem
-  recordRendaMassoterapiaEntry(updatedPkg.tenantId, {
+  await recordRendaMassoterapiaEntry(updatedPkg.tenantId, {
     origemTipo: 'pacote_massoterapia',
     origemId: updatedPkg.id,
     referenciaAtendimento: updatedPkg.id,
@@ -2055,7 +2055,7 @@ app.put('/api/packages/:id', (req, res) => {
     pacienteNome: updatedPkg.patientName,
     title: updatedPkg.title,
     treatmentType: updatedPkg.treatmentType,
-    status: 'RECEBIDO',
+    status: updatedPkg.status === 'CANCELLED' ? 'CANCELADO' : 'RECEBIDO',
   });
 
   // If sessionCount increased, generate missing session slots
@@ -3307,6 +3307,65 @@ app.post('/api/financial/renda-massoterapia', async (req, res) => {
   }
 
   res.status(201).json(entry);
+});
+
+// POST /api/financial/renda-massoterapia/sync-all
+// Sincroniza todos os pacotes e sessões avulsas existentes para a tabela renda_massoterapia
+app.post('/api/financial/renda-massoterapia/sync-all', async (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || req.body.tenantId || 'tenant-demo-1';
+  let count = 0;
+
+  try {
+    // 1. Sincroniza pacotes de massoterapia
+    const packages = (db.packages || []).filter((p: any) => !tenantId || p.tenantId === tenantId);
+    for (const pkg of packages) {
+      const isMasso = isMassoterapiaService([], pkg.title, pkg.treatmentType);
+      if (isMasso) {
+        await recordRendaMassoterapiaEntry(pkg.tenantId || tenantId, {
+          origemTipo: 'pacote_massoterapia',
+          origemId: pkg.id,
+          referenciaAtendimento: pkg.id,
+          dataLancamento: pkg.createdAt ? pkg.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+          valorRecebido: Number(pkg.price || 800),
+          observacao: `Pacote Massoterapia (${pkg.title || pkg.treatmentType || 'Pacote'}) - ${pkg.sessionCount || 5} sessões`,
+          usuarioResponsavel: pkg.professionalName || 'Profissional',
+          pacienteId: pkg.patientId,
+          pacienteNome: pkg.patientName || 'Paciente',
+          procedures: pkg.treatmentType || 'Massoterapia',
+          status: 'RECEBIDO',
+        });
+        count++;
+      }
+    }
+
+    // 2. Sincroniza atendimentos avulsos de massoterapia
+    const sessions = (db.sessions || []).filter((s: any) => !tenantId || s.tenantId === tenantId);
+    for (const sess of sessions) {
+      if (!sess.packageId || sess.isSingleSession) {
+        const isMasso = isMassoterapiaService(sess.procedures);
+        if (isMasso) {
+          await recordRendaMassoterapiaEntry(sess.tenantId || tenantId, {
+            origemTipo: 'atendimento_massoterapia',
+            origemId: sess.id,
+            referenciaAtendimento: sess.id,
+            dataLancamento: sess.scheduledDate || (sess.createdAt ? sess.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10)),
+            valorRecebido: Number(sess.price || 180),
+            observacao: `Atendimento Massoterapia - ${(Array.isArray(sess.procedures) ? sess.procedures.join(', ') : sess.procedures) || 'Sessão Avulsa'}`,
+            usuarioResponsavel: sess.professionalName || 'Profissional',
+            pacienteId: sess.patientId,
+            pacienteNome: sess.patientName || 'Paciente',
+            procedures: Array.isArray(sess.procedures) ? sess.procedures.join(', ') : (sess.procedures || 'Massoterapia'),
+            status: sess.status === 'CANCELLED' ? 'CANCELADO' : 'RECEBIDO',
+          });
+          count++;
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error('Erro na sincronização de renda massoterapia:', err);
+  }
+
+  res.json({ success: true, syncedCount: count });
 });
 
 

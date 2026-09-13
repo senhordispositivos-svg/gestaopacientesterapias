@@ -70,6 +70,35 @@
   ],
   "patients": [
     {
+      "id": "pat-1788560250930-f1nc",
+      "tenantId": "tenant-demo-1",
+      "name": "Josenilton dos Santos Salazar",
+      "email": "jssalazar0826@gmail.com",
+      "cpf": "641.333.203-44",
+      "rg": null,
+      "gender": "Masculino",
+      "phone": "(98) 98854-5376",
+      "whatsapp": "(98) 98854-5376",
+      "profession": "Comerciário",
+      "birthDate": "1980-06-26",
+      "cep": "65122-076",
+      "street": "Rua Florizete Serra",
+      "number": "191",
+      "complement": null,
+      "neighborhood": "Parque Jair",
+      "city": "São José de Ribamar",
+      "state": "MA",
+      "referencePoint": null,
+      "notes": "Ficha preenchida e assinada pelo paciente via WhatsApp.",
+      "photoUrl": null,
+      "avatarUrl": null,
+      "assignedProfessionalId": null,
+      "assignedProfessionalName": "Geral",
+      "createdAt": "2026-09-04T22:17:30.928Z",
+      "updatedAt": "2026-09-04T22:17:30.932Z",
+      "deletedAt": "2026-09-04T22:54:21.235Z"
+    },
+    {
       "id": "pat-1788532340309-rb8gdd",
       "tenantId": "tenant-demo-1",
       "name": "Maria Angélica de Almeida Santana",
@@ -271,35 +300,6 @@
       "createdAt": "2026-08-19T02:00:00.000Z",
       "updatedAt": "2026-08-19T02:00:00.000Z",
       "deletedAt": null
-    },
-    {
-      "id": "pat-1788560250930-f1nc",
-      "tenantId": "tenant-demo-1",
-      "name": "Josenilton dos Santos Salazar",
-      "email": "jssalazar0826@gmail.com",
-      "cpf": "641.333.203-44",
-      "rg": null,
-      "gender": "Masculino",
-      "phone": "(98) 98854-5376",
-      "whatsapp": "(98) 98854-5376",
-      "profession": "Comerciário",
-      "birthDate": "1980-06-26",
-      "cep": "65122-076",
-      "street": "Rua Florizete Serra",
-      "number": "191",
-      "complement": null,
-      "neighborhood": "Parque Jair",
-      "city": "São José de Ribamar",
-      "state": "MA",
-      "referencePoint": null,
-      "notes": "Ficha preenchida e assinada pelo paciente via WhatsApp.",
-      "photoUrl": null,
-      "avatarUrl": null,
-      "assignedProfessionalId": null,
-      "assignedProfessionalName": "Geral",
-      "createdAt": "2026-09-04T22:17:30.928Z",
-      "updatedAt": "2026-09-04T22:17:30.932Z",
-      "deletedAt": "2026-09-04T22:54:21.235Z"
     }
   ],
   "anamneses": [
@@ -605,6 +605,21 @@
   ],
   "packages": [
     {
+      "id": "pkg-1789267440030",
+      "tenantId": "tenant-demo-1",
+      "patientName": "Carlos Eduardo",
+      "professionalId": "user-master-1",
+      "professionalName": "Osaias Brito",
+      "title": "Pacote Massoterapia Clínica",
+      "treatmentType": "Massoterapia Clínica",
+      "sessionCount": 5,
+      "completedCount": 0,
+      "price": 800,
+      "validityDate": "2026-12-12T02:44:00.030Z",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-13T02:44:00.030Z"
+    },
+    {
       "id": "pkg-sidney-2",
       "tenantId": "tenant-demo-1",
       "patientId": "pat-sidney-leitao",
@@ -625,8 +640,128 @@
       "createdAt": "2026-08-19T02:10:00.000Z"
     }
   ],
-  "sessions": [],
-  "evolutions": [],
+  "sessions": [
+    {
+      "id": "sess-single-1789267435686",
+      "tenantId": "tenant-demo-1",
+      "patientName": "Thayná Silva",
+      "sessionNumber": 1,
+      "professionalId": "",
+      "professionalName": "Profissional",
+      "scheduledDate": "2026-09-13",
+      "scheduledTime": "09:00",
+      "procedures": [
+        "Massoterapia Relaxante"
+      ],
+      "evolutionText": "",
+      "attendedAt": "2026-09-13T02:43:55.686Z",
+      "price": 180,
+      "status": "COMPLETED",
+      "validationToken": "SESS-1A098A660A6",
+      "createdAt": "2026-09-13T02:43:55.686Z"
+    },
+    {
+      "id": "sess-pkg-1789267440030-1",
+      "tenantId": "tenant-demo-1",
+      "packageId": "pkg-1789267440030",
+      "patientName": "Carlos Eduardo",
+      "professionalId": "user-master-1",
+      "professionalName": "Osaias Brito",
+      "sessionNumber": 1,
+      "scheduledDate": "2026-09-13",
+      "scheduledTime": "14:00",
+      "procedures": [
+        "Massoterapia Clínica"
+      ],
+      "status": "PENDING",
+      "validationToken": "SESS-pkg-1789267440030-1-1A098A6719E",
+      "createdAt": "2026-09-13T02:44:00.030Z"
+    },
+    {
+      "id": "sess-pkg-1789267440030-2",
+      "tenantId": "tenant-demo-1",
+      "packageId": "pkg-1789267440030",
+      "patientName": "Carlos Eduardo",
+      "professionalId": "user-master-1",
+      "professionalName": "Osaias Brito",
+      "sessionNumber": 2,
+      "scheduledDate": "2026-09-20",
+      "scheduledTime": "14:00",
+      "procedures": [
+        "Massoterapia Clínica"
+      ],
+      "status": "PENDING",
+      "validationToken": "SESS-pkg-1789267440030-2-1A098A6719E",
+      "createdAt": "2026-09-13T02:44:00.030Z"
+    },
+    {
+      "id": "sess-pkg-1789267440030-3",
+      "tenantId": "tenant-demo-1",
+      "packageId": "pkg-1789267440030",
+      "patientName": "Carlos Eduardo",
+      "professionalId": "user-master-1",
+      "professionalName": "Osaias Brito",
+      "sessionNumber": 3,
+      "scheduledDate": "2026-09-27",
+      "scheduledTime": "14:00",
+      "procedures": [
+        "Massoterapia Clínica"
+      ],
+      "status": "PENDING",
+      "validationToken": "SESS-pkg-1789267440030-3-1A098A6719E",
+      "createdAt": "2026-09-13T02:44:00.030Z"
+    },
+    {
+      "id": "sess-pkg-1789267440030-4",
+      "tenantId": "tenant-demo-1",
+      "packageId": "pkg-1789267440030",
+      "patientName": "Carlos Eduardo",
+      "professionalId": "user-master-1",
+      "professionalName": "Osaias Brito",
+      "sessionNumber": 4,
+      "scheduledDate": "2026-10-04",
+      "scheduledTime": "14:00",
+      "procedures": [
+        "Massoterapia Clínica"
+      ],
+      "status": "PENDING",
+      "validationToken": "SESS-pkg-1789267440030-4-1A098A6719E",
+      "createdAt": "2026-09-13T02:44:00.030Z"
+    },
+    {
+      "id": "sess-pkg-1789267440030-5",
+      "tenantId": "tenant-demo-1",
+      "packageId": "pkg-1789267440030",
+      "patientName": "Carlos Eduardo",
+      "professionalId": "user-master-1",
+      "professionalName": "Osaias Brito",
+      "sessionNumber": 5,
+      "scheduledDate": "2026-10-11",
+      "scheduledTime": "14:00",
+      "procedures": [
+        "Massoterapia Clínica"
+      ],
+      "status": "PENDING",
+      "validationToken": "SESS-pkg-1789267440030-5-1A098A6719E",
+      "createdAt": "2026-09-13T02:44:00.030Z"
+    }
+  ],
+  "evolutions": [
+    {
+      "id": "evo-1789267435686-oc0k",
+      "tenantId": "tenant-demo-1",
+      "sessionId": "sess-single-1789267435686",
+      "professionalId": "",
+      "professionalName": "Profissional",
+      "date": "2026-09-13",
+      "procedures": [
+        "Massoterapia Relaxante"
+      ],
+      "notes": "Atendimento de sessão avulsa registrado.",
+      "version": 1,
+      "createdAt": "2026-09-13T02:43:55.686Z"
+    }
+  ],
   "publicTokens": [],
   "auditLogs": [
     {
@@ -874,6 +1009,49 @@
   "deletedPackageIds": [],
   "cashEntries": [
     {
+      "id": "cash-1789267440030-iazk",
+      "tenantId": "tenant-demo-1",
+      "type": "PACKAGE",
+      "originId": "pkg-1789267440030",
+      "packageId": "pkg-1789267440030",
+      "packageName": "Pacote Massoterapia Clínica",
+      "totalSessions": 5,
+      "description": "Novo Pacote - Pacote Massoterapia Clínica (5 sessões - Carlos Eduardo)",
+      "patientId": "",
+      "patientName": "Carlos Eduardo",
+      "professionalId": "user-master-1",
+      "professionalName": "Osaias Brito",
+      "amount": 800,
+      "effectiveAmount": 800,
+      "date": "2026-09-13",
+      "month": "2026-09",
+      "category": "MASSOTERAPIA",
+      "section": "MASSOTERAPIA",
+      "syncedToExternal": false,
+      "notes": "Novo pacote contratado. Valor integral creditado no caixa e enviado ao sistema financeiro externo.",
+      "createdAt": "2026-09-13T02:44:00.030Z"
+    },
+    {
+      "id": "cash-1789267435686-4589",
+      "tenantId": "tenant-demo-1",
+      "type": "SINGLE_SESSION",
+      "originId": "sess-single-1789267435686",
+      "description": "Atendimento Massoterapia",
+      "patientId": "",
+      "patientName": "Thayná Silva",
+      "professionalId": "",
+      "professionalName": "Profissional",
+      "amount": 180,
+      "effectiveAmount": 180,
+      "date": "2026-09-13",
+      "month": "2026-09",
+      "category": "MASSOTERAPIA",
+      "section": "MASSOTERAPIA",
+      "syncedToExternal": false,
+      "notes": "Atendimento avulso (Massoterapia Relaxante).",
+      "createdAt": "2026-09-13T02:43:55.686Z"
+    },
+    {
       "id": "cash-1788806939844-s9bu",
       "tenantId": "tenant-demo-1",
       "type": "PACKAGE_SESSION",
@@ -1021,6 +1199,40 @@
       "syncedAt": "2026-09-06T10:05:00.000Z",
       "notes": "Atendimento da 2ª sessão do pacote. Não entra no caixa pois a receita já foi lançada na 1ª sessão/aquisição do pacote.",
       "createdAt": "2026-09-06T10:00:00.000Z"
+    }
+  ],
+  "rendaMassoterapia": [
+    {
+      "id": "rm-1789267440036-w2e3",
+      "tenantId": "tenant-demo-1",
+      "dataLancamento": "2026-09-13",
+      "valorRecebido": 800,
+      "observacao": "Pacote Massoterapia (Pacote Massoterapia Clínica) - 5 sessões - Paciente: Carlos Eduardo",
+      "usuarioResponsavel": "Osaias Brito",
+      "referenciaAtendimento": "pkg-1789267440030",
+      "pacienteNome": "Carlos Eduardo",
+      "origemTipo": "pacote_massoterapia",
+      "origemId": "pkg-1789267440030",
+      "mesReferencia": "2026-09",
+      "status": "RECEBIDO",
+      "createdAt": "2026-09-13T02:44:00.035Z",
+      "updatedAt": "2026-09-13T02:44:00.035Z"
+    },
+    {
+      "id": "rm-1789267435690-vkex",
+      "tenantId": "tenant-demo-1",
+      "dataLancamento": "2026-09-13",
+      "valorRecebido": 180,
+      "observacao": "Atendimento Massoterapia (Massoterapia Relaxante) - Paciente: Thayná Silva",
+      "usuarioResponsavel": "Profissional",
+      "referenciaAtendimento": "sess-single-1789267435686",
+      "pacienteNome": "Thayná Silva",
+      "origemTipo": "atendimento_massoterapia",
+      "origemId": "sess-single-1789267435686",
+      "mesReferencia": "2026-09",
+      "status": "RECEBIDO",
+      "createdAt": "2026-09-13T02:43:55.690Z",
+      "updatedAt": "2026-09-13T02:43:55.690Z"
     }
   ]
 }

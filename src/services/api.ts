@@ -30,6 +30,7 @@ import { INITIAL_TENANTS, INITIAL_USERS, INITIAL_PATIENTS, INITIAL_PACKAGES } fr
 import { supabaseDirectApi } from './supabaseDirectApi';
 import { realtimeService } from './realtime';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { getLocalDateString, getLocalMonthString } from '../utils/crypto';
 
 const STORAGE_KEYS = {
   TENANTS: 'clinica_tenants',
@@ -45,6 +46,7 @@ const STORAGE_KEYS = {
   SIGNATURES: 'clinica_signatures',
   AUDIT_LOGS: 'clinica_audit_logs',
   CASH_ENTRIES: 'clinica_cash_entries',
+  RENDA_MASSOTERAPIA: 'clinica_renda_massoterapia',
 };
 
 function getLocal<T>(key: string, defaultVal: T): T {
@@ -106,6 +108,163 @@ async function tryFetch(url: string, options?: RequestInit): Promise<Response | 
     console.warn(`API [${url}] network or fallback notice:`, err);
     return null;
   }
+}
+
+export function recordClientRendaMassoterapiaEntry(entryData: Partial<RendaMassoterapiaEntry>): RendaMassoterapiaEntry {
+  const list = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
+  const date = entryData.dataLancamento || getLocalDateString();
+  const mesReferencia = date.slice(0, 7);
+  const now = new Date().toISOString();
+
+  let existing = list.find(e => e.origemTipo === entryData.origemTipo && e.origemId === entryData.origemId);
+  if (existing) {
+    if (entryData.valorRecebido !== undefined) existing.valorRecebido = Number(entryData.valorRecebido);
+    if (entryData.dataLancamento) existing.dataLancamento = entryData.dataLancamento;
+    existing.mesReferencia = mesReferencia;
+    if (entryData.status) existing.status = entryData.status;
+    if (entryData.observacao) existing.observacao = entryData.observacao;
+    if (entryData.usuarioResponsavel) existing.usuarioResponsavel = entryData.usuarioResponsavel;
+    if (entryData.pacienteNome) existing.pacienteNome = entryData.pacienteNome;
+    existing.updatedAt = now;
+  } else {
+    existing = {
+      id: entryData.id || `rm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      tenantId: entryData.tenantId || 'tenant-demo-1',
+      dataLancamento: date,
+      valorRecebido: Number(entryData.valorRecebido || 0),
+      observacao: entryData.observacao || 'Lançamento Massoterapia',
+      usuarioResponsavel: entryData.usuarioResponsavel || 'Profissional',
+      referenciaAtendimento: entryData.referenciaAtendimento || entryData.origemId,
+      pacienteId: entryData.pacienteId,
+      pacienteNome: entryData.pacienteNome || 'Paciente',
+      origemTipo: entryData.origemTipo || 'atendimento_massoterapia',
+      origemId: entryData.origemId || `manual-${Date.now()}`,
+      mesReferencia,
+      status: entryData.status || 'RECEBIDO',
+      createdAt: entryData.createdAt || now,
+      updatedAt: now,
+    };
+    list.unshift(existing);
+  }
+  setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, list);
+  return existing;
+}
+
+export function compileClientRendaMassoterapia(tenantId?: string): RendaMassoterapiaEntry[] {
+  const localStored = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
+  const sessions = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
+  const packages = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
+  const cashEntries = getLocal<any[]>(STORAGE_KEYS.CASH_ENTRIES, []);
+
+  const map = new Map<string, RendaMassoterapiaEntry>();
+
+  // 1. Existing stored entries
+  for (const item of localStored) {
+    const key = `${item.origemTipo}_${item.origemId}`;
+    map.set(key, item);
+  }
+
+  // 2. Packages (Cada pacote contratado entra como receita integral única de massoterapia)
+  for (const pkg of packages) {
+    const key = `pacote_massoterapia_${pkg.id}`;
+    const date = (pkg.createdAt ? pkg.createdAt.slice(0, 10) : getLocalDateString());
+    const val = Number(pkg.price || (pkg.sessionCount ? pkg.sessionCount * 160 : 800));
+    if (val > 0) {
+      if (map.has(key)) {
+        const item = map.get(key)!;
+        if (pkg.status === 'CANCELLED') item.status = 'CANCELADO';
+      } else {
+        map.set(key, {
+          id: `rm-pkg-${pkg.id}`,
+          tenantId: pkg.tenantId || tenantId || 'tenant-demo-1',
+          dataLancamento: date,
+          valorRecebido: val,
+          observacao: `Pacote Massoterapia (${pkg.title || pkg.treatmentType || 'Pacote'}) - ${pkg.sessionCount || 5} sessões - Paciente: ${pkg.patientName}`,
+          usuarioResponsavel: pkg.professionalName || 'Profissional',
+          referenciaAtendimento: pkg.id,
+          pacienteId: pkg.patientId,
+          pacienteNome: pkg.patientName || 'Paciente',
+          origemTipo: 'pacote_massoterapia',
+          origemId: pkg.id,
+          mesReferencia: date.slice(0, 7),
+          status: pkg.status === 'CANCELLED' ? 'CANCELADO' : 'RECEBIDO',
+          createdAt: pkg.createdAt || new Date().toISOString(),
+          updatedAt: pkg.createdAt || new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  // 3. Single Sessions (Cada sessão avulsa lançada entra com o seu valor individual)
+  for (const sess of sessions) {
+    if (sess.isSingleSession || !sess.packageId || (sess.price && sess.price > 0)) {
+      const key = `atendimento_massoterapia_${sess.id}`;
+      const val = Number(sess.price || 180);
+      const date = (sess.scheduledDate || (sess.attendedAt ? sess.attendedAt.slice(0, 10) : (sess.createdAt ? sess.createdAt.slice(0, 10) : getLocalDateString())));
+      const procs = (sess.procedures && sess.procedures.length > 0) ? sess.procedures.join(', ') : 'Massoterapia';
+      if (map.has(key)) {
+        const item = map.get(key)!;
+        if (sess.status === 'CANCELLED') item.status = 'CANCELADO';
+      } else {
+        map.set(key, {
+          id: `rm-sess-${sess.id}`,
+          tenantId: sess.tenantId || tenantId || 'tenant-demo-1',
+          dataLancamento: date,
+          valorRecebido: val,
+          observacao: `Sessão Avulsa (${procs}) - Paciente: ${sess.patientName}`,
+          usuarioResponsavel: sess.professionalName || 'Profissional',
+          referenciaAtendimento: sess.id,
+          pacienteId: sess.patientId,
+          pacienteNome: sess.patientName || 'Paciente',
+          origemTipo: 'atendimento_massoterapia',
+          origemId: sess.id,
+          mesReferencia: date.slice(0, 7),
+          status: sess.status === 'CANCELLED' ? 'CANCELADO' : 'RECEBIDO',
+          createdAt: sess.createdAt || new Date().toISOString(),
+          updatedAt: sess.attendedAt || sess.createdAt || new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  // 4. Cash entries
+  for (const cash of cashEntries) {
+    const val = Number(cash.amount || cash.effectiveAmount || 0);
+    if (val > 0) {
+      const origTipo = cash.type === 'PACKAGE' ? 'pacote_massoterapia' : 'atendimento_massoterapia';
+      const origId = cash.originId || cash.packageId || cash.id;
+      const key = `${origTipo}_${origId}`;
+      if (!map.has(key)) {
+        const date = (cash.date || (cash.createdAt ? cash.createdAt.slice(0, 10) : getLocalDateString()));
+        map.set(key, {
+          id: `rm-cash-${cash.id}`,
+          tenantId: cash.tenantId || tenantId || 'tenant-demo-1',
+          dataLancamento: date,
+          valorRecebido: val,
+          observacao: cash.description || `Lançamento de Caixa - Paciente: ${cash.patientName}`,
+          usuarioResponsavel: cash.professionalName || 'Profissional',
+          referenciaAtendimento: cash.packageId || cash.originId || cash.id,
+          pacienteId: cash.patientId,
+          pacienteNome: cash.patientName || 'Paciente',
+          origemTipo: origTipo as any,
+          origemId: origId,
+          mesReferencia: date.slice(0, 7),
+          status: 'RECEBIDO',
+          createdAt: cash.createdAt || new Date().toISOString(),
+          updatedAt: cash.createdAt || new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  const result = Array.from(map.values()).sort((a, b) => {
+    const dComp = (b.dataLancamento || '').localeCompare(a.dataLancamento || '');
+    if (dComp !== 0) return dComp;
+    return (b.createdAt || '').localeCompare(a.createdAt || '');
+  });
+
+  setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, result);
+  return result;
 }
 
 export const api = {
@@ -1280,6 +1439,20 @@ export const api = {
           localList.unshift(json);
           setLocal(STORAGE_KEYS.PACKAGES, localList);
         }
+        // Registra automaticamente a renda do pacote de massoterapia
+        recordClientRendaMassoterapiaEntry({
+          tenantId,
+          origemTipo: 'pacote_massoterapia',
+          origemId: json.id,
+          referenciaAtendimento: json.id,
+          dataLancamento: json.createdAt ? json.createdAt.slice(0, 10) : getLocalDateString(),
+          valorRecebido: Number(json.price || data.price || (json.sessionCount ? json.sessionCount * 160 : 800)),
+          observacao: `Pacote Massoterapia (${json.title || json.treatmentType || 'Pacote'}) - ${json.sessionCount || 5} sessões - Paciente: ${json.patientName}`,
+          usuarioResponsavel: json.professionalName || 'Profissional',
+          pacienteId: json.patientId,
+          pacienteNome: json.patientName,
+          status: 'RECEBIDO',
+        });
         return json;
       } catch (e) {
         console.warn('Failed to parse createPackage JSON, using local storage fallback.', e);
@@ -1310,6 +1483,21 @@ export const api = {
     };
     list.unshift(newPkg);
     setLocal(STORAGE_KEYS.PACKAGES, list);
+
+    // Registra automaticamente na renda massoterapia local
+    recordClientRendaMassoterapiaEntry({
+      tenantId,
+      origemTipo: 'pacote_massoterapia',
+      origemId: newPkg.id,
+      referenciaAtendimento: newPkg.id,
+      dataLancamento: newPkg.createdAt ? newPkg.createdAt.slice(0, 10) : getLocalDateString(),
+      valorRecebido: Number(newPkg.price || 800),
+      observacao: `Pacote Massoterapia (${newPkg.title || newPkg.treatmentType}) - ${newPkg.sessionCount} sessões - Paciente: ${newPkg.patientName}`,
+      usuarioResponsavel: newPkg.professionalName || 'Profissional',
+      pacienteId: newPkg.patientId,
+      pacienteNome: newPkg.patientName,
+      status: 'RECEBIDO',
+    });
 
     // Auto-generate linked sessions in local storage
     const sessionsList = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
@@ -1450,6 +1638,15 @@ export const api = {
     const sessions = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
     const updatedSessions = sessions.filter(s => s.packageId !== id);
     setLocal(STORAGE_KEYS.SESSIONS, updatedSessions);
+
+    // Cancela lançamento do pacote em renda massoterapia
+    const rmList = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
+    const rmIdx = rmList.findIndex(e => e.origemTipo === 'pacote_massoterapia' && e.origemId === id);
+    if (rmIdx !== -1) {
+      rmList[rmIdx].status = 'CANCELADO';
+      rmList[rmIdx].updatedAt = new Date().toISOString();
+      setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, rmList);
+    }
   },
 
   // Sessions
@@ -1484,7 +1681,23 @@ export const api = {
     });
     if (serverRes) {
       try {
-        return await serverRes.json();
+        const json = await serverRes.json();
+        if (!json.packageId || json.isSingleSession) {
+          recordClientRendaMassoterapiaEntry({
+            tenantId,
+            origemTipo: 'atendimento_massoterapia',
+            origemId: json.id,
+            referenciaAtendimento: json.id,
+            dataLancamento: json.scheduledDate || getLocalDateString(),
+            valorRecebido: Number(json.price || data.price || 180),
+            observacao: `Atendimento Massoterapia - ${(json.procedures && json.procedures.join(', ')) || 'Sessão Avulsa'} (Paciente: ${json.patientName})`,
+            usuarioResponsavel: json.professionalName || 'Profissional',
+            pacienteId: json.patientId,
+            pacienteNome: json.patientName,
+            status: 'RECEBIDO',
+          });
+        }
+        return json;
       } catch (e) {
         console.warn('Failed to parse createSession JSON');
       }
@@ -1512,6 +1725,23 @@ export const api = {
     };
     list.unshift(newSess);
     setLocal(STORAGE_KEYS.SESSIONS, list);
+
+    if (!newSess.packageId) {
+      recordClientRendaMassoterapiaEntry({
+        tenantId,
+        origemTipo: 'atendimento_massoterapia',
+        origemId: newSess.id,
+        referenciaAtendimento: newSess.id,
+        dataLancamento: newSess.scheduledDate || getLocalDateString(),
+        valorRecebido: Number(newSess.price || 180),
+        observacao: `Atendimento Massoterapia - ${(newSess.procedures && newSess.procedures.join(', ')) || 'Sessão Avulsa'} (Paciente: ${newSess.patientName})`,
+        usuarioResponsavel: newSess.professionalName || 'Profissional',
+        pacienteId: newSess.patientId,
+        pacienteNome: newSess.patientName,
+        status: 'RECEBIDO',
+      });
+    }
+
     return newSess;
   },
 
@@ -1523,7 +1753,22 @@ export const api = {
     });
     if (serverRes) {
       try {
-        return await serverRes.json();
+        const resJson = await serverRes.json();
+        // Registra automaticamente o valor da sessão avulsa na renda massoterapia
+        recordClientRendaMassoterapiaEntry({
+          tenantId,
+          origemTipo: 'atendimento_massoterapia',
+          origemId: resJson.id,
+          referenciaAtendimento: resJson.id,
+          dataLancamento: resJson.scheduledDate || getLocalDateString(),
+          valorRecebido: Number(resJson.price || data.price || 180),
+          observacao: `Sessão Avulsa (${(resJson.procedures && resJson.procedures.join(', ')) || 'Massoterapia'}) - Paciente: ${resJson.patientName}`,
+          usuarioResponsavel: resJson.professionalName || 'Profissional',
+          pacienteId: resJson.patientId,
+          pacienteNome: resJson.patientName,
+          status: 'RECEBIDO',
+        });
+        return resJson;
       } catch (e) {
         console.warn('Failed to parse createSingleSession JSON');
       }
@@ -1560,6 +1805,21 @@ export const api = {
     };
     list.unshift(newSess);
     setLocal(STORAGE_KEYS.SESSIONS, list);
+
+    // Registra na renda massoterapia
+    recordClientRendaMassoterapiaEntry({
+      tenantId,
+      origemTipo: 'atendimento_massoterapia',
+      origemId: newSess.id,
+      referenciaAtendimento: newSess.id,
+      dataLancamento: newSess.scheduledDate || getLocalDateString(),
+      valorRecebido: Number(newSess.price || 180),
+      observacao: `Sessão Avulsa (${newSess.procedures?.join(', ') || 'Massoterapia'}) - Paciente: ${newSess.patientName}`,
+      usuarioResponsavel: newSess.professionalName || 'Profissional',
+      pacienteId: newSess.patientId,
+      pacienteNome: newSess.patientName,
+      status: 'RECEBIDO',
+    });
 
     // Also record in local cash entries if offline
     try {
@@ -1651,9 +1911,50 @@ export const api = {
     if (idx !== -1) {
       list[idx] = { ...list[idx], ...data };
       setLocal(STORAGE_KEYS.SESSIONS, list);
+
+      // Sincroniza atualização com renda massoterapia
+      const rmList = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
+      const rmIdx = rmList.findIndex(e => e.origemTipo === 'atendimento_massoterapia' && e.origemId === id);
+      if (rmIdx !== -1) {
+        if (data.status === 'CANCELLED') {
+          rmList[rmIdx].status = 'CANCELADO';
+        }
+        if (data.price !== undefined) {
+          rmList[rmIdx].valorRecebido = Number(data.price);
+        }
+        if (data.patientName) {
+          rmList[rmIdx].pacienteNome = data.patientName;
+        }
+        rmList[rmIdx].updatedAt = new Date().toISOString();
+        setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, rmList);
+      }
+
       return list[idx];
     }
     return data as Session;
+  },
+
+  async deleteSession(tenantId: string, id: string): Promise<boolean> {
+    try {
+      await tryFetch(`/api/sessions/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-tenant-id': tenantId },
+      });
+    } catch (e) {
+      console.warn('Error calling /api/sessions DELETE:', e);
+    }
+    const list = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
+    setLocal(STORAGE_KEYS.SESSIONS, list.filter(s => s.id !== id));
+
+    // Cancela na renda massoterapia
+    const rmList = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
+    const rmIdx = rmList.findIndex(e => e.origemTipo === 'atendimento_massoterapia' && e.origemId === id);
+    if (rmIdx !== -1) {
+      rmList[rmIdx].status = 'CANCELADO';
+      rmList[rmIdx].updatedAt = new Date().toISOString();
+      setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, rmList);
+    }
+    return true;
   },
 
   async signSessionDirect(tenantId: string, id: string, signatureUrl: string): Promise<Session> {
@@ -3281,17 +3582,115 @@ export const api = {
       headers['x-tenant-id'] = params.tenantId;
     }
 
+    let serverEntries: RendaMassoterapiaEntry[] = [];
+    let serverTotalPeriodo = 0;
+    let serverTotalMesAtual = 0;
+    let hasServerData = false;
+
     const serverRes = await tryFetch(`/api/financial/renda-massoterapia${qs ? `?${qs}` : ''}`, { headers });
     if (serverRes) {
-      return serverRes.json();
+      try {
+        const json = await serverRes.json();
+        if (json && Array.isArray(json.entries) && json.entries.length > 0) {
+          serverEntries = json.entries;
+          serverTotalPeriodo = Number(json.totalPeriodo) || 0;
+          serverTotalMesAtual = Number(json.totalMesAtual) || 0;
+          hasServerData = true;
+
+          // Merge into local storage so offline access is also warm
+          const localList = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
+          for (const se of serverEntries) {
+            const idx = localList.findIndex(l => l.origemTipo === se.origemTipo && l.origemId === se.origemId);
+            if (idx === -1) {
+              localList.unshift(se);
+            } else {
+              localList[idx] = { ...localList[idx], ...se };
+            }
+          }
+          setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, localList);
+        }
+      } catch (e) {
+        console.warn('Falha ao processar resposta do servidor renda-massoterapia:', e);
+      }
     }
 
+    if (hasServerData) {
+      return {
+        entries: serverEntries,
+        totalPeriodo: serverTotalPeriodo,
+        totalMesAtual: serverTotalMesAtual,
+        count: serverEntries.length,
+      };
+    }
+
+    // Fallback: Compilação dinâmica de todas as sessões avulsas, pacotes e caixas
+    const compiled = compileClientRendaMassoterapia(params?.tenantId);
+
+    const todayLocal = getLocalDateString();
+    const currentMonthLocal = params?.month || getLocalMonthString();
+
+    let filtered = compiled;
+
+    // Filtro de Período
+    if (params?.period === 'today') {
+      filtered = filtered.filter(e => e.dataLancamento === todayLocal);
+    } else if (params?.period === 'week') {
+      const d = new Date();
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(d.setDate(diff));
+      const mondayStr = getLocalDateString(monday);
+      filtered = filtered.filter(e => e.dataLancamento >= mondayStr && e.dataLancamento <= todayLocal);
+    } else if (params?.period === 'month') {
+      filtered = filtered.filter(e => e.mesReferencia === currentMonthLocal);
+    }
+
+    if (params?.startDate) {
+      filtered = filtered.filter(e => e.dataLancamento >= params.startDate!);
+    }
+    if (params?.endDate) {
+      filtered = filtered.filter(e => e.dataLancamento <= params.endDate!);
+    }
+
+    if (params?.search) {
+      const q = params.search.toLowerCase();
+      filtered = filtered.filter(e =>
+        (e.pacienteNome || '').toLowerCase().includes(q) ||
+        (e.observacao || '').toLowerCase().includes(q) ||
+        (e.usuarioResponsavel || '').toLowerCase().includes(q)
+      );
+    }
+
+    const totalPeriodo = filtered
+      .filter(e => e.status === 'RECEBIDO')
+      .reduce((acc, curr) => acc + (Number(curr.valorRecebido) || 0), 0);
+
+    const totalMesAtual = compiled
+      .filter(e => e.mesReferencia === currentMonthLocal && e.status === 'RECEBIDO')
+      .reduce((acc, curr) => acc + (Number(curr.valorRecebido) || 0), 0);
+
     return {
-      entries: [],
-      totalPeriodo: 0,
-      totalMesAtual: 0,
-      count: 0,
+      entries: filtered,
+      totalPeriodo,
+      totalMesAtual,
+      count: filtered.length,
     };
+  },
+
+  async syncRendaMassoterapiaAll(tenantId?: string): Promise<{ success: boolean; count: number; entries: RendaMassoterapiaEntry[] }> {
+    const compiled = compileClientRendaMassoterapia(tenantId);
+    try {
+      const serverRes = await tryFetch('/api/financial/renda-massoterapia/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(tenantId ? { 'x-tenant-id': tenantId } : {}) },
+      });
+      if (serverRes) {
+        const data = await serverRes.json();
+        return { success: true, count: data.syncedCount || compiled.length, entries: compiled };
+      }
+    } catch (_) {}
+
+    return { success: true, count: compiled.length, entries: compiled };
   },
 };
 

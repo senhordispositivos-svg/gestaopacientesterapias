@@ -117,3 +117,22 @@ export function isBirthdayToday(birthDateString?: string): boolean {
     today.getMonth() === birthDate.getMonth()
   );
 }
+
+/**
+ * Returns YYYY-MM-DD in local user timezone (avoiding UTC midnight shifts)
+ */
+export function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns YYYY-MM in local user timezone
+ */
+export function getLocalMonthString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}

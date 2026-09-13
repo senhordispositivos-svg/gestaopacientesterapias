@@ -3,17 +3,12 @@ import {
   DollarSign,
   Calendar,
   Search,
-  Filter,
   RefreshCw,
   ArrowLeftRight,
   Database,
   CheckCircle2,
-  AlertCircle,
   Clock,
-  User,
-  Package,
   Layers,
-  Sparkles,
   Download,
   Info,
   Zap,
@@ -21,6 +16,7 @@ import {
 import { RendaMassoterapiaEntry } from '../../types';
 import { api } from '../../services/api';
 import { FinancialIntegrationTestModal } from './FinancialIntegrationTestModal';
+import { getLocalDateString, getLocalMonthString } from '../../utils/crypto';
 
 interface RendaMassoterapiaViewProps {
   onRefreshData?: () => void;
@@ -29,8 +25,9 @@ interface RendaMassoterapiaViewProps {
 export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
   onRefreshData,
 }) => {
-  const [entries, setEntries] = useState<RendaMassoterapiaEntry[]>([]);
+  const [allEntries, setAllEntries] = useState<RendaMassoterapiaEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'all'>('month');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'RECEBIDO' | 'CANCELADO'>('ALL');
@@ -40,11 +37,9 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
   const fetchRendaEntries = async () => {
     setLoading(true);
     try {
-      const data = await api.getRendaMassoterapia({
-        period: selectedPeriod !== 'all' ? selectedPeriod : undefined,
-        search: searchQuery || undefined,
-      });
-      setEntries(data.entries || []);
+      // Carrega todos os lançamentos compilados (atendimentos avulsos, pacotes e caixa)
+      const data = await api.getRendaMassoterapia();
+      setAllEntries(data.entries || []);
     } catch (err) {
       console.error('Erro ao carregar lançamentos de renda massoterapia:', err);
     } finally {
@@ -52,54 +47,105 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
     }
   };
 
-  useEffect(() => {
-    fetchRendaEntries();
-  }, [selectedPeriod]);
+  const handleSyncAll = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await api.syncRendaMassoterapiaAll();
+      setQuickTestStatus(`Sincronização concluída! ${res.count} lançamentos consolidados.`);
+      await fetchRendaEntries();
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      setQuickTestStatus(`Falha na sincronização: ${err?.message || 'Erro desconhecido'}`);
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setQuickTestStatus(null), 5000);
+    }
+  };
 
-  // Handle Search submit / debounce
   useEffect(() => {
-    const timer = setTimeout(() => {
+    // Ao montar a tela, executa uma sincronização preventiva e busca os dados
+    (async () => {
+      try {
+        await api.syncRendaMassoterapiaAll();
+      } catch (_) {}
       fetchRendaEntries();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    })();
+  }, []);
 
-  // Calculate Metrics from entries
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const currentMonthStr = todayStr.slice(0, 7);
+  // Métricas financeiras calculadas com base em fuso local
+  const todayStr = getLocalDateString();
+  const currentMonthStr = getLocalMonthString();
 
   const totalHoje = useMemo(() => {
-    return entries
+    return allEntries
       .filter(e => e.dataLancamento === todayStr && e.status === 'RECEBIDO')
       .reduce((sum, e) => sum + (Number(e.valorRecebido) || 0), 0);
-  }, [entries, todayStr]);
+  }, [allEntries, todayStr]);
 
   const totalSemana = useMemo(() => {
     const d = new Date();
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    const mondayStr = new Date(d.setDate(diff)).toISOString().slice(0, 10);
-    return entries
+    const monday = new Date(d.setDate(diff));
+    const mondayStr = getLocalDateString(monday);
+    return allEntries
       .filter(e => e.dataLancamento >= mondayStr && e.dataLancamento <= todayStr && e.status === 'RECEBIDO')
       .reduce((sum, e) => sum + (Number(e.valorRecebido) || 0), 0);
-  }, [entries, todayStr]);
+  }, [allEntries, todayStr]);
 
   const totalMes = useMemo(() => {
-    return entries
+    return allEntries
       .filter(e => e.mesReferencia === currentMonthStr && e.status === 'RECEBIDO')
       .reduce((sum, e) => sum + (Number(e.valorRecebido) || 0), 0);
-  }, [entries, currentMonthStr]);
+  }, [allEntries, currentMonthStr]);
 
   const totalGeral = useMemo(() => {
-    return entries
+    return allEntries
       .filter(e => e.status === 'RECEBIDO')
       .reduce((sum, e) => sum + (Number(e.valorRecebido) || 0), 0);
-  }, [entries]);
+  }, [allEntries]);
 
+  // Filtros aplicados sobre allEntries para a listagem da tabela
   const filteredEntries = useMemo(() => {
-    if (statusFilter === 'ALL') return entries;
-    return entries.filter(e => e.status === statusFilter);
-  }, [entries, statusFilter]);
+    let list = allEntries;
+
+    // Filtro de status
+    if (statusFilter !== 'ALL') {
+      list = list.filter(e => e.status === statusFilter);
+    }
+
+    // Filtro de período
+    if (selectedPeriod === 'today') {
+      list = list.filter(e => e.dataLancamento === todayStr);
+    } else if (selectedPeriod === 'week') {
+      const d = new Date();
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(d.setDate(diff));
+      const mondayStr = getLocalDateString(monday);
+      list = list.filter(e => e.dataLancamento >= mondayStr && e.dataLancamento <= todayStr);
+    } else if (selectedPeriod === 'month') {
+      list = list.filter(e => e.mesReferencia === currentMonthStr);
+    }
+
+    // Filtro de busca textual
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(e =>
+        (e.pacienteNome || '').toLowerCase().includes(q) ||
+        (e.observacao || '').toLowerCase().includes(q) ||
+        (e.usuarioResponsavel || '').toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }, [allEntries, selectedPeriod, searchQuery, statusFilter, todayStr, currentMonthStr]);
+
+  const totalPeriodoFiltrado = useMemo(() => {
+    return filteredEntries
+      .filter(e => e.status === 'RECEBIDO')
+      .reduce((sum, e) => sum + (Number(e.valorRecebido) || 0), 0);
+  }, [filteredEntries]);
 
   const handleQuickConnectionCheck = async () => {
     setQuickTestStatus('Testando conexão com banco...');
@@ -132,10 +178,19 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `renda_massoterapia_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `renda_massoterapia_${getLocalDateString()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const formatDisplayDate = (dateStr: string) => {
+    if (!dateStr) return '-';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
   };
 
   return (
@@ -145,18 +200,28 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
             <ArrowLeftRight className="w-3.5 h-3.5" />
-            Integração Financeira do PostgreSQL
+            Integração Financeira Automática
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
             Renda Massoterapia
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Lançamentos originados automaticamente a partir dos atendimentos e pacotes de massoterapia.
+            Lançamentos originados automaticamente a partir dos atendimentos avulsos e pacotes de massoterapia.
           </p>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleSyncAll}
+            disabled={isSyncing}
+            className="px-3 py-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-semibold rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            title="Sincronizar todos os atendimentos e pacotes com a renda"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            Sincronizar Todos
+          </button>
+
           <button
             onClick={handleQuickConnectionCheck}
             className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-medium rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors"
@@ -217,7 +282,7 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
             <span className="text-2xl font-bold text-slate-900 dark:text-white">
               R$ {totalHoje.toFixed(2)}
             </span>
-            <p className="text-[11px] text-slate-400 mt-0.5">Lançamentos do dia {new Date().toLocaleDateString('pt-BR')}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Lançamentos de {formatDisplayDate(todayStr)}</p>
           </div>
         </div>
 
@@ -240,7 +305,7 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
         {/* Este Mês */}
         <div className="p-4 bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl shadow-2xs bg-linear-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/10">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs">
-            <span className="font-medium text-emerald-700 dark:text-emerald-300">Este Mês (Cálculo Automático)</span>
+            <span className="font-medium text-emerald-700 dark:text-emerald-300">Este Mês (Automático)</span>
             <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
               <DollarSign className="w-4 h-4" />
             </div>
@@ -249,11 +314,11 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
             <span className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
               R$ {totalMes.toFixed(2)}
             </span>
-            <p className="text-[11px] text-slate-400 mt-0.5">Baseado na tabela renda_massoterapia</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Mês de referência: {currentMonthStr}</p>
           </div>
         </div>
 
-        {/* Quantidade */}
+        {/* Total Geral / Registros */}
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs">
             <span className="font-medium">Total de Registros</span>
@@ -266,7 +331,7 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
               {filteredEntries.length}
             </span>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              R$ {totalGeral.toFixed(2)} no período selecionado
+              R$ {totalPeriodoFiltrado.toFixed(2)} no filtro atual (Total geral: R$ {totalGeral.toFixed(2)})
             </p>
           </div>
         </div>
@@ -276,11 +341,12 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
       <div className="p-4 bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-2xl flex items-start gap-3 text-xs text-blue-900 dark:text-blue-200">
         <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <p className="font-semibold">Regras de Negócio da Integração Financeira:</p>
+          <p className="font-semibold">Regras de Lançamento Automático da Renda de Massoterapia:</p>
           <ul className="list-disc list-inside space-y-0.5 text-blue-800 dark:text-blue-300">
-            <li><strong>Separação Fisioterapia / Massoterapia:</strong> Atendimentos de Fisioterapia não são registrados na tabela <code className="font-mono text-blue-950 dark:text-blue-100">renda_massoterapia</code>.</li>
-            <li><strong>Regra contra duplicidade em pacotes:</strong> O valor do pacote é registrado uma única vez no fechamento/primeira sessão, sem duplicar em cada atendimento.</li>
-            <li><strong>Sincronização em alterações e cancelamentos:</strong> Modificações de valor ou cancelamentos de atendimento atualizam imediatamente o status na tabela financeira.</li>
+            <li><strong>Lançamento Automático:</strong> Toda sessão avulsa ou pacote de massoterapia lançado no sistema aparece instantaneamente nesta tela e no caixa.</li>
+            <li><strong>Sem Duplicidade em Pacotes:</strong> O valor total do pacote é contabilizado uma única vez (no cadastro ou 1ª sessão), sem duplicar nas sessões subsequentes.</li>
+            <li><strong>Isolamento Fisioterapia vs Massoterapia:</strong> Sessões clínicas exclusivas de Fisioterapia não entram na renda de Massoterapia.</li>
+            <li><strong>Sincronização em Tempo Real:</strong> Cancelamentos ou edições de valor atualizam automaticamente os totais e o extrato.</li>
           </ul>
         </div>
       </div>
@@ -365,7 +431,7 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-emerald-500" />
-                    Carregando lançamentos da tabela renda_massoterapia...
+                    Carregando lançamentos da renda de massoterapia...
                   </td>
                 </tr>
               ) : filteredEntries.length === 0 ? (
@@ -382,7 +448,7 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
                     className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
                   >
                     <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
-                      {new Date(entry.dataLancamento + 'T12:00:00Z').toLocaleDateString('pt-BR')}
+                      {formatDisplayDate(entry.dataLancamento)}
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-200">
                       {entry.pacienteNome}
