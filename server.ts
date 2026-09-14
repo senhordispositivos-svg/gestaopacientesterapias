@@ -454,20 +454,24 @@ async function initDatabase() {
           db = {
             tenants: pgData.tenants.length > 0 ? pgData.tenants : db.tenants,
             users: pgData.users.length > 0 ? pgData.users : db.users,
-            patients: pgData.patients.length > 0 ? pgData.patients : db.patients,
-            anamneses: pgData.anamneses.length > 0 ? pgData.anamneses : db.anamneses,
-            packages: pgData.packages.length > 0 ? pgData.packages : db.packages,
-            sessions: pgData.sessions.length > 0 ? pgData.sessions : db.sessions,
-            evolutions: pgData.evolutions.length > 0 ? pgData.evolutions : db.evolutions,
-            publicTokens: pgData.publicTokens.length > 0 ? pgData.publicTokens : db.publicTokens,
-            auditLogs: pgData.auditLogs.length > 0 ? pgData.auditLogs : db.auditLogs,
-            documentFiles: pgData.documentFiles.length > 0 ? pgData.documentFiles : db.documentFiles,
-            signatures: pgData.signatures.length > 0 ? pgData.signatures : db.signatures,
+            patients: pgData.patients,
+            anamneses: pgData.anamneses,
+            packages: pgData.packages,
+            sessions: pgData.sessions,
+            evolutions: pgData.evolutions,
+            publicTokens: pgData.publicTokens,
+            auditLogs: pgData.auditLogs,
+            documentFiles: pgData.documentFiles,
+            signatures: pgData.signatures,
             deletedPackageIds: db.deletedPackageIds || [],
-            cashEntries: db.cashEntries || [],
-            rendaMassoterapia: Array.isArray(pgData.rendaMassoterapia) && pgData.rendaMassoterapia.length > 0 ? pgData.rendaMassoterapia : (db.rendaMassoterapia || []),
+            cashEntries: (db.cashEntries || []).filter(
+              c => !c.id.startsWith('cash-seed-') && c.patientName !== 'Carlos Eduardo' && c.patientName !== 'Thayná Silva'
+            ),
+            rendaMassoterapia: (pgData.rendaMassoterapia || []).filter(
+              r => r.pacienteNome !== 'Carlos Eduardo' && r.pacienteNome !== 'Thayná Silva'
+            ),
           };
-          console.log('[PostgreSQL] Loaded relational database state from Cloud SQL.');
+          console.log(`[PostgreSQL] Loaded relational database state from Cloud SQL: ${db.patients.length} patients, ${db.packages.length} packages.`);
         } else {
           // Seed Postgres with existing DB
           syncStoreToPostgres(db).catch(e => console.error('Initial SQL sync err:', e));
@@ -477,67 +481,10 @@ async function initDatabase() {
       }
     }
 
-    // Ensure initial patients exist
-    if (!db.patients.some(p => p.id === 'pat-thayna-farias' || p.name.toUpperCase().includes('THAYNÁ') || p.name.toUpperCase().includes('THAYNA'))) {
-      db.patients.unshift({
-        id: 'pat-thayna-farias',
-        tenantId: 'tenant-demo-1',
-        name: 'THAYNÁ GOMES FARIAS',
-        email: 'thayna.farias@email.com',
-        cpf: '',
-        rg: '',
-        gender: 'Feminino',
-        phone: '(98) 99992-0949',
-        whatsapp: '(98) 99992-0949',
-        profession: 'ADVOGADA',
-        birthDate: '1980-01-05',
-        cep: '65075-000',
-        street: 'Rua das Palmeiras',
-        number: '120',
-        complement: '',
-        neighborhood: 'Renascença',
-        city: 'São Luis',
-        state: 'MA',
-        referencePoint: 'Próximo ao Fórum',
-        notes: 'Paciente cadastrado no sistema para acompanhamento terapêutico.',
-        photoUrl: '',
-        avatarUrl: '',
-        assignedProfessionalId: '',
-        assignedProfessionalName: 'Geral',
-        createdAt: '2026-09-01T10:00:00.000Z',
-        updatedAt: '2026-09-01T10:00:00.000Z',
-      });
-    }
-    if (!db.patients.some(p => p.id === 'pat-sidney-leitao' || p.name.toUpperCase().includes('SIDNEY'))) {
-      db.patients.push({
-        id: 'pat-sidney-leitao',
-        tenantId: 'tenant-demo-1',
-        name: 'SIDNEY LEITÃO',
-        email: 'sidney.leitao@email.com',
-        cpf: '123.456.789-00',
-        rg: '',
-        gender: 'Masculino',
-        phone: '(98) 98854-1695',
-        whatsapp: '(98) 98854-1695',
-        profession: 'Empresário',
-        birthDate: '1985-06-15',
-        cep: '65075-000',
-        street: 'Avenida Litorânea',
-        number: '500',
-        complement: '',
-        neighborhood: 'Calhau',
-        city: 'São Luis',
-        state: 'MA',
-        referencePoint: 'Próximo à praia',
-        notes: 'Paciente com foco em relaxamento muscular e alívio de tensões.',
-        photoUrl: '',
-        avatarUrl: '',
-        assignedProfessionalId: 'user-super-osaias',
-        assignedProfessionalName: 'Osaias Brito',
-        createdAt: '2026-08-19T02:00:00.000Z',
-        updatedAt: '2026-08-19T02:00:00.000Z',
-      });
-    }
+    // Clean any lingering fictional data from store
+    db.patients = db.patients.filter(p => p.id !== 'pat-test' && p.id !== 'pat-thayna-farias' && !p.name.toLowerCase().includes('teste paciente'));
+    db.cashEntries = (db.cashEntries || []).filter(c => !c.id.startsWith('cash-seed-') && c.patientName !== 'Carlos Eduardo' && c.patientName !== 'Thayná Silva');
+    db.rendaMassoterapia = (db.rendaMassoterapia || []).filter(r => r.pacienteNome !== 'Carlos Eduardo' && r.pacienteNome !== 'Thayná Silva');
 
     // Ensure super user exists and is properly named
     const osaiasIndex = db.users.findIndex(u => u.email?.toLowerCase() === 'osaiasbrito@gmail.com' || u.id === 'user-super-osaias' || u.id === 'user-master-1');
@@ -553,100 +500,6 @@ async function initDatabase() {
 
     if (!Array.isArray(db.cashEntries)) {
       db.cashEntries = [];
-    }
-
-    if (db.cashEntries.length === 0) {
-      db.cashEntries = [
-        {
-          id: 'cash-seed-1',
-          tenantId: 'tenant-demo-1',
-          type: 'PACKAGE',
-          originId: 'pkg-sidney-1',
-          packageId: 'pkg-sidney-1',
-          description: 'Novo Pacote - Pacote Massoterapia Clínica (5 sessões - SIDNEY LEITÃO)',
-          patientId: 'pat-sidney-leitao',
-          patientName: 'SIDNEY LEITÃO',
-          professionalId: 'user-super-osaias',
-          professionalName: 'Osaias Brito',
-          amount: 800,
-          effectiveAmount: 800,
-          date: '2026-09-02',
-          month: '2026-09',
-          category: 'Renda Extra',
-          section: 'MASSOTERAPIA',
-          syncedToExternal: true,
-          syncedAt: '2026-09-02T14:05:00.000Z',
-          notes: 'Novo pacote contratado. Valor integral lançado no caixa e enviado ao sistema financeiro.',
-          createdAt: '2026-09-02T14:00:00.000Z',
-        },
-        {
-          id: 'cash-seed-2',
-          tenantId: 'tenant-demo-1',
-          type: 'SINGLE_SESSION',
-          originId: 'sess-single-seed-1',
-          description: 'Sessão Avulsa - Drenagem Linfática & Relaxante (THAYNÁ GOMES FARIAS)',
-          patientId: 'pat-thayna-farias',
-          patientName: 'THAYNÁ GOMES FARIAS',
-          professionalId: 'user-super-osaias',
-          professionalName: 'Osaias Brito',
-          amount: 180,
-          effectiveAmount: 180,
-          date: '2026-09-04',
-          month: '2026-09',
-          category: 'Renda Extra',
-          section: 'MASSOTERAPIA',
-          syncedToExternal: true,
-          syncedAt: '2026-09-04T11:15:00.000Z',
-          notes: 'Atendimento avulso realizado e lançado no caixa.',
-          createdAt: '2026-09-04T11:00:00.000Z',
-        },
-        {
-          id: 'cash-seed-3',
-          tenantId: 'tenant-demo-1',
-          type: 'PACKAGE_SESSION',
-          originId: 'sess-pkg-seed-1-1',
-          packageId: 'pkg-sidney-1',
-          sessionNumber: 1,
-          description: 'Atendimento 1ª Sessão - Pacote Massoterapia Clínica (SIDNEY LEITÃO)',
-          patientId: 'pat-sidney-leitao',
-          patientName: 'SIDNEY LEITÃO',
-          professionalId: 'user-super-osaias',
-          professionalName: 'Osaias Brito',
-          amount: 0,
-          effectiveAmount: 0,
-          date: '2026-09-02',
-          month: '2026-09',
-          category: 'Renda Extra',
-          section: 'MASSOTERAPIA',
-          syncedToExternal: true,
-          syncedAt: '2026-09-02T15:30:00.000Z',
-          notes: '1ª sessão realizada (receita total já computada no lançamento do pacote).',
-          createdAt: '2026-09-02T15:00:00.000Z',
-        },
-        {
-          id: 'cash-seed-4',
-          tenantId: 'tenant-demo-1',
-          type: 'PACKAGE_SESSION',
-          originId: 'sess-pkg-seed-1-2',
-          packageId: 'pkg-sidney-1',
-          sessionNumber: 2,
-          description: 'Atendimento 2ª Sessão - Pacote Massoterapia Clínica (SIDNEY LEITÃO)',
-          patientId: 'pat-sidney-leitao',
-          patientName: 'SIDNEY LEITÃO',
-          professionalId: 'user-super-osaias',
-          professionalName: 'Osaias Brito',
-          amount: 0,
-          effectiveAmount: 0,
-          date: '2026-09-06',
-          month: '2026-09',
-          category: 'Renda Extra',
-          section: 'MASSOTERAPIA',
-          syncedToExternal: true,
-          syncedAt: '2026-09-06T10:05:00.000Z',
-          notes: 'Atendimento da 2ª sessão do pacote. Não entra no caixa pois a receita já foi lançada na 1ª sessão/aquisição do pacote.',
-          createdAt: '2026-09-06T10:00:00.000Z',
-        },
-      ];
     }
 
     createSnapshot('startup');
@@ -2544,6 +2397,20 @@ app.post('/api/sessions/:id/sign-direct', (req, res) => {
       date: sessionDate,
       month: sessionMonth,
       notes: `Atendimento de sessão avulsa #${completedSess.sessionNumber || 1} assinado pelo cliente.`,
+    });
+
+    recordRendaMassoterapiaEntry(completedSess.tenantId, {
+      origemTipo: 'atendimento_massoterapia',
+      origemId: completedSess.id,
+      referenciaAtendimento: completedSess.id,
+      dataLancamento: sessionDate,
+      valorRecebido: priceVal,
+      observacao: `Atendimento Massoterapia - ${(completedSess.procedures && completedSess.procedures.join(', ')) || 'Sessão Avulsa'} (Paciente: ${completedSess.patientName})`,
+      usuarioResponsavel: completedSess.professionalName || 'Profissional',
+      pacienteId: completedSess.patientId,
+      pacienteNome: completedSess.patientName,
+      procedures: completedSess.procedures,
+      status: 'RECEBIDO',
     });
   } else {
     const sessNum = Number(completedSess.sessionNumber) || 1;

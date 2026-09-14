@@ -66,6 +66,88 @@ function setLocal<T>(key: string, val: T): void {
   }
 }
 
+// Clean up any old mock / fictitious data cached in the browser
+function purgeFictionalMockData() {
+  if (typeof window === 'undefined') return;
+  try {
+    const PURGE_FLAG = 'clinica_real_data_purged_v4';
+    if (localStorage.getItem(PURGE_FLAG) === 'true') return;
+
+    // Purge fake patients
+    const rawPatients = getLocal<Patient[]>(STORAGE_KEYS.PATIENTS, []);
+    const cleanPatients = rawPatients.filter(
+      p => p && p.id &&
+           p.id !== 'pat-test' &&
+           p.id !== 'pat-thayna-farias' &&
+           !p.name?.toLowerCase().includes('teste paciente')
+    );
+    setLocal(STORAGE_KEYS.PATIENTS, cleanPatients);
+
+    // Purge fake cash entries
+    const rawCash = getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []);
+    const cleanCash = rawCash.filter(
+      c => c && c.id &&
+           !c.id.startsWith('cash-seed-') &&
+           c.patientName !== 'Carlos Eduardo' &&
+           c.patientName !== 'Thayná Silva' &&
+           c.patientName !== 'Mariana Alves' &&
+           c.patientId !== 'pat-test' &&
+           c.patientId !== 'pat-thayna-farias'
+    );
+    setLocal(STORAGE_KEYS.CASH_ENTRIES, cleanCash);
+
+    // Purge fake sessions
+    const rawSessions = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
+    const cleanSessions = rawSessions.filter(
+      s => s && s.id &&
+           s.patientName !== 'Carlos Eduardo' &&
+           s.patientName !== 'Thayná Silva' &&
+           s.patientName !== 'Mariana Alves' &&
+           s.patientId !== 'pat-test' &&
+           s.patientId !== 'pat-thayna-farias'
+    );
+    setLocal(STORAGE_KEYS.SESSIONS, cleanSessions);
+
+    // Purge fake packages
+    const rawPackages = getLocal<SessionPackage[]>(STORAGE_KEYS.PACKAGES, []);
+    const cleanPackages = rawPackages.filter(
+      pkg => pkg && pkg.id &&
+             pkg.patientName !== 'Carlos Eduardo' &&
+             pkg.patientName !== 'Thayná Silva' &&
+             pkg.patientId !== 'pat-test' &&
+             pkg.patientId !== 'pat-thayna-farias'
+    );
+    setLocal(STORAGE_KEYS.PACKAGES, cleanPackages);
+
+    // Purge fake renda massoterapia
+    const rawRenda = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
+    const cleanRenda = rawRenda.filter(
+      r => r && r.id &&
+           r.pacienteNome !== 'Carlos Eduardo' &&
+           r.pacienteNome !== 'Thayná Silva' &&
+           r.pacienteNome !== 'Mariana Alves' &&
+           r.pacienteId !== 'pat-test' &&
+           r.pacienteId !== 'pat-thayna-farias'
+    );
+    setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, cleanRenda);
+
+    // Purge fake anamneses
+    const rawAnam = getLocal<Anamnesis[]>(STORAGE_KEYS.ANAMNESIS, []);
+    const cleanAnam = rawAnam.filter(
+      a => a && a.id &&
+           a.patientId !== 'pat-test' &&
+           a.patientId !== 'pat-thayna-farias'
+    );
+    setLocal(STORAGE_KEYS.ANAMNESIS, cleanAnam);
+
+    localStorage.removeItem('clinica_patients_initialized');
+    localStorage.setItem(PURGE_FLAG, 'true');
+  } catch (err) {
+    console.warn('Purge error:', err);
+  }
+}
+purgeFictionalMockData();
+
 async function tryFetch(url: string, options?: RequestInit): Promise<Response | null> {
   try {
     const res = await fetch(url, options);
@@ -3436,7 +3518,15 @@ export const api = {
       headers: { 'x-tenant-id': tenantId },
     });
     if (serverRes) {
-      return serverRes.json();
+      try {
+        const data = await serverRes.json();
+        if (data && Array.isArray(data.entries)) {
+          setLocal(STORAGE_KEYS.CASH_ENTRIES, data.entries);
+        }
+        return data;
+      } catch (e) {
+        console.warn('Error parsing cash entries from server:', e);
+      }
     }
 
     // Local fallback
@@ -3591,23 +3681,12 @@ export const api = {
     if (serverRes) {
       try {
         const json = await serverRes.json();
-        if (json && Array.isArray(json.entries) && json.entries.length > 0) {
+        if (json && Array.isArray(json.entries)) {
           serverEntries = json.entries;
           serverTotalPeriodo = Number(json.totalPeriodo) || 0;
           serverTotalMesAtual = Number(json.totalMesAtual) || 0;
           hasServerData = true;
-
-          // Merge into local storage so offline access is also warm
-          const localList = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
-          for (const se of serverEntries) {
-            const idx = localList.findIndex(l => l.origemTipo === se.origemTipo && l.origemId === se.origemId);
-            if (idx === -1) {
-              localList.unshift(se);
-            } else {
-              localList[idx] = { ...localList[idx], ...se };
-            }
-          }
-          setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, localList);
+          setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, serverEntries);
         }
       } catch (e) {
         console.warn('Falha ao processar resposta do servidor renda-massoterapia:', e);

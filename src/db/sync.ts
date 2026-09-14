@@ -265,7 +265,21 @@ export async function ensurePostgresSchema(): Promise<boolean> {
       CREATE INDEX IF NOT EXISTS idx_renda_massoterapia_origem ON renda_massoterapia (origem_tipo, origem_id);
     `;
 
-    await pool.query(ddl);
+    try {
+      await pool.query(ddl);
+    } catch (ddlErr: any) {
+      // In Cloud SQL with pre-provisioned schema or restricted DDL user permissions,
+      // verify if the application tables already exist and are queryable.
+      try {
+        const check = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = 'tenants' OR table_name = 'renda_massoterapia'");
+        if (check.rows && check.rows.length > 0) {
+          _schemaInitialized = true;
+          return true;
+        }
+      } catch (_) {}
+      console.warn('[PostgreSQL Bootstrap] Aviso ao criar DDL:', ddlErr?.message || ddlErr);
+      return false;
+    }
     _schemaInitialized = true;
     return true;
   } catch (err: unknown) {
