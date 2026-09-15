@@ -448,7 +448,7 @@ export interface RendaMassoterapiaEntry {
   origemTipo: 'atendimento_massoterapia' | 'pacote_massoterapia' | 'avulso_massoterapia';
   origemId: string;
   mesReferencia: string; // YYYY-MM
-  status: 'RECEBIDO' | 'CANCELADO' | 'ESTORNADO';
+  status: 'RECEBIDO' | 'CANCELADO' | 'ESTORNADO' | 'TESTE';
   createdAt: string;
   updatedAt?: string;
 }
@@ -461,8 +461,10 @@ export interface FinancialConnectionTestResult {
   recordsCount: number;
   currentMonthTotal: number;
   responseTimeMs: number;
+  pingMs?: number;
   testedAt: string;
   error?: string;
+  isRealtimeCommunicating?: boolean;
 }
 
 export interface FinancialIntegrationStep {

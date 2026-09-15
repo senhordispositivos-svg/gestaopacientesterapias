@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   CheckCircle2,
@@ -15,6 +15,7 @@ import {
   DollarSign,
   Activity,
   Zap,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { FinancialConnectionTestResult, FinancialIntegrationTestResult } from '../../types';
@@ -33,13 +34,23 @@ export const FinancialIntegrationTestModal: React.FC<FinancialIntegrationTestMod
   const [activeTab, setActiveTab] = useState<'connection' | 'integration'>('connection');
   const [isTestingConn, setIsTestingConn] = useState(false);
   const [isTestingInt, setIsTestingInt] = useState(false);
+  const [isClearingTest, setIsClearingTest] = useState(false);
+  const [clearMessage, setClearMessage] = useState<string | null>(null);
   const [connectionResult, setConnectionResult] = useState<FinancialConnectionTestResult | null>(null);
   const [integrationResult, setIntegrationResult] = useState<FinancialIntegrationTestResult | null>(null);
+
+  // Executa o teste de conexão em tempo real automaticamente quando o modal é aberto
+  useEffect(() => {
+    if (isOpen && !connectionResult && !isTestingConn) {
+      handleTestConnection();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleTestConnection = async () => {
     setIsTestingConn(true);
+    setClearMessage(null);
     try {
       const res = await api.testFinancialConnection();
       setConnectionResult(res);
@@ -55,11 +66,27 @@ export const FinancialIntegrationTestModal: React.FC<FinancialIntegrationTestMod
         recordsCount: 0,
         currentMonthTotal: 0,
         responseTimeMs: 0,
+        pingMs: 0,
         testedAt: new Date().toISOString(),
         error: err.message,
+        isRealtimeCommunicating: false,
       });
     } finally {
       setIsTestingConn(false);
+    }
+  };
+
+  const handleClearTestData = async () => {
+    setIsClearingTest(true);
+    try {
+      const res = await api.clearRendaMassoterapiaTestData();
+      setClearMessage(`Banco de dados limpo com sucesso! ${res.deletedCount || 0} registro(s) de teste removidos.`);
+      await handleTestConnection();
+      if (onSuccess) onSuccess();
+    } catch (err: any) {
+      setClearMessage(`Erro ao limpar registros de teste: ${err.message}`);
+    } finally {
+      setIsClearingTest(false);
     }
   };
 
@@ -162,6 +189,21 @@ export const FinancialIntegrationTestModal: React.FC<FinancialIntegrationTestMod
                 </div>
               </div>
 
+              {clearMessage && (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{clearMessage}</span>
+                  </div>
+                  <button
+                    onClick={() => setClearMessage(null)}
+                    className="text-emerald-600 hover:text-emerald-800 text-xs font-semibold"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              )}
+
               {connectionResult && (
                 <div
                   className={`p-4 rounded-xl border ${
@@ -176,12 +218,23 @@ export const FinancialIntegrationTestModal: React.FC<FinancialIntegrationTestMod
                     ) : (
                       <XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                     )}
-                    <div className="space-y-2 flex-1">
-                      <div>
-                        <span className="font-semibold text-sm">
-                          {connectionResult.success ? 'Conexão Estabelecida com Sucesso' : 'Falha na Conexão'}
-                        </span>
-                        <p className="text-xs mt-0.5 opacity-90">{connectionResult.message}</p>
+                    <div className="space-y-3 flex-1">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                          <span className="font-semibold text-sm">
+                            {connectionResult.success ? 'Conexão em Tempo Real Ativa e Operacional' : 'Falha na Conexão'}
+                          </span>
+                          <p className="text-xs mt-0.5 opacity-90">{connectionResult.message}</p>
+                        </div>
+                        {connectionResult.success && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                            Tempo Real: {connectionResult.pingMs ?? connectionResult.responseTimeMs}ms
+                          </span>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-current/10 text-xs">
@@ -205,8 +258,28 @@ export const FinancialIntegrationTestModal: React.FC<FinancialIntegrationTestMod
                         </div>
                       </div>
 
+                      {/* Garantia Anti-Poluição e Controle de Exclusão de Testes */}
+                      <div className="p-2.5 rounded-lg bg-white/80 dark:bg-slate-900/70 border border-emerald-200/60 dark:border-emerald-800/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span className="text-slate-700 dark:text-slate-300 text-[11px]">
+                            <strong>Garantia Anti-Poluição:</strong> Limpeza imediata no teste. Máximo de 1 registro efêmero com remoção instantânea.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleClearTestData}
+                          disabled={isClearingTest}
+                          className="px-2.5 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-800 rounded-lg flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer disabled:opacity-50"
+                          title="Exclui definitivamente do banco qualquer informação ou registro de teste"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          {isClearingTest ? 'Limpando...' : 'Excluir Registros de Teste'}
+                        </button>
+                      </div>
+
                       <div className="flex items-center justify-between text-[11px] opacity-75 pt-1">
-                        <span>Tempo de resposta: {connectionResult.responseTimeMs} ms</span>
+                        <span>Tempo de resposta total: {connectionResult.responseTimeMs} ms (Ping: {connectionResult.pingMs ?? 1} ms)</span>
                         <span>Testado em: {new Date(connectionResult.testedAt).toLocaleTimeString('pt-BR')}</span>
                       </div>
                     </div>

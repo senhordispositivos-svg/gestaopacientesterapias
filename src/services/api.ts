@@ -3771,5 +3771,47 @@ export const api = {
 
     return { success: true, count: compiled.length, entries: compiled };
   },
+
+  async deleteRendaMassoterapia(id: string, tenantId?: string): Promise<{ success: boolean; message: string }> {
+    // 1. Remove localmente no cache
+    const currentLocal = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
+    const updatedLocal = currentLocal.filter(e => e.id !== id);
+    setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, updatedLocal);
+
+    // 2. Chama servidor para excluir do PostgreSQL e do backend
+    try {
+      const serverRes = await tryFetch(`/api/financial/renda-massoterapia/${id}`, {
+        method: 'DELETE',
+        headers: { ...(tenantId ? { 'x-tenant-id': tenantId } : {}) },
+      });
+      if (serverRes) {
+        const data = await serverRes.json();
+        return data;
+      }
+    } catch (e: any) {
+      console.warn('Erro ao excluir lançamento via servidor:', e);
+    }
+
+    return { success: true, message: 'Lançamento excluído do sistema.' };
+  },
+
+  async clearRendaMassoterapiaTestData(tenantId?: string): Promise<{ success: boolean; deletedCount: number; message: string }> {
+    // 1. Limpa cache local de testes
+    const currentLocal = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
+    const updatedLocal = currentLocal.filter(e => e.status !== 'TESTE' && !e.id.startsWith('test-') && !e.origemId.startsWith('test-'));
+    setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, updatedLocal);
+
+    try {
+      const serverRes = await tryFetch('/api/financial/renda-massoterapia/clear-test-data', {
+        method: 'POST',
+        headers: { ...(tenantId ? { 'x-tenant-id': tenantId } : {}) },
+      });
+      if (serverRes) {
+        return serverRes.json();
+      }
+    } catch (_) {}
+
+    return { success: true, deletedCount: currentLocal.length - updatedLocal.length, message: 'Registros de teste excluídos.' };
+  },
 };
 

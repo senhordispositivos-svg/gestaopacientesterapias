@@ -12,6 +12,11 @@ import {
   Download,
   Info,
   Zap,
+  Activity,
+  Trash2,
+  AlertTriangle,
+  ShieldCheck,
+  X,
 } from 'lucide-react';
 import { RendaMassoterapiaEntry } from '../../types';
 import { api } from '../../services/api';
@@ -33,6 +38,18 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'RECEBIDO' | 'CANCELADO'>('ALL');
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const [quickTestStatus, setQuickTestStatus] = useState<string | null>(null);
+  const [isCheckingConn, setIsCheckingConn] = useState(false);
+  const [isClearingTests, setIsClearingTests] = useState(false);
+  const [connectionPingInfo, setConnectionPingInfo] = useState<{
+    pingMs: number;
+    recordsCount: number;
+    isOnline: boolean;
+    testedAt: string;
+  } | null>(null);
+
+  // Estado para exclusão de lançamentos pelo usuário
+  const [entryToDelete, setEntryToDelete] = useState<RendaMassoterapiaEntry | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchRendaEntries = async () => {
     setLoading(true);
@@ -44,6 +61,70 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
       console.error('Erro ao carregar lançamentos de renda massoterapia:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleQuickConnectionCheck = async () => {
+    setIsCheckingConn(true);
+    setQuickTestStatus('Verificando comunicação em tempo real com o banco financeiro...');
+    try {
+      const res = await api.testFinancialConnection();
+      if (res.success) {
+        setConnectionPingInfo({
+          pingMs: res.pingMs ?? res.responseTimeMs,
+          recordsCount: res.recordsCount,
+          isOnline: true,
+          testedAt: new Date().toLocaleTimeString('pt-BR'),
+        });
+        setQuickTestStatus(
+          `🟢 Conexão em Tempo Real Ativa! Latência: ${res.pingMs ?? res.responseTimeMs}ms | Banco: ${res.database} | ${res.recordsCount} lançamentos na tabela.`
+        );
+      } else {
+        setConnectionPingInfo({
+          pingMs: 0,
+          recordsCount: 0,
+          isOnline: false,
+          testedAt: new Date().toLocaleTimeString('pt-BR'),
+        });
+        setQuickTestStatus(`🔴 Falha na conexão: ${res.message}`);
+      }
+    } catch (e: any) {
+      setQuickTestStatus(`Erro na verificação de conexão: ${e.message}`);
+    } finally {
+      setIsCheckingConn(false);
+      setTimeout(() => setQuickTestStatus(null), 8000);
+    }
+  };
+
+  const handleClearAllTestData = async () => {
+    setIsClearingTests(true);
+    try {
+      const res = await api.clearRendaMassoterapiaTestData();
+      setQuickTestStatus(`Limpeza concluída! ${res.deletedCount || 0} registro(s) de teste excluídos do banco.`);
+      await fetchRendaEntries();
+      if (onRefreshData) onRefreshData();
+    } catch (e: any) {
+      setQuickTestStatus(`Erro ao limpar dados de teste: ${e.message}`);
+    } finally {
+      setIsClearingTests(false);
+      setTimeout(() => setQuickTestStatus(null), 6000);
+    }
+  };
+
+  const confirmDeleteEntry = async () => {
+    if (!entryToDelete) return;
+    setIsDeleting(true);
+    try {
+      const res = await api.deleteRendaMassoterapia(entryToDelete.id);
+      setAllEntries(prev => prev.filter(e => e.id !== entryToDelete.id));
+      setQuickTestStatus(`Lançamento excluído com sucesso do banco de dados!`);
+      setEntryToDelete(null);
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      setQuickTestStatus(`Falha ao excluir lançamento: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
+      setTimeout(() => setQuickTestStatus(null), 5000);
     }
   };
 
@@ -147,21 +228,6 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
       .reduce((sum, e) => sum + (Number(e.valorRecebido) || 0), 0);
   }, [filteredEntries]);
 
-  const handleQuickConnectionCheck = async () => {
-    setQuickTestStatus('Testando conexão com banco...');
-    try {
-      const res = await api.testFinancialConnection();
-      if (res.success) {
-        setQuickTestStatus(`Conexão OK! ${res.recordsCount} lançamentos na tabela renda_massoterapia.`);
-      } else {
-        setQuickTestStatus(`Falha: ${res.message}`);
-      }
-    } catch (e: any) {
-      setQuickTestStatus(`Erro: ${e.message}`);
-    }
-    setTimeout(() => setQuickTestStatus(null), 5000);
-  };
-
   const handleExportCSV = () => {
     if (filteredEntries.length === 0) return;
     const headers = ['Data', 'Valor (R$)', 'Observacao', 'Paciente', 'Usuario Responsavel', 'Origem', 'Status'];
@@ -212,6 +278,38 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Botão de Teste de Conexão em Tempo Real */}
+          <button
+            onClick={handleQuickConnectionCheck}
+            disabled={isCheckingConn}
+            className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 text-xs font-bold rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer group disabled:opacity-50"
+            title="Testar Conexão em Tempo Real com o PostgreSQL / Cloud SQL"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <Activity className={`w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 ${isCheckingConn ? 'animate-spin' : 'group-hover:scale-110'} transition-transform`} />
+            <span>
+              {isCheckingConn
+                ? 'Verificando...'
+                : connectionPingInfo?.isOnline
+                ? `Online (${connectionPingInfo.pingMs}ms)`
+                : 'Testar Conexão em Tempo Real'}
+            </span>
+          </button>
+
+          {/* Botão para Limpar Registros de Teste do Banco de Dados */}
+          <button
+            onClick={handleClearAllTestData}
+            disabled={isClearingTests}
+            className="px-3 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-semibold rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            title="Excluir do banco de dados registros e dados de teste para não poluir"
+          >
+            <Trash2 className={`w-3.5 h-3.5 ${isClearingTests ? 'animate-spin' : ''}`} />
+            <span>{isClearingTests ? 'Limpando...' : 'Limpar Testes'}</span>
+          </button>
+
           <button
             onClick={handleSyncAll}
             disabled={isSyncing}
@@ -223,16 +321,8 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
           </button>
 
           <button
-            onClick={handleQuickConnectionCheck}
-            className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-medium rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            Testar Conexão
-          </button>
-
-          <button
             onClick={() => setIsTestModalOpen(true)}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center gap-1.5 transition-all"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <Zap className="w-3.5 h-3.5" />
             Testar Integração (7 Passos)
@@ -244,7 +334,7 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
               if (onRefreshData) onRefreshData();
             }}
             disabled={loading}
-            className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl transition-colors disabled:opacity-50"
+            className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
             title="Recarregar dados"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -424,19 +514,20 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
                 <th className="px-4 py-3.5">Origem</th>
                 <th className="px-4 py-3.5">Status</th>
                 <th className="px-4 py-3.5 text-right">Valor Recebido</th>
+                <th className="px-4 py-3.5 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-emerald-500" />
                     Carregando lançamentos da renda de massoterapia...
                   </td>
                 </tr>
               ) : filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
                     <DollarSign className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     Nenhum lançamento de massoterapia encontrado para os filtros selecionados.
                   </td>
@@ -490,6 +581,16 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
                         R$ {Number(entry.valorRecebido).toFixed(2)}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setEntryToDelete(entry)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                        title="Excluir este lançamento do banco de dados"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -497,6 +598,66 @@ export const RendaMassoterapiaView: React.FC<RendaMassoterapiaViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Modal de Confirmação de Exclusão de Lançamento */}
+      {entryToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-3 bg-rose-100 dark:bg-rose-950/60 rounded-xl text-rose-600 dark:text-rose-400 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Excluir Lançamento do Banco?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Você pode excluir registros do banco de dados quando desejar. Esta ação removerá o lançamento definitivamente da tabela financeira.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Paciente:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{entryToDelete.pacienteNome}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Data:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{formatDisplayDate(entryToDelete.dataLancamento)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Valor:</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">R$ {Number(entryToDelete.valorRecebido).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Origem:</span>
+                <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300">{entryToDelete.origemTipo}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEntryToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteEntry}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className={`w-3.5 h-3.5 ${isDeleting ? 'animate-spin' : ''}`} />
+                {isDeleting ? 'Excluindo...' : 'Excluir Definitivamente'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Integration Diagnostic Modal */}
       <FinancialIntegrationTestModal
