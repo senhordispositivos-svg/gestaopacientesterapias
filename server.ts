@@ -2315,23 +2315,64 @@ app.put('/api/sessions/:id', (req, res) => {
   res.json(db.sessions[index]);
 });
 
-app.delete('/api/sessions/:id', (req, res) => {
-  const index = db.sessions.findIndex(s => s.id === req.params.id);
+app.delete('/api/sessions/:id', async (req, res) => {
+  const sessionId = req.params.id;
+  const index = db.sessions.findIndex(s => s.id === sessionId);
   const tenantId = (req.headers['x-tenant-id'] as string) || (index !== -1 ? db.sessions[index].tenantId : 'tenant-demo-1');
+  const pkgId = index !== -1 ? db.sessions[index].packageId : null;
+
   if (index !== -1) {
-    const pkgId = db.sessions[index].packageId;
     db.sessions.splice(index, 1);
-    saveDatabase();
+  }
 
-    // Cancela o lançamento na tabela renda_massoterapia
-    cancelRendaMassoterapiaEntry('atendimento_massoterapia', req.params.id);
+  // 1. Exclui da tabela renda_massoterapia (memória)
+  if (Array.isArray(db.rendaMassoterapia)) {
+    db.rendaMassoterapia = db.rendaMassoterapia.filter(
+      r => !(r.origemTipo === 'atendimento_massoterapia' && r.origemId === sessionId) && r.id !== sessionId
+    );
+  }
 
-    broadcastRealtime(tenantId, { type: 'SESSION_DELETED', entity: 'sessions', action: 'delete', id: req.params.id });
-    if (pkgId) {
-      broadcastRealtime(tenantId, { type: 'PACKAGE_UPDATED', entity: 'packages', action: 'update', id: pkgId });
+  // 2. Exclui de cash_entries vinculadas a esta sessão
+  if (Array.isArray(db.cashEntries)) {
+    db.cashEntries = db.cashEntries.filter(
+      (c: any) => c.sessionId !== sessionId && c.referenceId !== sessionId && c.originId !== sessionId
+    );
+  }
+
+  // 3. Exclui de signatures vinculadas
+  if (Array.isArray(db.signatures)) {
+    db.signatures = db.signatures.filter(sig => sig.referenceId !== sessionId);
+  }
+
+  // 4. Exclui permanentemente do PostgreSQL / Supabase
+  if (hasSqlConfig && pool) {
+    try {
+      await pool.query('DELETE FROM sessions WHERE id = $1', [sessionId]);
+      await pool.query("DELETE FROM renda_massoterapia WHERE (origem_tipo = 'atendimento_massoterapia' AND origem_id = $1) OR id = $1", [sessionId]);
+      await pool.query('DELETE FROM cash_entries WHERE session_id = $1 OR reference_id = $1', [sessionId]);
+      await pool.query('DELETE FROM signatures WHERE reference_id = $1', [sessionId]);
+      console.log(`[PostgreSQL] Sessão ${sessionId} e lançamentos vinculados excluídos com sucesso.`);
+    } catch (sqlErr) {
+      console.warn('[PostgreSQL] Erro ao excluir sessão ou lançamentos associados:', sqlErr);
     }
   }
-  res.json({ message: 'Sessão excluída com sucesso.' });
+
+  saveDatabase();
+
+  broadcastRealtime(tenantId, { type: 'SESSION_DELETED', entity: 'sessions', action: 'delete', id: sessionId });
+  broadcastRealtime(tenantId, { type: 'RENDA_MASSOTERAPIA_DELETED', entity: 'renda_massoterapia', action: 'delete', id: sessionId });
+  broadcastRealtime(tenantId, { type: 'CASH_ENTRY_DELETED', entity: 'cash_entries', action: 'delete', id: sessionId });
+  if (pkgId) {
+    // Recalcula contagem de sessões concluídas do pacote se aplicável
+    const pkgIndex = db.packages.findIndex(p => p.id === pkgId);
+    if (pkgIndex !== -1) {
+      const completedCount = db.sessions.filter(s => s.packageId === pkgId && s.status === 'COMPLETED').length;
+      db.packages[pkgIndex].completedCount = completedCount;
+    }
+    broadcastRealtime(tenantId, { type: 'PACKAGE_UPDATED', entity: 'packages', action: 'update', id: pkgId });
+  }
+
+  res.json({ success: true, message: 'Sessão e lançamento financeiro excluídos com sucesso do banco de dados.' });
 });
 
 // Direct Session Signature
@@ -2563,27 +2604,29 @@ async function recordRendaMassoterapiaEntry(
     db.rendaMassoterapia.unshift(entry);
   }
 
-  saveDatabase();
-
   // Grava diretamente na tabela PostgreSQL compartilhada renda_massoterapia
   if (hasSqlConfig && pool) {
     try {
       await ensurePostgresSchema();
-      await pool.query(
+      const res = await pool.query(
         `INSERT INTO renda_massoterapia (
           id, tenant_id, data_lancamento, valor_recebido, observacao,
           usuario_responsavel, referencia_atendimento, paciente_id, paciente_nome,
           origem_tipo, origem_id, mes_referencia, status, created_at, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         ON CONFLICT (origem_tipo, origem_id) DO UPDATE SET
+          tenant_id = EXCLUDED.tenant_id,
           data_lancamento = EXCLUDED.data_lancamento,
           valor_recebido = EXCLUDED.valor_recebido,
           observacao = EXCLUDED.observacao,
           usuario_responsavel = EXCLUDED.usuario_responsavel,
+          referencia_atendimento = EXCLUDED.referencia_atendimento,
+          paciente_id = EXCLUDED.paciente_id,
           paciente_nome = EXCLUDED.paciente_nome,
           mes_referencia = EXCLUDED.mes_referencia,
           status = EXCLUDED.status,
-          updated_at = EXCLUDED.updated_at`,
+          updated_at = EXCLUDED.updated_at
+        RETURNING id`,
         [
           entry.id,
           entry.tenantId,
@@ -2602,15 +2645,20 @@ async function recordRendaMassoterapiaEntry(
           entry.updatedAt || now,
         ]
       );
+      if (res.rows && res.rows[0]?.id) {
+        entry.id = res.rows[0].id;
+      }
       console.log(`[PostgreSQL] Lançamento registrado na tabela renda_massoterapia: ${entry.id} - R$ ${entry.valorRecebido}`);
     } catch (sqlErr) {
       console.warn('[PostgreSQL] Aviso ao persistir na tabela renda_massoterapia:', sqlErr);
     }
   }
 
+  saveDatabase();
+
   broadcastRealtime(tenantId, {
     type: 'RENDA_MASSOTERAPIA_RECORDED',
-    entity: 'cash_entries',
+    entity: 'renda_massoterapia',
     action: 'sync',
     payload: entry,
     id: entry.id,
@@ -3293,10 +3341,20 @@ app.delete('/api/financial/renda-massoterapia/:id', async (req, res) => {
   const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-demo-1';
 
   try {
+    const localEntry = (db.rendaMassoterapia || []).find(e => e.id === id);
+
     // 1. Exclui do PostgreSQL compartilhado (Cloud SQL e pool espelho)
     if (hasSqlConfig && pool) {
       try {
-        await pool.query('DELETE FROM renda_massoterapia WHERE id = $1', [id]);
+        if (localEntry) {
+          await pool.query('DELETE FROM renda_massoterapia WHERE id = $1 OR (origem_tipo = $2 AND origem_id = $3)', [
+            id,
+            localEntry.origemTipo,
+            localEntry.origemId,
+          ]);
+        } else {
+          await pool.query('DELETE FROM renda_massoterapia WHERE id = $1', [id]);
+        }
       } catch (sqlErr: any) {
         console.warn('[PostgreSQL] Erro ao excluir registro de renda_massoterapia:', sqlErr?.message || sqlErr);
       }

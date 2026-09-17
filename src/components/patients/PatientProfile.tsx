@@ -61,6 +61,7 @@ interface PatientProfileProps {
   onDeletePatient?: (patientId: string) => void;
   onEditPackage?: (pkg: SessionPackage) => void;
   onDeletePackage?: (pkg: SessionPackage) => Promise<void>;
+  onDeleteSession?: (session: Session) => Promise<void> | void;
 }
 
 export const PatientProfile: React.FC<PatientProfileProps> = ({
@@ -81,6 +82,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
   onDeletePatient,
   onEditPackage,
   onDeletePackage,
+  onDeleteSession,
 }) => {
   const handleOpenAnamnesis = onOpenAnamnesis || onOpenAnamnesisModal || (() => {});
   const handleOpenPackage = onOpenPackageModal || (() => {});
@@ -107,6 +109,8 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [packageToDelete, setPackageToDelete] = useState<SessionPackage | null>(null);
   const [isDeletingPackage, setIsDeletingPackage] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   const handleDeleteDocument = async (docId: string) => {
     if (!confirm('Deseja realmente remover este arquivo da ficha do paciente?')) return;
@@ -146,6 +150,28 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
       alert('Erro ao excluir o pacote.');
     } finally {
       setIsDeletingPackage(false);
+    }
+  };
+
+  const handleConfirmDeleteSession = async () => {
+    if (!sessionToDelete || !tenant) return;
+    setIsDeletingSession(true);
+    const tenantId = tenant?.id || sessionToDelete.tenantId || 'tenant-demo-1';
+    try {
+      if (onDeleteSession) {
+        await onDeleteSession(sessionToDelete);
+      } else {
+        await api.deleteSession(tenantId, sessionToDelete.id);
+      }
+      setSessionToDelete(null);
+      const sess = await api.getSessions(tenantId, patient.id);
+      setSessions(sess);
+      if (onRefreshPatient) await onRefreshPatient();
+    } catch (err) {
+      console.error('Erro ao excluir sessão:', err);
+      alert('Erro ao excluir a sessão.');
+    } finally {
+      setIsDeletingSession(false);
     }
   };
 
@@ -752,6 +778,17 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
                     >
                       <Send className="w-3 h-3" /> Validar WhatsApp
                     </button>
+
+                    {(onDeleteSession || true) && (
+                      <button
+                        type="button"
+                        onClick={() => setSessionToDelete(sess)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-slate-200 dark:border-slate-800 hover:border-rose-300 transition-colors"
+                        title="Excluir este atendimento / lançamento"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1095,6 +1132,81 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({
                   <>
                     <Trash2 className="w-4 h-4" />
                     Sim, Excluir Pacote
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Session Confirmation Modal */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-900">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Excluir Atendimento e Lançamento
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Confirme a exclusão definitiva desta sessão do histórico e do banco de dados.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Paciente:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{sessionToDelete.patientName || patient.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Data / Horário:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {sessionToDelete.scheduledDate ? formatDate(sessionToDelete.scheduledDate) : 'Hoje'} às {sessionToDelete.scheduledTime || '09:00'}
+                </span>
+              </div>
+              {sessionToDelete.price ? (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Valor Lançado:</span>
+                  <span className="font-bold text-rose-600 dark:text-rose-400">
+                    R$ {Number(sessionToDelete.price).toFixed(2)}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+
+            <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+              Aviso: O atendimento e o respectivo lançamento financeiro (Renda Massoterapia e Caixa) serão removidos do sistema e do banco de dados.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingSession}
+                onClick={() => setSessionToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingSession}
+                onClick={handleConfirmDeleteSession}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingSession ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Excluindo do banco...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Sim, Excluir do Banco
                   </>
                 )}
               </button>

@@ -69,6 +69,7 @@ export interface CashEntry {
   type: CashEntryType;
   originId?: string;
   referenceId?: string;
+  sessionId?: string;
   packageId?: string;
   packageName?: string;
   totalSessions?: number;

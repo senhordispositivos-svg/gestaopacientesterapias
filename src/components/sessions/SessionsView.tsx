@@ -21,6 +21,8 @@ import {
   ExternalLink,
   ChevronRight,
   AlertCircle,
+  AlertTriangle,
+  Trash2,
   X,
   Package,
 } from 'lucide-react';
@@ -42,6 +44,7 @@ interface SessionsViewProps {
   onSelectPatient: (patient: Patient) => void;
   onOpenAttendanceModal?: (session: Session) => void;
   onOpenWhatsAppModal?: (session: Session) => void;
+  onDeleteSession?: (session: Session) => Promise<void> | void;
 }
 
 export const SessionsView: React.FC<SessionsViewProps> = ({
@@ -56,11 +59,16 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
   onSelectPatient,
   onOpenAttendanceModal,
   onOpenWhatsAppModal,
+  onDeleteSession,
 }) => {
   const [activeTab, setActiveTab] = useState<'sessions_list' | 'patients_view'>('sessions_list');
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'SINGLE' | 'PACKAGE'>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'SCHEDULED'>('ALL');
+
+  // Deletion modal state
+  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Signature modal state
   const [viewingSignatureSession, setViewingSignatureSession] = useState<Session | null>(null);
@@ -116,6 +124,19 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
       packageCount: packageSessions.length,
     };
   }, [sessions, currentMonth]);
+
+  const handleConfirmDelete = async () => {
+    if (!sessionToDelete || !onDeleteSession) return;
+    try {
+      setIsDeleting(true);
+      await onDeleteSession(sessionToDelete);
+      setSessionToDelete(null);
+    } catch (err) {
+      console.error('Erro ao excluir sessão:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -437,7 +458,7 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
                             type="button"
                             onClick={() => onOpenWhatsAppModal(sess)}
                             title="Enviar confirmação / recibo no WhatsApp"
-                            className="p-2 rounded-xl text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 transition"
+                            className="p-2 rounded-xl text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 transition cursor-pointer"
                           >
                             <Send className="w-4 h-4" />
                           </button>
@@ -447,10 +468,21 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onOpenAttendanceModal(sess)}
-                            className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition"
+                            className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>Atender / Evoluir</span>
+                          </button>
+                        )}
+
+                        {onDeleteSession && (
+                          <button
+                            type="button"
+                            onClick={() => setSessionToDelete(sess)}
+                            title="Excluir este atendimento / lançamento financeiro do banco de dados"
+                            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-800 transition cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>
@@ -621,9 +653,87 @@ export const SessionsView: React.FC<SessionsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setViewingSignatureSession(null)}
-                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition"
+                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition cursor-pointer"
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão de Sessão e Lançamento Financeiro */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-3 bg-rose-100 dark:bg-rose-950/60 rounded-xl text-rose-600 dark:text-rose-400 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Excluir Atendimento e Lançamento?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Esta ação removerá este atendimento do histórico clínico e excluirá o lançamento correspondente do banco de dados (Renda Massoterapia e Fluxo de Caixa).
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Paciente:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{sessionToDelete.patientName}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Tipo de Atendimento:</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                  {sessionToDelete.packageId ? 'Sessão de Pacote' : 'Sessão Avulsa'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Data / Horário:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {sessionToDelete.scheduledDate ? formatDate(sessionToDelete.scheduledDate) : 'Hoje'} às {sessionToDelete.scheduledTime || '14:00'}
+                </span>
+              </div>
+              {sessionToDelete.price ? (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Valor Lançado:</span>
+                  <span className="font-bold text-rose-600 dark:text-rose-400">
+                    {formatCurrencyAccounting(sessionToDelete.price)}
+                  </span>
+                </div>
+              ) : null}
+              {sessionToDelete.professionalName && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Profissional:</span>
+                  <span className="text-slate-700 dark:text-slate-300">{sessionToDelete.professionalName}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-[11px] text-rose-700 dark:text-rose-300">
+              A exclusão é definitiva no PostgreSQL / Supabase e os totais financeiros de sessões avulsas serão recalculados imediatamente.
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSessionToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className={`w-3.5 h-3.5 ${isDeleting ? 'animate-spin' : ''}`} />
+                <span>{isDeleting ? 'Excluindo...' : 'Sim, Excluir do Banco'}</span>
               </button>
             </div>
           </div>

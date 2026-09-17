@@ -2028,14 +2028,20 @@ export const api = {
     const list = getLocal<Session[]>(STORAGE_KEYS.SESSIONS, []);
     setLocal(STORAGE_KEYS.SESSIONS, list.filter(s => s.id !== id));
 
-    // Cancela na renda massoterapia
+    // Exclui da renda massoterapia local
     const rmList = getLocal<RendaMassoterapiaEntry[]>(STORAGE_KEYS.RENDA_MASSOTERAPIA, []);
-    const rmIdx = rmList.findIndex(e => e.origemTipo === 'atendimento_massoterapia' && e.origemId === id);
-    if (rmIdx !== -1) {
-      rmList[rmIdx].status = 'CANCELADO';
-      rmList[rmIdx].updatedAt = new Date().toISOString();
-      setLocal(STORAGE_KEYS.RENDA_MASSOTERAPIA, rmList);
-    }
+    setLocal(
+      STORAGE_KEYS.RENDA_MASSOTERAPIA,
+      rmList.filter(e => !(e.origemTipo === 'atendimento_massoterapia' && e.origemId === id) && e.id !== id)
+    );
+
+    // Exclui do fluxo de caixa local
+    const cashList = getLocal<CashEntry[]>(STORAGE_KEYS.CASH_ENTRIES, []);
+    setLocal(
+      STORAGE_KEYS.CASH_ENTRIES,
+      cashList.filter(c => (c as any).sessionId !== id && c.referenceId !== id && c.originId !== id)
+    );
+
     return true;
   },
 

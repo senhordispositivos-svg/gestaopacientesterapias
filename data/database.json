@@ -639,7 +639,36 @@
     }
   ],
   "publicTokens": [],
-  "auditLogs": [],
+  "auditLogs": [
+    {
+      "id": "log-1789442076795-0dhn",
+      "tenantId": "tenant-demo-1",
+      "userId": "user-super-osaias",
+      "userName": "Osaias Brito",
+      "userRole": "SUPER_ADMIN",
+      "action": "TEST_DB_CONNECTION",
+      "entity": "DATABASE",
+      "entityId": "database-engine",
+      "ipAddress": "127.0.0.1",
+      "timestamp": "2026-09-15T03:14:36.795Z",
+      "result": "SUCCESS",
+      "details": "Diagnóstico de banco de dados executado pelo Super Usuário. Status: ONLINE. Tempo de resposta: 1082ms."
+    },
+    {
+      "id": "log-1789442056295-pgoi",
+      "tenantId": "tenant-demo-1",
+      "userId": "user-super-osaias",
+      "userName": "Osaias Brito",
+      "userRole": "SUPER_ADMIN",
+      "action": "TEST_DB_CONNECTION",
+      "entity": "DATABASE",
+      "entityId": "database-engine",
+      "ipAddress": "127.0.0.1",
+      "timestamp": "2026-09-15T03:14:16.295Z",
+      "result": "SUCCESS",
+      "details": "Diagnóstico de banco de dados executado pelo Super Usuário. Status: DEGRADED. Tempo de resposta: 5935ms."
+    }
+  ],
   "documentFiles": [],
   "signatures": [
     {
@@ -772,38 +801,21 @@
   ],
   "rendaMassoterapia": [
     {
-      "id": "rm-1789350142483-xvpp",
+      "id": "rm-1789350445434-w8hb",
       "tenantId": "tenant-demo-1",
-      "dataLancamento": "2026-09-15",
-      "valorRecebido": 150,
-      "observacao": "Atendimento Massoterapia (Drenagem Linfática) - Paciente: Thayna Gomes Farias [CANCELADO]",
-      "usuarioResponsavel": "Profissional",
-      "referenciaAtendimento": "sess-single-1789350142478",
-      "pacienteId": "pat-1788556689030-n1nf",
-      "pacienteNome": "Thayna Gomes Farias",
-      "origemTipo": "atendimento_massoterapia",
-      "origemId": "sess-single-1789350142478",
-      "mesReferencia": "2026-09",
-      "status": "CANCELADO",
-      "createdAt": "2026-09-14T01:42:22.482Z",
-      "updatedAt": "2026-09-14T01:42:22.590Z"
-    },
-    {
-      "id": "rm-1789349689251-rvjm",
-      "tenantId": "tenant-demo-1",
-      "dataLancamento": "2026-09-14",
-      "valorRecebido": "200.00",
-      "observacao": "Atendimento Massoterapia (Massagem Relaxante, Liberação Miofascial) - Paciente: Thayna Gomes Farias",
+      "dataLancamento": "2026-08-19",
+      "valorRecebido": 450,
+      "observacao": "Pacote Massoterapia (Pacote Massoterapia Clínica) - 5 sessões",
       "usuarioResponsavel": "Osaias Brito",
-      "referenciaAtendimento": "sess-single-1789349689246",
-      "pacienteId": "pat-1788556689030-n1nf",
-      "pacienteNome": "Thayna Gomes Farias",
-      "origemTipo": "atendimento_massoterapia",
-      "origemId": "sess-single-1789349689246",
-      "mesReferencia": "2026-09",
+      "referenciaAtendimento": "pkg-sidney-1",
+      "pacienteId": "pat-sidney-leitao",
+      "pacienteNome": "SIDNEY LEITÃO",
+      "origemTipo": "pacote_massoterapia",
+      "origemId": "pkg-sidney-1",
+      "mesReferencia": "2026-08",
       "status": "RECEBIDO",
-      "createdAt": "2026-09-14T01:34:49.251Z",
-      "updatedAt": "2026-09-14T01:34:49.251Z"
+      "createdAt": "2026-09-15T03:14:58.088Z",
+      "updatedAt": "2026-09-15T03:14:58.095Z"
     }
   ]
 }

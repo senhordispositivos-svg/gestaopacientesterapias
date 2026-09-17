@@ -425,6 +425,18 @@ export function App() {
     }
   };
 
+  const handleDeleteSession = async (sess: Session) => {
+    const tenantId = tenant?.id || sess.tenantId || 'tenant-demo-1';
+    setSessions(prev => prev.filter(s => s.id !== sess.id));
+    try {
+      await api.deleteSession(tenantId, sess.id);
+      await loadData();
+    } catch (err) {
+      console.error('Erro ao excluir sessão:', err);
+      await loadData();
+    }
+  };
+
   return (
     <div className="flex h-screen bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 overflow-hidden font-sans">
       {/* Dynamic Brand Sidebar */}
@@ -603,6 +615,7 @@ export function App() {
                         setIsPackageModalOpen(true);
                       }}
                       onDeletePackage={handleDeletePackage}
+                      onDeleteSession={handleDeleteSession}
                     />
                   ) : (
                     <PatientList
@@ -724,6 +737,7 @@ export function App() {
                     setSelectedSessionForWhatsApp(session);
                     setIsWhatsAppModalOpen(true);
                   }}
+                  onDeleteSession={handleDeleteSession}
                 />
               )}
 

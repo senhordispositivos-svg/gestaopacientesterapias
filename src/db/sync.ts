@@ -336,7 +336,10 @@ export async function loadAllFromPostgres() {
       auditLogs: auditLogsList as unknown as AuditLog[],
       documentFiles: documentFilesList as unknown as DocumentFile[],
       signatures: signaturesList as unknown as SignatureRecord[],
-      rendaMassoterapia: rendaMassoterapiaList as unknown as RendaMassoterapiaEntry[],
+      rendaMassoterapia: (rendaMassoterapiaList || []).map(r => ({
+        ...r,
+        valorRecebido: Number((r as any).valorRecebido) || 0,
+      })) as unknown as RendaMassoterapiaEntry[],
     };
   } catch (err: unknown) {
     const message = (err as Error)?.message || String(err);
@@ -839,39 +842,62 @@ export async function syncStoreToPostgres(store: {
 
     // 10. Renda Massoterapia (Internal Financial Integration)
     if (Array.isArray(store.rendaMassoterapia) && store.rendaMassoterapia.length > 0) {
+      // Deduplicate in memory first to prevent intra-batch collisions
+      const seenOrigem = new Set<string>();
+      const uniqueItems: RendaMassoterapiaEntry[] = [];
       for (const item of store.rendaMassoterapia) {
+        const key = `${item.origemTipo}::${item.origemId}`;
+        if (!seenOrigem.has(key)) {
+          seenOrigem.add(key);
+          uniqueItems.push(item);
+        }
+      }
+
+      for (const item of uniqueItems) {
         if (!validTenantIds.has(item.tenantId)) continue;
         try {
-          await db
-            .insert(schema.rendaMassoterapia)
-            .values({
-              id: item.id,
-              tenantId: item.tenantId,
-              dataLancamento: item.dataLancamento,
-              valorRecebido: String(item.valorRecebido),
-              observacao: item.observacao || null,
-              usuarioResponsavel: item.usuarioResponsavel,
-              referenciaAtendimento: item.referenciaAtendimento || null,
-              pacienteId: item.pacienteId && validPatientIds.has(item.pacienteId) ? item.pacienteId : null,
-              pacienteNome: item.pacienteNome,
-              origemTipo: item.origemTipo,
-              origemId: item.origemId,
-              mesReferencia: item.mesReferencia,
-              status: item.status || 'RECEBIDO',
-              createdAt: item.createdAt,
-              updatedAt: item.updatedAt || null,
-            })
-            .onConflictDoUpdate({
-              target: schema.rendaMassoterapia.id,
-              set: {
-                dataLancamento: item.dataLancamento,
-                valorRecebido: String(item.valorRecebido),
-                observacao: item.observacao || null,
-                usuarioResponsavel: item.usuarioResponsavel,
-                status: item.status || 'RECEBIDO',
-                updatedAt: item.updatedAt || new Date().toISOString(),
-              },
-            });
+          if (pool) {
+            const res = await pool.query(
+              `INSERT INTO renda_massoterapia (
+                id, tenant_id, data_lancamento, valor_recebido, observacao,
+                usuario_responsavel, referencia_atendimento, paciente_id, paciente_nome,
+                origem_tipo, origem_id, mes_referencia, status, created_at, updated_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+              ON CONFLICT (origem_tipo, origem_id) DO UPDATE SET
+                tenant_id = EXCLUDED.tenant_id,
+                data_lancamento = EXCLUDED.data_lancamento,
+                valor_recebido = EXCLUDED.valor_recebido,
+                observacao = EXCLUDED.observacao,
+                usuario_responsavel = EXCLUDED.usuario_responsavel,
+                referencia_atendimento = EXCLUDED.referencia_atendimento,
+                paciente_id = EXCLUDED.paciente_id,
+                paciente_nome = EXCLUDED.paciente_nome,
+                mes_referencia = EXCLUDED.mes_referencia,
+                status = EXCLUDED.status,
+                updated_at = EXCLUDED.updated_at
+              RETURNING id`,
+              [
+                item.id,
+                item.tenantId,
+                item.dataLancamento,
+                String(item.valorRecebido),
+                item.observacao || null,
+                item.usuarioResponsavel,
+                item.referenciaAtendimento || null,
+                item.pacienteId && validPatientIds.has(item.pacienteId) ? item.pacienteId : null,
+                item.pacienteNome,
+                item.origemTipo,
+                item.origemId,
+                item.mesReferencia,
+                item.status || 'RECEBIDO',
+                item.createdAt,
+                item.updatedAt || new Date().toISOString(),
+              ]
+            );
+            if (res.rows && res.rows[0]?.id) {
+              item.id = res.rows[0].id;
+            }
+          }
         } catch (rmErr) {
           console.warn(`[PostgreSQL] Renda Massoterapia sync warning (${item.id}):`, rmErr);
         }
